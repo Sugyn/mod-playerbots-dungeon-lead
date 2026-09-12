@@ -1,9 +1,15 @@
-# ADR-003: DungeonTestBotPool — targeted unattended testing, Phase 1
+# ADR-003: DungeonTestBotPool — targeted unattended testing, Phase 1-2
 
-Status: **Phase 1 implemented and verified live** (acquire/status/release for Tank and Healer
-roles). Later phases (5-bot parties, CC-role profiles, fresh-instance provisioning, 10x parallel
-campaigns, RunResult/CampaignManager) are **not implemented** — this ADR documents the direction,
-only Phase 1 exists in code.
+Status: **Phase 1-2 implemented and verified live**: acquire/status/release for Tank, Healer, and
+arbitrary-class Dps roles, a full 5-bot party built on demand, one CC-capability check (Mage/
+Polymorph). Later phases (fresh-instance provisioning, 10x parallel campaigns, RunResult/
+CampaignManager, more CC classes) are **not implemented** — this ADR documents the direction,
+only Phase 1-2 exist in code.
+
+**Phase 2 postscript (same day):** the first live 5-bot-party run caught a real bug the Phase 1
+acceptance test's small sample size had missed - see "A verification bug caught by the safety net
+itself" below. Left in this ADR rather than quietly editing it away, since it's a good example of
+the "never trust a guess, verify at runtime" principle in section 8 actually earning its keep.
 
 ## Context
 
@@ -104,33 +110,78 @@ without it, every acquired test bot would silently corrupt whatever `players` fe
   `LfgActions.cpp` - verified correct on the very first live test.)
 - `ReleaseTestBot(name)`: stops any dungeon-lead session on the bot first (never leaves one
   dangling), then `LogoutPlayerBot()` - the same normal bot-logout path, not a forced disconnect.
+- `Dps` role (Phase 2): `AcquireDpsTestBot(classId, ...)` - any of the ten classes, no forced
+  talent spec (a pure-DPS class doesn't need one optimized spec the way Tank/Healer do). If the
+  class has a known CC spell (`CcSpellFor()` - currently only Mage/Polymorph, spell 118, a
+  baseline class spell not gated behind a specific talent spec), `VerifyReady()` additionally
+  checks `bot->HasSpell()` for it before reporting `Ready`.
+
+## A verification bug caught by the safety net itself
+
+The first full 5-bot-party run (Phase 2, same day as Phase 1) reused the same Priest character
+Phase 1 had already proven `Ready` once. This time it came back `Failed` - same character, same
+`AcquireTestBot`/`PrepareProfile` call, different outcome. Investigated rather than retried:
+
+`PlayerbotAI::IsTank`/`IsHeal` take a `bySpec` parameter, **default `false`**:
+
+```cpp
+bool PlayerbotAI::IsHeal(Player* player, bool bySpec)
+{
+    PlayerbotAI* botAi = GET_PLAYERBOT_AI(player);
+    if (!bySpec && botAi)
+        return botAi->ContainsStrategy(STRATEGY_TYPE_HEAL);
+    // ... bySpec=true path checks AiFactory::GetPlayerSpecTab() instead ...
+}
+```
+
+`VerifyReady()` had called the two-argument form, so it silently took the `bySpec=false` branch:
+checking the bot's current AI **strategy** assignment, not the talent spec `PrepareProfile()` had
+just set. That strategy gets (re)computed by the AI engine itself, on its own schedule relative to
+`ResetStrategies()` - not guaranteed to already reflect a talent change from the same tick. Fixed
+by passing `bySpec=true` explicitly, which reads `AiFactory::GetPlayerSpecTab()` →
+`bot->GetTalentMap()` directly - the literal state `InitTalentsBySpecNo()` just wrote, no
+intermediate strategy-engine step to lag behind.
+
+Worth noting what this bug was **not**: the `specNo` guesses themselves (`WARRIOR_TAB_PROTECTION=2`,
+`PRIEST_TAB_HOLY=1`, confirmed against the real enum values in `PlayerbotAI.h`) were correct the
+entire time. A less careful investigation could easily have "fixed" this by second-guessing the
+spec numbers instead of the verification call - they weren't the problem.
 
 ## Operator interface
 
-`.playerbots testbotpool acquire tank|healer [level]` / `status` / `release <name>` - GM console
-commands, `Console::Yes` (SOAP-reachable), matching `canarytest`/`lfgstate`'s pattern from ADR-002.
+`.playerbots testbotpool acquire tank|healer|dps <class> [level]` / `status` / `release <name>` -
+GM console commands, `Console::Yes` (SOAP-reachable), matching `canarytest`/`lfgstate`'s pattern
+from ADR-002.
 
 ## Phase 1 acceptance test (from the reviewed plan, verified live 2026-09-12)
 
 1. Clean worldserver restart, zero real clients connected. ✅
-2. Acquire one AddClass Warrior. ✅ (`Ilyenea`)
-3. Acquire one AddClass Priest. ✅ (`Chaelania`)
+2. Acquire one AddClass Warrior. ✅
+3. Acquire one AddClass Priest. ✅
 4. Both log in through the standard async masterless path. ✅
 5. Both normalized to target level (18). ✅
 6. Deterministic Tank/Healer profiles applied. ✅
-7. Roles verified (`IsTank`/`IsHeal`) - both `true` on the first attempt. ✅
+7. Roles verified (`IsTank`/`IsHeal`) - both `true` on the first attempt (before the `bySpec` bug
+   above was found - see that section for the retest). ✅
 8. Released cleanly (`LogoutPlayerBot`, confirmed offline in DB). ✅
 9. Re-acquired the same identity, repeated the full cycle successfully. ✅
 
-Not yet separately proven in isolation (running, not blocking Phase 1's completion): 30-minute
+Not yet separately proven in isolation (running, not blocking Phase 1-2's completion): 30-minute
 idle stability without RandomBot-lifecycle interference, and direct confirmation that the
 `OnPlayerLogin` fix keeps these bots out of whatever `players` feeds into (fixed by inspection and
 by the exact mechanism described above, not yet independently re-verified via a second live probe).
 
+## Phase 2 acceptance test: full 5-bot party (verified live 2026-09-12, after the `bySpec` fix)
+
+Clean restart → acquire Tank (Warrior) → acquire Healer (Priest) → acquire Dps ×3 (Mage, Rogue,
+Hunter) → all five logged in, prepared, and reported `Ready` (Mage additionally verified to know
+Polymorph) → confirmed in the character DB (correct level 18, correct class per slot). Zero
+`Failed` results across all five in this run.
+
 ## Explicitly deferred (later phases, not implemented)
 
-- 5-bot party assembly (3 DPS/CC roles beyond Tank/Healer - `specNo` mapping for Hunter/Rogue/
-  Mage/Warlock not yet derived or verified).
+- CC verification for classes beyond Mage (Warlock/Druid/Rogue/Hunter - each is talent- or
+  ability-gated differently and needs its own investigation, not a guessed spell id).
 - Fresh dungeon instance provisioning per run.
 - `DungeonRunResult`/campaign aggregation contract.
 - `DungeonTestOrchestrator` and the BotPool/ProfileManager/PartyBuilder/InstanceProvisioner/

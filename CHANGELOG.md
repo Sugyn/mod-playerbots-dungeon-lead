@@ -24,8 +24,26 @@ identities, independent of the general bot population and of any human staying l
   13-argument constructor or its lifecycle ownership wrong and crash the whole worldserver), and
   adopting AddClass bots under a live player's own account (ties the bot's uptime to that player
   staying logged in - the opposite of "unattended").
+- **Phase 2 same day: a `Dps` role** (`.playerbots testbotpool acquire dps <class> [level]`,
+  any of the ten playable classes) alongside Tank/Healer, enabling a full 5-bot party
+  (Tank + Healer + 3 Dps) built entirely on demand. No talent spec is forced for Dps (any spec is
+  valid DPS), but a requested class with a known CC spell is verified to actually know it before
+  `Ready` - Mage/Polymorph (spell 118) is the first one implemented; other CC classes
+  (Warlock/Druid/Rogue/Hunter) are talent- or ability-gated in ways not yet independently verified
+  (see ADR-003). Verified live: a full 5-bot party (Warrior/Priest/Mage/Rogue/Hunter) acquired in
+  one sequence, all five `Ready`.
 
 ### Fixed
+- **`Ready` verification was flaky for Healer** - caught live, not assumed: the same character,
+  acquired the same way twice, verified `Ready` once and `Failed` the next time. Root cause:
+  `PlayerbotAI::IsTank`/`IsHeal` default to `bySpec=false`, which checks the bot's current AI
+  *strategy* (`ContainsStrategy(STRATEGY_TYPE_HEAL)`) rather than the talent spec directly, and
+  that strategy assignment lagged behind the talent change `PrepareProfile()` had just applied.
+  Fixed by calling both with `bySpec=true`, which reads `AiFactory::GetPlayerSpecTab()` - built
+  directly from `bot->GetTalentMap()`, no caching - confirming the exact state `InitTalentsBySpecNo()`
+  just set. (The `specNo` guesses themselves - `WARRIOR_TAB_PROTECTION=2`, `PRIEST_TAB_HOLY=1` -
+  were correct all along, confirmed against the enum values in `PlayerbotAI.h`; the bug was
+  entirely in how readiness was checked, not in the spec applied.)
 - **A masterless AddClass bot was silently misclassified as a real human player.**
   `RandomPlayerbotMgr::OnPlayerLogin` (upstream `mod-playerbots`, not this patch's own code) ends
   every login with `if (IsRandomBot(player)) {...} else { players.push_back(player); }` -

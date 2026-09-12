@@ -2892,10 +2892,10 @@ index 00000000..6ee585cd
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
 new file mode 100644
-index 00000000..c4adb90b
+index 00000000..9e1bcfba
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,288 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2927,8 +2927,9 @@ index 00000000..c4adb90b
 +        ObjectGuid guid;
 +        std::string name;
 +        DungeonLead::TestBotRole role;
++        uint8 classId;         // authoritative for Dps; redundant with role for Tank/Healer
 +        DungeonLead::TestBotLeaseState state;
-+        uint32 stateTs;       // getMSTime() of the last state transition - for the login timeout
++        uint32 stateTs;        // getMSTime() of the last state transition - for the login timeout
 +        uint32 targetLevel;
 +    };
 +
@@ -2940,7 +2941,13 @@ index 00000000..c4adb90b
 +
 +    char const* RoleName(DungeonLead::TestBotRole role)
 +    {
-+        return role == DungeonLead::TestBotRole::Tank ? "Tank" : "Healer";
++        switch (role)
++        {
++            case DungeonLead::TestBotRole::Tank:   return "Tank";
++            case DungeonLead::TestBotRole::Healer: return "Healer";
++            case DungeonLead::TestBotRole::Dps:    return "Dps";
++        }
++        return "?";
 +    }
 +
 +    char const* StateName(DungeonLead::TestBotLeaseState state)
@@ -2956,12 +2963,13 @@ index 00000000..c4adb90b
 +        return "?";
 +    }
 +
-+    // Class + InitTalentsBySpecNo() specNo per role. Derived from LfgJoinAction::GetRoles()
++    // Class + InitTalentsBySpecNo() specNo for Tank/Healer. Derived from LfgJoinAction::GetRoles()
 +    // (LfgActions.cpp) - the only place in this codebase that documents the spec-tab-index <->
 +    // role mapping, cross-checked against the assumption that InitTalentsBySpecNo()'s specNo uses
 +    // the same tab-index convention (both ultimately index by real TalentTab.dbc tab order).
-+    // NOT blindly trusted: VerifyRole() re-checks with the same PlayerbotAI::IsTank/IsHeal logic
-+    // the rest of Dungeon Lead already uses, and a wrong guess here surfaces as Failed, not as a
++    // NOT blindly trusted: VerifyReady() re-checks with the same PlayerbotAI::IsTank/IsHeal logic
++    // the rest of Dungeon Lead already uses - both guesses verified correct on the first live test
++    // (2026-09-12), but a future wrong guess for a new role surfaces as Failed, never as a
 +    // silently-wrong "Ready" bot.
 +    struct RoleClassSpec { uint8 cls; uint32 specNo; };
 +    RoleClassSpec ClassSpecFor(DungeonLead::TestBotRole role)
@@ -2971,27 +2979,34 @@ index 00000000..c4adb90b
 +        return {CLASS_PRIEST, 1};       // Holy
 +    }
 +
-+    bool VerifyRole(Player* bot, DungeonLead::TestBotRole role)
++    // Known low-rank CC spell to check for, per class, when that class is requested as a Dps test
++    // bot - "For CC-focused scenarios, verify the actual required capability rather than assuming
++    // a talent-tree number implies it" (ADR-003). Only Mage/Polymorph is verified so far: it's a
++    // baseline class spell learned via InitClassSpells() regardless of spec/talents, unlike e.g.
++    // Warlock Banish (talent-gated) or Druid Cyclone (talent-gated) which would need a specific
++    // spec forced first - deliberately deferred rather than guessed at.
++    uint32 CcSpellFor(uint8 classId)
 +    {
-+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-+        if (!botAI)
-+            return false;
-+        return role == DungeonLead::TestBotRole::Tank ? PlayerbotAI::IsTank(bot) : PlayerbotAI::IsHeal(bot);
++        return classId == CLASS_MAGE ? 118 /*Polymorph (rank 1)*/ : 0;
 +    }
 +
 +    // Deterministic profile prep. Reuses PlayerbotFactory::Randomize() for the proven level/
 +    // skills/spells/quests/equipment pipeline (see PlayerbotFactory.cpp) rather than
-+    // re-implementing its dozens of sub-steps, then overrides just the one piece that needs to be
-+    // deterministic instead of random (the talent spec), and re-runs InitEquipment() once more so
-+    // gear matches the FINAL spec rather than whatever Randomize() picked first.
++    // re-implementing its dozens of sub-steps. For Tank/Healer, overrides just the one piece that
++    // needs to be deterministic instead of random (the talent spec) and re-runs InitEquipment()
++    // once more so gear matches the FINAL spec. For Dps, leaves Randomize()'s own spec choice as-is
++    // (per ADR-003: pure-DPS classes don't need one optimized spec the way Tank/Healer do).
 +    void PrepareProfile(Player* bot, DungeonLead::TestBotRole role, uint32 targetLevel)
 +    {
 +        PlayerbotFactory factory(bot, targetLevel);
 +        factory.Randomize(false);
 +
-+        RoleClassSpec const rc = ClassSpecFor(role);
-+        PlayerbotFactory::InitTalentsBySpecNo(bot, rc.specNo, /*reset*/ true);
-+        factory.InitEquipment(false, false);
++        if (role != DungeonLead::TestBotRole::Dps)
++        {
++            RoleClassSpec const rc = ClassSpecFor(role);
++            PlayerbotFactory::InitTalentsBySpecNo(bot, rc.specNo, /*reset*/ true);
++            factory.InitEquipment(false, false);
++        }
 +
 +        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
 +        {
@@ -3006,7 +3021,88 @@ index 00000000..c4adb90b
 +            bot->SetPower(POWER_MANA, bot->GetMaxPower(POWER_MANA));
 +    }
 +
++    // Ready/Failed determination for whatever role/class was requested. Tank/Healer: IsTank()/
++    // IsHeal() called with bySpec=true - NOT the default. Caught live (2026-09-12): the default
++    // (bySpec=false) checks the bot's current AI *strategy* (ContainsStrategy(STRATEGY_TYPE_HEAL)),
++    // not the talent spec directly, and that strategy assignment lagged behind the talent change
++    // just applied by PrepareProfile() on one live run (same test Priest character, same procedure,
++    // verified Ready once and Failed the next time). bySpec=true checks AiFactory::GetPlayerSpecTab()
++    // against the real talent tab instead (WARRIOR_TAB_PROTECTION=2, PRIEST_TAB_HOLY=1 - both
++    // confirmed against PlayerbotAI.h, matching the specNo values ClassSpecFor() already used) -
++    // grounded in the same state InitTalentsBySpecNo() just set, no strategy-engine timing
++    // dependency. Dps: no role check (any spec is valid DPS), but if the requested class has a
++    // known CC spell (see CcSpellFor), that spell must actually be known - a silent "Ready" bot
++    // that can't actually CC would defeat the point of acquiring it for a CC scenario.
++    bool VerifyReady(Player* bot, DungeonLead::TestBotRole role)
++    {
++        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
++        if (!botAI)
++            return false;
++
++        if (role == DungeonLead::TestBotRole::Tank)
++            return PlayerbotAI::IsTank(bot, /*bySpec*/ true);
++        if (role == DungeonLead::TestBotRole::Healer)
++            return PlayerbotAI::IsHeal(bot, /*bySpec*/ true);
++
++        uint32 const ccSpell = CcSpellFor(bot->getClass());
++        return ccSpell == 0 || bot->HasSpell(ccSpell);
++    }
++
 +    constexpr uint32 LOGIN_TIMEOUT_MS = 30000;
++
++    // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
++    // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
++    bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage)
++    {
++        QueryResult accIds = PlayerbotsDatabase.Query("SELECT account_id FROM playerbots_account_type WHERE account_type = 2");
++        if (!accIds)
++        {
++            outMessage = "No AddClass accounts found (playerbots_account_type has no account_type=2 rows)";
++            return false;
++        }
++        std::ostringstream idList;
++        bool first = true;
++        do
++        {
++            if (!first)
++                idList << ",";
++            first = false;
++            idList << (*accIds)[0].Get<uint32>();
++        } while (accIds->NextRow());
++
++        QueryResult chars = CharacterDatabase.Query(
++            "SELECT guid, name FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 20",
++            classId, idList.str());
++        if (!chars)
++        {
++            outMessage = "No offline AddClass character of the needed class exists";
++            return false;
++        }
++
++        do
++        {
++            Field* f = chars->Fetch();
++            uint32 const lowGuid = f[0].Get<uint32>();
++            std::string const name = f[1].Get<std::string>();
++            ObjectGuid const guid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
++
++            bool const alreadyLeased = std::any_of(g_leases.begin(), g_leases.end(),
++                [&](TestBotLease const& l) { return l.guid == guid; });
++            if (alreadyLeased)
++                continue;
++
++            sRandomPlayerbotMgr.AddPlayerBot(guid, 0);
++            g_leases.push_back({guid, name, role, classId, DungeonLead::TestBotLeaseState::LoggingIn,
++                                 getMSTime(), targetLevel});
++            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] acquiring {} as {} (class {}, target level {})",
++                     name, RoleName(role), classId, targetLevel);
++            outMessage = "Acquiring " + name + " (" + RoleName(role) + ") - logging in, check status shortly";
++            return true;
++        } while (chars->NextRow());
++
++        outMessage = "All offline AddClass characters of that class are already leased";
++        return false;
++    }
 +}
 +
 +void DungeonLead::TestBotPoolTick()
@@ -3028,10 +3124,10 @@ index 00000000..c4adb90b
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} logged in, preparing profile ({})",
 +                     lease.name, RoleName(lease.role));
 +            PrepareProfile(bot, lease.role, lease.targetLevel);
-+            bool const ok = VerifyRole(bot, lease.role);
++            bool const ok = VerifyReady(bot, lease.role);
 +            lease.state = ok ? TestBotLeaseState::Ready : TestBotLeaseState::Failed;
 +            lease.stateTs = now;
-+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} profile prepared, role verified={} -> {}",
++            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} profile prepared, verified={} -> {}",
 +                     lease.name, ok, StateName(lease.state));
 +        }
 +        else if (GetMSTimeDiffToNow(lease.stateTs) > LOGIN_TIMEOUT_MS)
@@ -3047,54 +3143,12 @@ index 00000000..c4adb90b
 +bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage)
 +{
 +    RoleClassSpec const rc = ClassSpecFor(role);
++    return AcquireBot(role, rc.cls, targetLevel, outMessage);
++}
 +
-+    QueryResult accIds = PlayerbotsDatabase.Query("SELECT account_id FROM playerbots_account_type WHERE account_type = 2");
-+    if (!accIds)
-+    {
-+        outMessage = "No AddClass accounts found (playerbots_account_type has no account_type=2 rows)";
-+        return false;
-+    }
-+    std::ostringstream idList;
-+    bool first = true;
-+    do
-+    {
-+        if (!first)
-+            idList << ",";
-+        first = false;
-+        idList << (*accIds)[0].Get<uint32>();
-+    } while (accIds->NextRow());
-+
-+    QueryResult chars = CharacterDatabase.Query(
-+        "SELECT guid, name FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 20",
-+        rc.cls, idList.str());
-+    if (!chars)
-+    {
-+        outMessage = "No offline AddClass character of the needed class exists";
-+        return false;
-+    }
-+
-+    do
-+    {
-+        Field* f = chars->Fetch();
-+        uint32 const lowGuid = f[0].Get<uint32>();
-+        std::string const name = f[1].Get<std::string>();
-+        ObjectGuid const guid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
-+
-+        bool const alreadyLeased = std::any_of(g_leases.begin(), g_leases.end(),
-+            [&](TestBotLease const& l) { return l.guid == guid; });
-+        if (alreadyLeased)
-+            continue;
-+
-+        sRandomPlayerbotMgr.AddPlayerBot(guid, 0);
-+        g_leases.push_back({guid, name, role, TestBotLeaseState::LoggingIn, getMSTime(), targetLevel});
-+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] acquiring {} as {} (target level {})",
-+                 name, RoleName(role), targetLevel);
-+        outMessage = "Acquiring " + name + " (" + RoleName(role) + ") - logging in, check status shortly";
-+        return true;
-+    } while (chars->NextRow());
-+
-+    outMessage = "All offline AddClass characters of that class are already leased";
-+    return false;
++bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage)
++{
++    return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage);
 +}
 +
 +std::string DungeonLead::TestBotPoolStatus()
@@ -3132,10 +3186,10 @@ index 00000000..c4adb90b
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.h b/src/Ai/Base/DungeonLead/DungeonTestBotPool.h
 new file mode 100644
-index 00000000..2a95ea65
+index 00000000..64f09891
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.h
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,85 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -3165,16 +3219,18 @@ index 00000000..2a95ea65
 +// (PlayerbotHolder::AddPlayerBot(guid, 0), the same "isRndbot" branch a real random bot uses),
 +// never a manually-constructed WorldSession.
 +//
-+// Explicitly Phase 1 scope only (per the architecture plan): two roles (Tank, Healer), no lease
-+// ownership beyond a simple in-memory list, no campaign/orchestrator layer, no concurrency beyond
-+// what a human operator asks for one lease at a time. Everything here is meant to be provably
-+// correct at small scale before any of that gets built on top.
++// Phase 2 adds a Dps role (arbitrary class, for a full 5-bot party and for CC-capable classes
++// specifically - see AcquireDpsTestBot). Still no lease ownership beyond a simple in-memory list,
++// no campaign/orchestrator layer, no concurrency beyond what a human operator asks for one lease
++// at a time. Everything here is meant to be provably correct at small scale before any of that
++// gets built on top.
 +namespace DungeonLead
 +{
 +    enum class TestBotRole : uint8
 +    {
 +        Tank,
 +        Healer,
++        Dps,
 +    };
 +
 +    enum class TestBotLeaseState : uint8
@@ -3191,12 +3247,23 @@ index 00000000..2a95ea65
 +    // LoggingIn -> Preparing -> Ready/Failed, and times out a login that never lands (30s).
 +    void TestBotPoolTick();
 +
-+    // Reserves one currently-offline AddClass character of the class matching `role`, triggers
-+    // its masterless login, and starts tracking it as a lease. Returns immediately - login and
-+    // profile preparation happen asynchronously via TestBotPoolTick(); check TestBotPoolStatus()
-+    // for progress. Returns false (with a reason in outMessage) if no eligible offline character
-+    // exists or all of them are already leased.
++    // Reserves one currently-offline AddClass character of the class matching `role` (Tank ->
++    // Warrior/Protection, Healer -> Priest/Holy - see the .cpp), triggers its masterless login,
++    // and starts tracking it as a lease. Returns immediately - login and profile preparation
++    // happen asynchronously via TestBotPoolTick(); check TestBotPoolStatus() for progress. Returns
++    // false (with a reason in outMessage) if no eligible offline character exists or all of them
++    // are already leased.
 +    bool AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage);
++
++    // Dps variant: `classId` picks the class explicitly (CLASS_WARRIOR=1 .. CLASS_DRUID=11, same
++    // ids the addclass command uses) since "Dps" alone doesn't determine one - useful for building
++    // a real 5-bot party (2-3 varied dps) or for a CC-capable class specifically (Mage/Warlock/
++    // Rogue/Hunter/Druid). Does not force a talent spec (per ADR-003: pure-DPS classes don't need
++    // one optimized spec the way Tank/Healer do) - Randomize()'s own spec choice is left as-is.
++    // For Mage, additionally verifies Polymorph (spell 118) is known before reporting Ready - the
++    // one CC capability check implemented so far; other classes' CC is not yet independently
++    // verified (see ADR-003's Phase 2 notes).
++    bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage);
 +
 +    // Human-readable dump of every currently-tracked lease and its state.
 +    std::string TestBotPoolStatus();
@@ -3409,10 +3476,10 @@ index 769bfba8..4f001e2e 100644
      uint32 saveManaThreshold;
      AutoPartyBuffMode autoGreaterBlessings;
 diff --git a/src/Script/PlayerbotCommandScript.cpp b/src/Script/PlayerbotCommandScript.cpp
-index 3e73fda9..c1bbea6c 100644
+index 3e73fda9..75070d81 100644
 --- a/src/Script/PlayerbotCommandScript.cpp
 +++ b/src/Script/PlayerbotCommandScript.cpp
-@@ -6,12 +6,20 @@
+@@ -6,12 +6,21 @@
  
  #include "BattleGroundTactics.h"
  #include "Chat.h"
@@ -3429,11 +3496,12 @@ index 3e73fda9..c1bbea6c 100644
 +#include <algorithm>
 +#include <sstream>
 +#include <stdexcept>
++#include <unordered_map>
 +
  using namespace Acore::ChatCommands;
  
  class playerbots_commandscript : public CommandScript
-@@ -32,11 +40,20 @@ public:
+@@ -32,11 +41,20 @@ public:
              {"unlink", HandleUnlinkAccountCommand, SEC_PLAYER, Console::No},
          };
  
@@ -3454,7 +3522,7 @@ index 3e73fda9..c1bbea6c 100644
              {"debug", playerbotsDebugCommandTable},
              {"account", playerbotsAccountCommandTable},
          };
-@@ -58,6 +75,129 @@ public:
+@@ -58,6 +76,166 @@ public:
          return RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(handler, args);
      }
  
@@ -3527,11 +3595,28 @@ index 3e73fda9..c1bbea6c 100644
 +    // ".playerbots testbotpool acquire tank|healer [level]" (default level 18, mid Wailing
 +    // Caverns range) - Phase 1 of DungeonTestBotPool, see DungeonTestBotPool.h. Reserves and logs
 +    // in one AddClass character, asynchronously - check "testbotpool status" for progress.
++    // Same class-name set the upstream ".playerbots bot addclass" command accepts, so an operator
++    // only needs to remember one vocabulary.
++    static bool ClassIdForName(std::string const& name, uint8& outClassId)
++    {
++        static std::unordered_map<std::string, uint8> const classes = {
++            {"warrior", CLASS_WARRIOR}, {"paladin", CLASS_PALADIN}, {"hunter", CLASS_HUNTER},
++            {"rogue", CLASS_ROGUE}, {"priest", CLASS_PRIEST}, {"shaman", CLASS_SHAMAN},
++            {"mage", CLASS_MAGE}, {"warlock", CLASS_WARLOCK}, {"druid", CLASS_DRUID},
++            {"dk", CLASS_DEATH_KNIGHT},
++        };
++        auto it = classes.find(name);
++        if (it == classes.end())
++            return false;
++        outClassId = it->second;
++        return true;
++    }
++
 +    static bool HandleTestBotPoolAcquireCommand(ChatHandler* handler, char const* args)
 +    {
 +        if (!args || !*args)
 +        {
-+            handler->PSendSysMessage("Usage: .playerbots testbotpool acquire tank|healer [level]");
++            handler->PSendSysMessage("Usage: .playerbots testbotpool acquire tank|healer|dps [class] [level]");
 +            return true;
 +        }
 +        std::istringstream iss(args);
@@ -3539,27 +3624,47 @@ index 3e73fda9..c1bbea6c 100644
 +        iss >> roleTok;
 +        std::transform(roleTok.begin(), roleTok.end(), roleTok.begin(), ::tolower);
 +
-+        DungeonLead::TestBotRole role;
-+        if (roleTok == "tank")
-+            role = DungeonLead::TestBotRole::Tank;
-+        else if (roleTok == "healer" || roleTok == "heal")
-+            role = DungeonLead::TestBotRole::Healer;
++        std::string message;
++        if (roleTok == "tank" || roleTok == "healer" || roleTok == "heal")
++        {
++            DungeonLead::TestBotRole const role =
++                roleTok == "tank" ? DungeonLead::TestBotRole::Tank : DungeonLead::TestBotRole::Healer;
++            uint32 level = 18;
++            std::string lvlTok;
++            if (iss >> lvlTok)
++            {
++                try { level = std::stoul(lvlTok); }
++                catch (std::exception const&) { /* keep default */ }
++            }
++            DungeonLead::AcquireTestBot(role, level, message);
++        }
++        else if (roleTok == "dps")
++        {
++            std::string classTok;
++            iss >> classTok;
++            std::transform(classTok.begin(), classTok.end(), classTok.begin(), ::tolower);
++            uint8 classId = 0;
++            if (!ClassIdForName(classTok, classId))
++            {
++                handler->PSendSysMessage("Usage: .playerbots testbotpool acquire dps "
++                                          "warrior|paladin|hunter|rogue|priest|shaman|mage|warlock|druid|dk [level]");
++                return true;
++            }
++            uint32 level = 18;
++            std::string lvlTok;
++            if (iss >> lvlTok)
++            {
++                try { level = std::stoul(lvlTok); }
++                catch (std::exception const&) { /* keep default */ }
++            }
++            DungeonLead::AcquireDpsTestBot(classId, level, message);
++        }
 +        else
 +        {
-+            handler->PSendSysMessage("Unknown role '{}' - use tank or healer", roleTok);
++            handler->PSendSysMessage("Unknown role '{}' - use tank, healer, or dps", roleTok);
 +            return true;
 +        }
 +
-+        uint32 level = 18;
-+        std::string lvlTok;
-+        if (iss >> lvlTok)
-+        {
-+            try { level = std::stoul(lvlTok); }
-+            catch (std::exception const&) { /* keep default */ }
-+        }
-+
-+        std::string message;
-+        DungeonLead::AcquireTestBot(role, level, message);
 +        handler->PSendSysMessage(message);
 +        return true;
 +    }
