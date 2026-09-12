@@ -12,7 +12,7 @@ back to plain "grind what you see".
 
 ## In-game usage
 
-Whisper (or /p) the tank bot inside the dungeon:
+Whisper (or /w) the tank bot inside the dungeon:
 
 | command     | effect |
 |-------------|--------|
