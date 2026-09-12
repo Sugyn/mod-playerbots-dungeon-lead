@@ -4,13 +4,21 @@
 Input  : routes.tsv   lfg_id \t wing \t step \t kind \t boss_name \t note
 DB     : lfg_dungeons.tsv, boss_positions.tsv, extra_bosses.tsv, instance_bosses.tsv
 Output : dungeon_routes.csv (resolved) + report to stdout
+
+NOTE: boss_positions.tsv and extra_bosses.tsv are raw exports from a world database
+(creature/creature_template joined by name, roughly `map entry name rank x y z spawnMask` and
+`entry name rank map spawns x y z` respectively) and are NOT checked into data/ - only the
+already-resolved output (data/dungeon_routes.csv/.md) is. Re-running this script from a clean
+checkout needs those two re-exported from a 3.3.5a world DB first; lfg_dungeons.tsv and routes.tsv
+are the only inputs that ship with this repo.
 """
 import csv, sys, os
 here = os.path.dirname(os.path.abspath(__file__))
+data = os.path.join(os.path.dirname(here), "data")  # inputs/outputs live in ../data, not next to the script
 
 # --- LFD entries ----------------------------------------------------------
 lfg = {}
-with open(f"{here}/lfg_dungeons.tsv") as f:
+with open(f"{data}/lfg_dungeons.tsv") as f:
     next(f)
     for line in f:
         p = line.rstrip("\n").split("\t")
@@ -22,12 +30,12 @@ spawns = {}
 def add(name, entry, mapid, x, y, z, rank, n):
     spawns.setdefault(name, []).append(dict(entry=int(entry), map=mapid, x=x, y=y, z=z, rank=rank, spawns=n))
 
-with open(f"{here}/boss_positions.tsv") as f:          # map entry name rank x y z spawnMask
+with open(f"{data}/boss_positions.tsv") as f:          # map entry name rank x y z spawnMask
     for line in f:
         p = line.rstrip("\n").split("\t")
         if len(p) < 7: continue
         add(p[2], p[1], int(p[0]), p[4], p[5], p[6], p[3], 1)
-with open(f"{here}/extra_bosses.tsv") as f:            # entry name rank map spawns x y z
+with open(f"{data}/extra_bosses.tsv") as f:            # entry name rank map spawns x y z
     for line in f:
         p = line.rstrip("\n").split("\t")
         if len(p) < 8: continue
@@ -44,7 +52,7 @@ def resolve(name, mapid):
     return None, "unknown"
 
 rows, report = [], []
-with open(f"{here}/routes.tsv") as f:
+with open(f"{data}/routes.tsv") as f:
     for line in f:
         if not line.strip() or line.startswith("#"): continue
         lfg_id, wing, step, kind, boss, note = (line.rstrip("\n").split("\t") + [""] * 6)[:6]
@@ -81,7 +89,7 @@ for hid, d in lfg.items():
 # normal entries drop heroic_only steps
 rows = [r for r in rows if r["kind"] != "heroic_only"] + derived
 
-with open(f"{here}/dungeon_routes.csv", "w", newline="") as f:
+with open(f"{data}/dungeon_routes.csv", "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
     w.writeheader(); w.writerows(rows)
 

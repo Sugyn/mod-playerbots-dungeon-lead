@@ -50,14 +50,12 @@ void DungeonRouteMgr::Load()
         } while (result->NextRow());
     }
 
-    loaded = true;
     LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries", count, routes.size());
 }
 
 void DungeonRouteMgr::EnsureLoaded()
 {
-    if (!loaded)
-        Load();
+    std::call_once(loadOnce, [this] { Load(); });
 }
 
 DungeonRoute const* DungeonRouteMgr::GetByLfgId(uint32 lfgId)
@@ -89,6 +87,14 @@ void DungeonRouteMgr::ResetState(ObjectGuid guid)
 {
     std::lock_guard<std::mutex> lock(mtx);
     states.erase(guid);
+}
+
+void DungeonRouteMgr::ResetRouteProgress(ObjectGuid guid)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = states.find(guid);
+    if (it != states.end())
+        it->second.ResetRouteProgress();
 }
 
 bool DungeonRouteMgr::IsStepKilled(uint32 instanceId, uint32 entry)

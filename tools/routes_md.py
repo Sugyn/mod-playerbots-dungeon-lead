@@ -2,7 +2,8 @@
 """Render dungeon_routes.csv into a readable Markdown overview (normal entries only; heroics share the map)."""
 import csv, os
 here = os.path.dirname(os.path.abspath(__file__))
-rows = list(csv.DictReader(open(f"{here}/dungeon_routes.csv")))
+data = os.path.join(os.path.dirname(here), "data")  # inputs/outputs live in ../data, not next to the script
+rows = list(csv.DictReader(open(f"{data}/dungeon_routes.csv")))
 
 exp_name = {"0": "Vanilla", "1": "The Burning Crusade", "2": "Wrath of the Lich King"}
 kind_mark = {"boss": "", "optional": " *(optional)*", "heroic_only": " *(heroic only)*",
@@ -46,5 +47,5 @@ for r in rows:
     if r["step"] == "1" and False:
         pass
 out.append("")
-open(f"{here}/dungeon_routes.md", "w").write("\n".join(out))
+open(f"{data}/dungeon_routes.md", "w").write("\n".join(out))
 print(f"wrote dungeon_routes.md ({len(out)} lines)")

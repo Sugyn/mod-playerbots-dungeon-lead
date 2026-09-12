@@ -10,10 +10,15 @@ other bots follow *it* instead of the player, it walks the boss route, decides w
 target (skull) and a CC target (moon), and paces the group by healer mana and group spread — while the real player
 in the group simply rides along (or fights, without having to give any orders).
 
-Works in every 5-man dungeon of Vanilla, The Burning Crusade (normal + heroic) and Wrath of the Lich King
-(normal + heroic). Raids are explicitly excluded. Event/vehicle dungeons (Violet Hold, Culling of Stratholme,
-Oculus after Drakos, Trial of the Champion, Halls of Reflection, Black Morass, Old Hillsbrad) have no route and fall
-back to plain "grind what you see".
+Route data is included for every 5-man LFD entry in Vanilla, The Burning Crusade (normal + heroic) and Wrath of
+the Lich King (normal + heroic) that has one to give — see "Testing status" below for exactly which dungeons have
+actually been run end-to-end versus which only have unverified route data so far. Raids are explicitly excluded.
+Event/vehicle dungeons (Violet Hold, Culling of Stratholme, Oculus after Drakos, Trial of the Champion, Halls of
+Reflection, Black Morass, Old Hillsbrad) have no route (or only a partial one) and fall back to plain "grind what
+you see" once the route runs out.
+
+**Testers are welcome and especially useful right now** — this is early enough that a reproducible bug report
+(see "Debugging" below) is worth more than a feature request.
 
 ## Prerequisites
 
@@ -153,7 +158,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 | WotLK | The Culling of Stratholme | No route (event/vehicle dungeon) |
 | WotLK | The Forge of Souls | Data ready, untested |
 | WotLK | The Nexus | Data ready, untested |
-| WotLK | The Oculus | Data ready, untested |
+| WotLK | The Oculus | Partial route — Drakos the Interrogator only; unsupported after that (vehicle/drake section) |
 | WotLK | Trial of the Champion | No route (event/vehicle dungeon) |
 | WotLK | Utgarde Keep | Data ready, untested |
 | WotLK | Utgarde Pinnacle | Data ready, untested — has an unhandled door/gate |
@@ -173,6 +178,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 | `data/lfg_dungeons.tsv` | `LFGDungeons.dbc` dump (id, name, level range, map, difficulty, type, expansion) |
 | `tools/resolve_routes.py` | resolves `routes.tsv` names against DB dumps and derives the heroic entries |
 | `tools/routes_md.py` | renders the Markdown overview |
+| `tools/reorder_routes.py` / `apply_reorder.py` | one-off graph-based reordering used for the 0.3.0 route fixes (kept for the record — see the scripts' own docstrings for their non-checked-in inputs) |
 
 ## How it works (short)
 

@@ -20,6 +20,83 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 - 5 dungeons (Keristrasza, Amnennar the Coldbringer, Princess Theradras, and the two others sharing
   their maps) still use the original hand-authored step order rather than the graph-reordered one —
   see 0.3.0 below.
+- `DungeonLeadState` is only ever read/written by its own bot's own AI update, so `DungeonRouteMgr`
+  doesn't need per-field locking on top of protecting the `states` map's own structure - see the
+  class's own comment. If dungeon-lead code ever reaches into another bot's state from a different
+  thread, that assumption needs revisiting.
+- `stopdung` restores followers to formation `chaos` and clears the strategies dungeon-lead added,
+  rather than recording and restoring each member's actual pre-`startdung` strategy/formation set.
+  In practice this is a reasonable default, not a currently-known bug, but it isn't a byte-for-byte
+  restore.
+- `kind` (route step type) is a free-form string, not a validated enum - a typo in the DB silently
+  becomes a non-walkable step instead of a load-time error.
+- No automated route data validation (duplicate/missing steps, unknown `kind`, non-finite
+  coordinates, ...) and no CI - see the project's issue tracker for interest in adding either.
+
+## [0.5.0] - 2026-09-12
+
+Fixes from an external code review of 0.4.0 (see the repo's issue tracker for the full writeup),
+verified against the actual source before applying - not applied blind.
+
+### Fixed
+- **`debugMode`/`paused`/owned marks were silently wiped seconds after every single `startdung`.**
+  `DungeonLeadNextAction::ResolveRoute()` called a full `DungeonLeadState::Reset()` the first time
+  it ran after a fresh state - which is *every* `startdung`, since `lfgId` starts at 0 - undoing
+  whatever `startdung` had just set (most importantly `DebugDefault`). Split state into
+  route-progress fields (cleared by the new `ResetRouteProgress()`) and session fields (debug mode,
+  pause, owned marks - survive a route reset, only a real `startdung`/`stopdung` touches them).
+  `startdung reset` now uses `ResetRouteProgress()` for the same reason.
+- **`stopdung` could leave a moon mark stuck forever.** `Stop()` called `ResetState()` (erasing
+  `ccGuid`) *before* trying to clean up marks, so it had nothing left to identify which moon mark
+  was its own; it also never tracked which creature it skull-marked, so it could only ever clear
+  the star icon. Now captures owned skull/moon GUIDs before resetting state, and clears only marks
+  it actually placed.
+- **`RecordEvent("stop", ...)` was logged after `Stop()` had already erased the state it reads**
+  (lfg_id, dungeon name), leaving every "stop" CSV row with an empty dungeon/lfg_id. Reordered to
+  log before cleanup in both `stopdung` and the automatic "left the instance" stop.
+- **A player who left the instance/logged elsewhere no longer counted as "too far".**
+  `MasterTooFar()` compared map IDs and returned `false` (not too far) the instant the real player
+  wasn't on the same map at all - the opposite of what a leash should do. Now treats "not on the
+  same map" as too far.
+- **The leash/group-spread check only blocked walking onward, not starting a new fight.**
+  `DungeonLeadMultiplier` gated `"dungeon lead next"` on `MasterTooFar()`/`GroupTooSpread()` but not
+  `"attack anything"`/`"pull my target"`/`"pull rti target"` - the tank could stand still "waiting
+  for you" and still open a brand new pull the moment something wandered into range. Now gates both.
+- **Any party member could hand their own bot group leadership via `startdung`**, regardless of who
+  actually held it, because the leadership-takeover check only asked "is the bot already leader?",
+  never "is the person asking currently the leader?". `startdung` now refuses unless the requester
+  already is the party leader (or the bot already is).
+- **CSV escaping wasn't real escaping.** Commas/quotes/newlines in a boss or player name were
+  replaced with `;`, silently corrupting the field instead of preserving it. Every field is already
+  quote-wrapped by the format string, so the actual fix is just doubling embedded quotes (RFC 4180)
+  - commas and newlines inside a quoted field don't need touching at all.
+  `DungeonLeadSessions.csv`/`DungeonLeadDebug.log` writes are now also serialized behind a mutex
+  (multiple bots' AI updates can run on different map-update threads) and use `localtime_r` instead
+  of the not-thread-safe `localtime()`.
+- **`DungeonRouteMgr::EnsureLoaded()` read a plain `bool` without synchronization** while `Load()`
+  wrote it under a lock - a real data race on concurrent first calls. Replaced with `std::call_once`.
+- **Reaching a still-alive boss was treated as completing that route step.** The tank marked a stop
+  visited and moved the route on the instant it got within `ArriveDistance`, even though the pull
+  itself could still evade, wipe, or simply not happen. Now holds at the stop (one-shot "reached X"
+  message) until a later tick's existing dead-creature check actually confirms the kill; if nothing
+  at all shows up there after `StuckSeconds`, gives up and moves on rather than parking forever. Bad
+  pulls that get skipped this way (here, and the pre-existing stuck-skip case) are now named in the
+  "route complete" message instead of silently vanishing from the report.
+- `tools/resolve_routes.py` and `tools/routes_md.py` read/wrote their input/output files next to
+  the script itself (`tools/`) instead of `data/`, where the files documented in the README and
+  "What is in this repo" actually live - the scripts as committed could never actually run.
+- Five `member->GetMapId() != bot->GetMapId()` comparisons (group-in-combat/resting/spread checks,
+  the debug dump) compared map *IDs*, which doesn't distinguish two different concurrent instances
+  of the same dungeon. Switched to `Map*` pointer comparison.
+- `tools/reorder_routes.py`/`apply_reorder.py` (the one-off graph-reordering scripts behind the
+  0.3.0 route fixes) were referenced by this changelog but never actually committed. Added, with a
+  note on the DB-export inputs they need that aren't checked in.
+- Data/documentation fixes: Stormwind Stockade's route comment said "west wing first" while the
+  listed order was east-then-west; Sunken Temple's Zolo/Mijan had their "N/6" labels swapped
+  relative to the listed kill order (also fixed in the live DB, `data/dungeon_routes.csv/.md` and
+  `sql/`); the README's opening claim ("works in every 5-man dungeon...") overstated what "route
+  data exists" actually means given only one dungeon has been run end-to-end; the Oculus testing-
+  status row said "data ready, untested" when the route data itself is Drakos-only.
 
 ## [0.4.0] - 2026-09-12
 

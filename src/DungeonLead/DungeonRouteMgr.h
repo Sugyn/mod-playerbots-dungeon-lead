@@ -43,8 +43,16 @@ struct DungeonRoute
 };
 
 // Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
+//
+// Split into two groups on purpose: route-progress fields are cleared by ResetRouteProgress()
+// (a fresh ResolveRoute() after entering a new instance, or "startdung reset"), while session
+// fields survive that and are only cleared by a full Reset() (a real "startdung"/"stopdung").
+// Before this split, ResolveRoute()'s internal wipe used the same Reset() as a real stop/start,
+// which meant debugMode (and any owned mark) silently reverted seconds after every single
+// "startdung", the moment the first route-resolution tick ran - see CHANGELOG.
 struct DungeonLeadState
 {
+    // --- route progress: cleared by ResetRouteProgress() ---
     uint32 lfgId = 0;
     uint32 mapId = 0;
     uint32 instanceId = 0;
@@ -55,13 +63,39 @@ struct DungeonLeadState
     bool noRouteTold = false;
     bool doneTold = false;
     uint32 lastWaitLogTs = 0;
+    bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
+    int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
+    bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
+    uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
+    std::vector<uint8> visited;
+    std::vector<std::string> skippedSteps;  // bosses skipped (stuck/not-found) - reported at "route complete"
+
+    // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
     uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
-    bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
-    bool paused = false;             // "startdung pause" / "startdung continue"
-    int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
-    bool debugMode = false;          // "startdung debug": verbose per-wait diagnostics to DungeonLeadDebug.log
-    std::vector<uint8> visited;
+    ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)
+    bool paused = false;    // "startdung pause" / "startdung continue"
+    bool debugMode = false; // "startdung debug": verbose per-wait diagnostics to DungeonLeadDebug.log
+
+    void ResetRouteProgress()
+    {
+        lfgId = 0;
+        mapId = 0;
+        instanceId = 0;
+        stepIndex = 0;
+        stuckTs = 0;
+        stuckAttempts = 0;
+        bestDist = 0.f;
+        noRouteTold = false;
+        doneTold = false;
+        lastWaitLogTs = 0;
+        farFromMasterTold = false;
+        announcedStep = -1;
+        arrivedTold = false;
+        arrivedTs = 0;
+        visited.clear();
+        skippedSteps.clear();
+    }
 
     void Reset() { *this = DungeonLeadState(); }
 };
@@ -75,11 +109,23 @@ public:
         return mgr;
     }
 
+    // Loads the route table exactly once per worldserver process, the first time any of the
+    // getters below is called (std::call_once - no unsynchronized "loaded" bool read/write race).
+    // Routes are immutable after that: nothing ever inserts/erases from `routes` again, so handing
+    // out `DungeonRoute const*` into it and holding it past the lock below is safe.
     void Load();
     DungeonRoute const* GetByLfgId(uint32 lfgId);
     std::vector<DungeonRoute const*> GetByMap(uint32 mapId, uint32 difficulty);
+
+    // DungeonLeadState is only ever read/written by its own bot's own AI update (one thread at a
+    // time per bot - dungeon-lead never reaches into another bot's state), so the mutex here only
+    // needs to protect the `states` map's own structure (insertion via operator[], erasure), not
+    // the returned DungeonLeadState& itself. The one real hazard is a caller holding a reference
+    // across a ResetState()/ResetRouteProgress() call on the SAME guid from the SAME call chain;
+    // callers avoid that by capturing any fields they still need before resetting (see Stop()).
     DungeonLeadState& State(ObjectGuid guid);
-    void ResetState(ObjectGuid guid);
+    void ResetState(ObjectGuid guid);          // full wipe: real "startdung"/"stopdung" only
+    void ResetRouteProgress(ObjectGuid guid);  // route fields only - "startdung reset" / re-resolution
 
     // Per-instance "already killed" memory: survives a per-bot state reset (startdung reset, a
     // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never
@@ -93,7 +139,7 @@ public:
 private:
     void EnsureLoaded();
 
-    bool loaded = false;
+    std::once_flag loadOnce;
     std::mutex mtx;
     std::unordered_map<uint32, DungeonRoute> routes;
     std::unordered_map<ObjectGuid, DungeonLeadState> states;

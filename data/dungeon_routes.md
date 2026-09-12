@@ -146,8 +146,8 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. **Loro** — entry 5714 @ (-466.7, 24.4, -66.8) — Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route
 2. **Gasher** — entry 5713 @ (-528, 59.5, -66.7) — Atal'ai Defender 2/6
-3. **Zolo** — entry 5712 @ (-528.6, 130.2, -66.8) — Atal'ai Defender 4/6
-4. **Mijan** — entry 5717 @ (-406.2, 131.1, -66.9) — Atal'ai Defender 3/6
+3. **Zolo** — entry 5712 @ (-528.6, 130.2, -66.8) — Atal'ai Defender 3/6
+4. **Mijan** — entry 5717 @ (-406.2, 131.1, -66.9) — Atal'ai Defender 4/6
 5. **Zul'Lor** — entry 5716 @ (-467.4, 166, -66.7) — Atal'ai Defender 5/6
 6. **Hukku** — entry 5715 @ (-405.5, 60.5, -67.1) — Atal'ai Defender 6/6 -> Jammal'an shield drops
 7. **Jammal'an the Prophet** — entry 5710 @ (-425.9, -86.1, -88.2) — with Ogom the Wretched

@@ -45,7 +45,7 @@
 10	-	7	boss	Twilight Lord Kelris
 10	-	8	event	Altar candles	light 4 braziers -> waves -> spawns Aku'mai
 10	-	9	event	Aku'mai	script-spawned
-# Stormwind Stockade (src: warcraft.wiki.gg/Stormwind_Stockade_(Classic); Targorr and Kam have variable spawn locations (several cells) and the dungeon branches into east/west wings, so encounter order may vary. Listed: west wing first.)
+# Stormwind Stockade (src: warcraft.wiki.gg/Stormwind_Stockade_(Classic); Targorr and Kam have variable spawn locations (several cells) and the dungeon branches into east/west wings, so encounter order may vary. Listed: east wing (Hamhock, Bazil Thredd) first, then west wing (Dextren Ward).)
 12	-	1	boss	Targorr the Dread	variable cell
 12	-	2	boss	Kam Deepfury	variable cell
 12	-	3	boss	Hamhock	east/right wing
@@ -119,8 +119,8 @@
 # Sunken Temple (src: warcraft.wiki.gg/Temple_of_Atal'Hakkar_(Classic))
 28	-	1	boss	Loro	Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route
 28	-	2	boss	Gasher	Atal'ai Defender 2/6
-28	-	3	boss	Zolo	Atal'ai Defender 4/6
-28	-	4	boss	Mijan	Atal'ai Defender 3/6
+28	-	3	boss	Zolo	Atal'ai Defender 3/6
+28	-	4	boss	Mijan	Atal'ai Defender 4/6
 28	-	5	boss	Zul'Lor	Atal'ai Defender 5/6
 28	-	6	boss	Hukku	Atal'ai Defender 6/6 -> Jammal'an shield drops
 28	-	7	boss	Jammal'an the Prophet	with Ogom the Wretched

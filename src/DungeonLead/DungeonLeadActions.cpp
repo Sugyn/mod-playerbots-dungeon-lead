@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <cctype>
 #include <list>
+#include <mutex>
 #include <sstream>
 
 // ---------------------------------------------------------------------------------------------
@@ -62,12 +63,23 @@ namespace
     // Always-on structured data collection (no toggle, no dependency on worldserver.conf logger
     // config being right) - one CSV row per event, plain fopen/fprintf so it works the same way
     // for every server this patch runs on. Meant to be attached to a bug report as-is.
-    std::string CsvEscape(std::string s)
+    //
+    // Real RFC 4180 escaping: every field written by RecordEvent() is already wrapped in literal
+    // quotes by its format string, so the only transformation needed here is doubling embedded
+    // quotes. Commas/newlines inside a quoted field are valid CSV and don't need mangling (an
+    // earlier version replaced them with ';', silently corrupting boss/player names containing one).
+    std::string CsvEscape(std::string const& s)
     {
-        for (char& c : s)
-            if (c == ',' || c == '"' || c == '\n')
-                c = ';';
-        return s;
+        std::string out;
+        out.reserve(s.size());
+        for (char c : s)
+        {
+            if (c == '"')
+                out += "\"\"";
+            else
+                out += c;
+        }
+        return out;
     }
 
     std::string GroupMemberList(Player* bot)
@@ -89,6 +101,26 @@ namespace
         }
         return out.str();
     }
+
+    // Both log files are written from any bot's own AI update, which can run on any map-update
+    // thread - fopen/fprintf/fclose racing across threads can interleave partial lines, and the
+    // old `static bool headerWritten` was itself an unguarded data race. One mutex serializes both
+    // files (they're never on the hot path - one line per key event, not per tick).
+    std::mutex g_dungeonLeadLogMutex;
+
+    std::string FormatLogTimestamp()
+    {
+        time_t now = time(nullptr);
+        struct tm tmBuf {};
+#ifdef _WIN32
+        localtime_s(&tmBuf, &now);
+#else
+        localtime_r(&now, &tmBuf);
+#endif
+        char ts[32];
+        strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmBuf);
+        return ts;
+    }
 }
 
 void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail)
@@ -96,7 +128,19 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
     Player* bot = botAI->GetBot();
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
     Player* master = botAI->GetMaster();
+    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
 
+    // gather everything before taking the log mutex - keep the critical section to the file I/O
+    std::string const ts = FormatLogTimestamp();
+    std::string const masterName = CsvEscape(master ? master->GetName() : "?");
+    std::string const dungeonName = CsvEscape(route ? route->name : "?");
+    std::string const botName = CsvEscape(bot->GetName());
+    std::string const members = CsvEscape(GroupMemberList(bot));
+    std::string const eventEsc = CsvEscape(event);
+    std::string const detailEsc = CsvEscape(detail);
+    uint32 const lfgId = st.lfgId;
+
+    std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
     static bool headerWritten = false;
     FILE* f = fopen("DungeonLeadSessions.csv", "a");
     if (!f)
@@ -111,29 +155,22 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
         headerWritten = true;
     }
 
-    time_t now = time(nullptr);
-    char ts[32];
-    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(&now));
-
-    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
-    fprintf(f, "%s,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts,
-            CsvEscape(master ? master->GetName() : "?").c_str(), st.lfgId,
-            CsvEscape(route ? route->name : "?").c_str(), CsvEscape(bot->GetName()).c_str(),
-            CsvEscape(GroupMemberList(bot)).c_str(), CsvEscape(event).c_str(), CsvEscape(detail).c_str());
+    fprintf(f, "%s,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts.c_str(),
+            masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
+            members.c_str(), eventEsc.c_str(), detailEsc.c_str());
     fflush(f);
     fclose(f);
 }
 
 void DungeonLead::RecordDebug(PlayerbotAI* /*botAI*/, std::string const& line)
 {
-    time_t now = time(nullptr);
-    char ts[32];
-    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    std::string const ts = FormatLogTimestamp();
 
+    std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
     FILE* f = fopen("DungeonLeadDebug.log", "a");
     if (!f)
         return;
-    fprintf(f, "%s %s\n", ts, line.c_str());
+    fprintf(f, "%s %s\n", ts.c_str(), line.c_str());
     fflush(f);
     fclose(f);
 }
@@ -159,7 +196,7 @@ bool DungeonLead::GroupInCombat(PlayerbotAI* botAI)
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-        if (!member || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
+        if (!member || !member->IsAlive() || member->GetMap() != bot->GetMap())
             continue;
         if (member->IsInCombat())
             return true;
@@ -177,7 +214,7 @@ bool DungeonLead::GroupResting(PlayerbotAI* botAI)
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-        if (!member || member == bot || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
+        if (!member || member == bot || !member->IsAlive() || member->GetMap() != bot->GetMap())
             continue;
         // bots sit down to eat/drink; a real player sitting is treated the same (AFK-ish)
         if (member->IsSitState())
@@ -198,8 +235,13 @@ bool DungeonLead::MasterTooFar(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
     Player* master = botAI->GetMaster();
-    if (!master || master == bot || !master->IsAlive() || master->GetMapId() != bot->GetMapId())
+    if (!master || master == bot || !master->IsAlive())
         return false;
+    // left the instance/teleported away/logged off elsewhere entirely - that is "too far" by any
+    // reasonable reading of a leash, not an exemption from it (a same-map-only check let the bot
+    // wander off freely the instant the real player wasn't literally on the same map anymore)
+    if (master->GetMap() != bot->GetMap())
+        return true;
     return bot->GetDistance(master) > sPlayerbotAIConfig.dungeonLeadLeash;
 }
 
@@ -219,7 +261,7 @@ bool DungeonLead::GroupTooSpread(PlayerbotAI* botAI)
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-        if (!member || member == bot || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
+        if (!member || member == bot || !member->IsAlive() || member->GetMap() != bot->GetMap())
             continue;
         if (bot->GetDistance(member) > leash * 1.5f)
             return true;
@@ -301,9 +343,15 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
 {
     Player* bot = botAI->GetBot();
 
+    // capture what we own BEFORE the state disappears below - ResetState() erases ccGuid/skullGuid,
+    // and without this a stop while a moon mark was active left that mark permanently excluding
+    // its target from normal DPS priority with nothing left to ever release it
+    DungeonLeadState const& st = sDungeonRouteMgr.State(bot->GetGUID());
+    ObjectGuid const ownedCc = st.ccGuid;
+    ObjectGuid const ownedSkull = st.skullGuid;
+
     botAI->ChangeStrategy("-dungeon lead,-grind", BOT_STATE_NON_COMBAT);
     botAI->ChangeStrategy("-dungeon lead,-mark rti", BOT_STATE_COMBAT);
-    sDungeonRouteMgr.ResetState(bot->GetGUID());
 
     if (Group* group = bot->GetGroup())
     {
@@ -320,8 +368,13 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
                 fv->Load("chaos");
         }
 
+        // only clear marks we actually placed - never touch one the player set/changed since
         if (group->GetTargetIcon(RtiTargetValue::starIndex) == bot->GetGUID())
             group->SetTargetIcon(RtiTargetValue::starIndex, bot->GetGUID(), ObjectGuid::Empty);
+        if (!ownedSkull.IsEmpty() && group->GetTargetIcon(RtiTargetValue::skullIndex) == ownedSkull)
+            group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), ObjectGuid::Empty);
+        if (!ownedCc.IsEmpty() && group->GetTargetIcon(RtiTargetValue::moonIndex) == ownedCc)
+            group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
 
         Player* master = botAI->GetMaster();
         if (giveLeaderBack && master && master != bot && group->IsMember(master->GetGUID()) &&
@@ -331,6 +384,8 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
             PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
         }
     }
+
+    sDungeonRouteMgr.ResetState(bot->GetGUID());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -404,7 +459,7 @@ bool DungeonLeadNextAction::isUseful()
                         if (!member || member == bot)
                             continue;
                         dbg << " " << member->GetName() << "@"
-                            << (member->GetMapId() == bot->GetMapId() ? bot->GetDistance(member) : -1.0f);
+                            << (member->GetMap() == bot->GetMap() ? bot->GetDistance(member) : -1.0f);
                     }
                 }
                 DungeonLead::RecordDebug(botAI, dbg.str());
@@ -430,7 +485,11 @@ DungeonRoute const* DungeonLeadNextAction::ResolveRoute(DungeonLeadState& st)
     if (st.mapId == mapId && st.instanceId == instanceId && st.noRouteTold)
         return nullptr;
 
-    st.Reset();
+    // route fields only - NOT a full Reset(). This used to wipe debugMode/paused/owned marks too,
+    // which meant they reverted the moment the very first route-resolution tick ran after every
+    // single "startdung" (this branch always runs once right after a fresh state, since lfgId
+    // starts at 0) - see CHANGELOG and DungeonLeadState's own comment.
+    st.ResetRouteProgress();
     st.mapId = mapId;
     st.instanceId = instanceId;
 
@@ -534,9 +593,19 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         if (!st.doneTold)
         {
             st.doneTold = true;
-            botAI->TellMasterNoFacing("Dungeon lead: route complete");
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route complete", bot->GetName());
-            DungeonLead::RecordEvent(botAI, "route_complete", "");
+            std::ostringstream out;
+            if (st.skippedSteps.empty())
+                out << "Dungeon lead: route complete";
+            else
+            {
+                out << "Dungeon lead: route complete (" << st.skippedSteps.size() << " stop(s) skipped:";
+                for (size_t i = 0; i < st.skippedSteps.size(); ++i)
+                    out << (i ? ", " : " ") << st.skippedSteps[i];
+                out << ")";
+            }
+            botAI->TellMasterNoFacing(out);
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route complete ({} skipped)", bot->GetName(), st.skippedSteps.size());
+            DungeonLead::RecordEvent(botAI, "route_complete", std::to_string(st.skippedSteps.size()) + " skipped");
         }
         return false;
     }
@@ -547,6 +616,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     if (st.announcedStep != int32(st.stepIndex))
     {
         st.announcedStep = int32(st.stepIndex);
+        st.arrivedTold = false;
         std::ostringstream headingOut;
         headingOut << "Dungeon lead: heading to " << step.boss;
         botAI->TellMasterNoFacing(headingOut);
@@ -581,12 +651,34 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     float dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
     if (dist <= sPlayerbotAIConfig.dungeonLeadArriveDistance)
     {
-        std::ostringstream out;
-        out << "Dungeon lead: reached " << step.boss;
-        botAI->TellMasterNoFacing(out);
-        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
-        DungeonLead::RecordEvent(botAI, "reached", step.boss);
-        MarkVisited(st);
+        // Arriving next to a still-alive boss is NOT the same as completing this stop - a pull can
+        // still evade, wipe, or just not happen this tick. Hold here (isUseful() already blocks
+        // walking on while the group is in combat) and only advance once the "already_dead" branch
+        // above confirms an actual kill on a later tick. The one exception: if nothing at all shows
+        // up here (not even a corpse) after a while, there is nothing left to confirm a kill on, so
+        // give up and move on rather than parking here forever.
+        if (!st.arrivedTold)
+        {
+            st.arrivedTold = true;
+            st.arrivedTs = getMSTime();
+            std::ostringstream out;
+            out << "Dungeon lead: reached " << step.boss;
+            botAI->TellMasterNoFacing(out);
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
+            DungeonLead::RecordEvent(botAI, "reached", step.boss);
+        }
+        else if (found.empty() &&
+                 GetMSTimeDiffToNow(st.arrivedTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+        {
+            std::ostringstream out;
+            out << "Dungeon lead: nothing found at " << step.boss << ", moving on";
+            botAI->TellMasterNoFacing(out);
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}' - nothing at destination, giving up", bot->GetName(),
+                     step.step, step.boss);
+            DungeonLead::RecordEvent(botAI, "not_found", step.boss);
+            st.skippedSteps.push_back(step.boss);
+            MarkVisited(st);
+        }
         return true;
     }
 
@@ -632,6 +724,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         DungeonLead::RecordEvent(botAI, "skip_stuck",
             step.boss + " dist=" + std::to_string(disToDest) + " pos=(" + std::to_string(dest.GetPositionX()) + "," +
             std::to_string(dest.GetPositionY()) + "," + std::to_string(dest.GetPositionZ()) + ")");
+        st.skippedSteps.push_back(step.boss);
         MarkVisited(st);
         return true;
     }
@@ -755,6 +848,7 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
         group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), boss->GetGUID());
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} skull -> {} ({})", bot->GetName(), boss->GetName(), boss->GetEntry());
         DungeonLead::RecordEvent(botAI, "mark_skull", boss->GetName());
+        sDungeonRouteMgr.State(bot->GetGUID()).skullGuid = boss->GetGUID();  // so Stop() only clears our own
         changed = true;
     }
 
@@ -783,6 +877,9 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
 // ---------------------------------------------------------------------------------------------
 bool DungeonLeadStopAction::Execute(Event /*event*/)
 {
+    // log BEFORE Stop() - it erases the route/session state RecordEvent reads (lfg_id, dungeon
+    // name, ...), so logging after it left every "stop" row with an empty dungeon/lfg_id
+    DungeonLead::RecordEvent(botAI, "stop", "auto (left instance)");
     DungeonLead::Stop(botAI, true);
     botAI->TellMasterNoFacing("Dungeon lead: OFF (not in a 5-man dungeon anymore)");
     return true;
@@ -830,7 +927,10 @@ bool StartDungChatShortcutAction::Execute(Event event)
         }
         else if (sub == "reset")
         {
-            sDungeonRouteMgr.ResetState(bot->GetGUID());
+            // route progress only - debug mode, pause state and any owned mark survive this,
+            // matching the README's "without redoing leadership/formations" (a full ResetState()
+            // used to also silently turn debug mode back off)
+            sDungeonRouteMgr.ResetRouteProgress(bot->GetGUID());
             botAI->TellMaster("Dungeon lead: route progress reset, picking the route back up from the start");
         }
         else  // debug
@@ -858,6 +958,14 @@ bool StartDungChatShortcutAction::Execute(Event event)
     if (!PlayerbotAI::IsTank(bot))
         botAI->TellMaster("startdung: I'm not a tank, but fine - leading anyway");
 
+    // only take leadership away from whoever currently holds it if the person asking IS that
+    // leader (or the bot already is) - otherwise any member could hand themselves control of the
+    // group's leadership through their own bot without the actual leader's say-so
+    if (group->GetLeaderGUID() != bot->GetGUID() && group->GetLeaderGUID() != master->GetGUID())
+    {
+        botAI->TellMaster("startdung: only the current party leader can start this");
+        return false;
+    }
     if (group->GetLeaderGUID() != bot->GetGUID())
     {
         auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
@@ -902,11 +1010,12 @@ bool StopDungChatShortcutAction::Execute(Event /*event*/)
     if (!GetMaster())
         return false;
 
+    // log BEFORE Stop() - see DungeonLeadStopAction::Execute
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STOP by master", bot->GetName());
+    DungeonLead::RecordEvent(botAI, "stop", "");
     DungeonLead::Stop(botAI, true);
     ResetReturnPosition();
     ResetStayPosition();
     botAI->TellMaster("Dungeon lead: OFF");
-    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STOP by master", bot->GetName());
-    DungeonLead::RecordEvent(botAI, "stop", "");
     return true;
 }

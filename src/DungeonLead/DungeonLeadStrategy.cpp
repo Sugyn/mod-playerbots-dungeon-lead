@@ -47,6 +47,11 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         return 0.0f;
     if (isWalk && DungeonLead::GroupInCombat(botAI))
         return 0.0f;
+    // isUseful() stops the ROUTE WALK for these, but "grind"'s own pull actions aren't gated by
+    // it at all - without this, the tank could stand still waiting for the player yet still open
+    // a brand new fight the moment something wandered into range, which is the opposite of "wait"
+    if (DungeonLead::MasterTooFar(botAI) || DungeonLead::GroupTooSpread(botAI))
+        return 0.0f;
 
     return 1.0f;
 }
