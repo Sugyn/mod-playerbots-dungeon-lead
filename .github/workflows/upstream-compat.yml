@@ -1,0 +1,106 @@
+name: Upstream compatibility check
+
+# Does the patch still apply cleanly to the current mod-playerbots master? This is a cheap,
+# scheduled early-warning signal for the risk that upstream moves and this patch (pinned to a
+# specific commit - see README "Prerequisites") silently rots. It does NOT keep the patch in sync
+# automatically - a failure here means a human needs to re-verify against the new upstream commit,
+# fix the patch, and bump the pinned commit in README.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # weekly, Monday 06:00 UTC
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'mod-playerbots-dungeon-lead.patch'
+      - '.github/workflows/upstream-compat.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-patch-applies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: dungeon-lead
+
+      - name: Clone mod-playerbots master
+        run: git clone --depth 1 https://github.com/mod-playerbots/mod-playerbots.git upstream
+
+      - name: Record upstream commit
+        id: upstream
+        run: echo "sha=$(git -C upstream rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check patch applies cleanly (git apply --check)
+        id: check
+        run: |
+          cd upstream
+          if git apply --check ../dungeon-lead/mod-playerbots-dungeon-lead.patch; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open/update tracking issue on failure
+        if: steps.check.outputs.ok == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = "${{ steps.upstream.outputs.sha }}";
+            const title = "Patch no longer applies to mod-playerbots master";
+            const body = [
+              `The scheduled compatibility check found that \`mod-playerbots-dungeon-lead.patch\` no `,
+              `longer applies cleanly to mod-playerbots \`master\` @ \`${sha}\` (\`git apply --check\` failed).`,
+              ``,
+              `This usually means upstream changed one of the files this patch touches. See the`,
+              `README "Prerequisites" section for the commit this patch is currently written against.`,
+              ``,
+              `**Action needed:** re-verify against the new upstream commit, fix the patch, and bump`,
+              `the pinned commit in README once it's confirmed working again.`,
+            ].join("\n");
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "upstream-compat",
+            });
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Still failing as of \`${sha}\` (workflow run ${context.runId}).`,
+              });
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title, body, labels: ["upstream-compat"],
+            });
+
+      - name: Close tracking issue if it now passes
+        if: steps.check.outputs.ok == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "upstream-compat",
+            });
+            for (const issue of open.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number,
+                body: `Patch applies cleanly again as of mod-playerbots \`${{ steps.upstream.outputs.sha }}\` - closing.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number,
+                state: "closed",
+              });
+            }
+
+      - name: Fail the job if incompatible
+        if: steps.check.outputs.ok == 'false'
+        run: exit 1
