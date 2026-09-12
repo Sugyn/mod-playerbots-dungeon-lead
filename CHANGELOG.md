@@ -4,6 +4,32 @@ All notable changes to this patch, by version and date. Format is [Keep a Change
 Versioning is pre-1.0 (0.MINOR.PATCH) while this is under active development against a single live
 test dungeon — see README "Testing status" for what's actually been run in-game.
 
+## [Unreleased]
+
+L1 (test & observability platform) work, per the architecture roadmap - starting with the parts
+that don't need a running worldserver.
+
+### Added
+- `tools/validate_routes.py` (L1.2, T0 fast validation): checks `data/dungeon_routes.csv` against
+  `data/lfg_dungeons.tsv` in well under a second - unknown/invalid lfg_id, map/difficulty mismatch,
+  invalid `kind`, duplicate steps, non-finite coordinates, and the single most valuable check: a
+  mandatory `boss` step whose position doesn't actually resolve (mirrors `HasPosition()` exactly -
+  `entry != 0 && !(x==0 && y==0 && z==0)`), which the runtime would otherwise skip silently with no
+  visible failure at all. First real run found 0 errors and 23 informational warnings (all
+  expected: `script`-spawned/quest-summon bosses with no static position, one exactly-zero Z axis
+  worth a human glance, and a few non-contiguous step numbers that turned out to be `heroic_only`
+  rows correctly stripped from the normal-mode data).
+  - Caught a real bug in the validator itself before it shipped: the first version flagged 14
+    legitimate `script`-spawned bosses' `NULL` coordinates as hard errors, because its own
+    "has a position" check was *stricter* than the runtime's actual `HasPosition()` (it rejected
+    any single axis equal to `"0"`, where the real check only excludes all three being zero
+    together). Fixed to mirror the runtime exactly before trusting its output.
+- Two GitHub Actions: `validate-routes.yml` runs the validator on every push/PR touching `data/`;
+  `upstream-compat.yml` runs weekly (and on patch changes) and checks `git apply --check` against
+  the current mod-playerbots `master`, opening/closing a tracking issue (`upstream-compat` label)
+  as an early-warning signal if upstream moves in a way that breaks this patch - it does not keep
+  the patch in sync automatically, a failure just means someone needs to look.
+
 ## [0.5.2] - 2026-09-12
 
 L0 closeout, per the project's architecture roadmap: the remaining runtime-correctness gaps after

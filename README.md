@@ -187,6 +187,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 | `data/lfg_dungeons.tsv` | `LFGDungeons.dbc` dump (id, name, level range, map, difficulty, type, expansion) |
 | `tools/resolve_routes.py` | resolves `routes.tsv` names against DB dumps and derives the heroic entries |
 | `tools/routes_md.py` | renders the Markdown overview |
+| `tools/validate_routes.py` | fast (sub-second), server-independent sanity check of `data/dungeon_routes.csv` - run this after any route data change |
 | `tools/reorder_routes.py` / `apply_reorder.py` | one-off graph-based reordering used for the 0.3.0 route fixes (kept for the record — see the scripts' own docstrings for their non-checked-in inputs) |
 
 ## How it works (short)

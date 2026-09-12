@@ -1,0 +1,24 @@
+name: Validate route data
+
+# T0 fast validation (see architecture roadmap L1.2) - sub-second, no worldserver needed. Runs on
+# every change to the route data or the validator itself, so a bad edit is caught before it ever
+# reaches a live dungeon run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'data/**'
+      - 'tools/validate_routes.py'
+      - '.github/workflows/validate-routes.yml'
+  pull_request:
+    paths:
+      - 'data/**'
+      - 'tools/validate_routes.py'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/validate_routes.py
