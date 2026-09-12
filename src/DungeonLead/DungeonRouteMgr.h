@@ -103,6 +103,18 @@ char const* ToString(DungeonRunOutcome v);
 char const* ToString(DungeonFailureDomain v);
 char const* ToString(DungeonFailureReason v);
 
+// Who/what asked for this session - lets the reconciliation loop, logging, and the CSV all tell a
+// human-requested run apart from one the AutoBot Canary controller started on its own (see
+// DungeonLeadCanary.h). Manual is the only origin that existed before the canary controller;
+// nothing about Manual's behavior changes because this enum exists.
+enum class DungeonLeadSessionOrigin : uint8
+{
+    Manual,      // "startdungeon" chat command, requested by a real player
+    AutoCanary,  // AutoBot Canary controller - unattended, config-gated, off by default
+};
+
+char const* ToString(DungeonLeadSessionOrigin v);
+
 struct DungeonRoute
 {
     uint32 lfgId = 0;
@@ -158,6 +170,10 @@ struct DungeonLeadState
 
     // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
     uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
+    DungeonLeadSessionOrigin origin = DungeonLeadSessionOrigin::Manual;
+    uint32 sessionStartTs = 0;  // getMSTime() at StartSession() - used by the canary controller's
+                                 // timeout check; also generally useful (duration is otherwise only
+                                 // reconstructable from the CSV's own "start" row timestamp)
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
     uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
     ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)

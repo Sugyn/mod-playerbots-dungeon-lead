@@ -214,12 +214,51 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 ## Install
 
-1. Apply `mod-playerbots-dungeon-lead.patch` in the module directory (`git apply`), or copy `src/DungeonLead/` to
-   `src/Ai/Base/DungeonLead/` and re-do the registrations from the patch.
-2. Re-run CMake (the module globs its sources at configure time), build, install.
-3. `mysql acore_playerbots < sql/playerbots_dungeon_route.sql`
-4. Optional config keys (defaults shown): `AiPlayerbot.DungeonLead.HealerManaPct = 20`, `.Leash = 60`,
-   `.ArriveDistance = 8`, `.StuckSeconds = 45`, `.SkipOptional = 0`, `.MarkCc = 1`.
+This isn't a standalone module you clone into `modules/` - it's a patch on top of an existing
+`modules/mod-playerbots` checkout you already have built and working (see Prerequisites above).
+
+1. Apply the patch inside `modules/mod-playerbots`: `git apply /path/to/mod-playerbots-dungeon-lead.patch`
+2. Re-run CMake and rebuild + install `worldserver`
+3. Load the route data: `mysql acore_playerbots < sql/playerbots_dungeon_route.sql`
+4. Restart `worldserver`
+
+Notes:
+- Re-running CMake itself (not just the build) matters here - the module finds its own source files
+  at *configure* time, so skipping straight to a build after adding new files silently leaves them out.
+- `src/DungeonLead/` in this repo mirrors the same code for browsing/diffing outside a checkout - applying
+  it by hand instead of via the patch means also redoing the registration lines it touches elsewhere
+  (`ChatActionContext.h`, `ChatTriggerContext.h`, `PlayerbotAIConfig.h/.cpp`, `Script/Playerbots.cpp`).
+  Only worth it if `git apply` genuinely won't work for you - e.g. your mod-playerbots checkout has
+  drifted far enough from `b949b50b` (see Prerequisites) that the patch no longer applies cleanly;
+  `.github/workflows/upstream-compat.yml` checks for exactly that weekly against upstream `master`.
+
+### Configuration (all optional - sensible defaults, nothing here is required to install)
+
+Add any of these to your deployed `playerbots.conf` (next to your other `AiPlayerbot.*` settings,
+typically `env/dist/etc/modules/playerbots.conf`), then `.reload config` in-game or restart -
+defaults shown, only set the ones you actually want to change:
+
+- Route-following behavior: `AiPlayerbot.DungeonLead.HealerManaPct = 20`, `.Leash = 60`,
+  `.ArriveDistance = 8`, `.StuckSeconds = 45`, `.SkipOptional = 0`, `.MarkCc = 1`.
+- AutoBot Canary (unattended testing - off unless you turn it on, see the section below):
+  `.CanaryEnabled = 0`, `.CanaryAllowedLfgIds =` (empty), `.CanaryMaxConcurrent = 1`,
+  `.CanaryTimeoutMinutes = 45`.
+
+## AutoBot Canary (unattended testing)
+
+Off by default. When turned on, the server auto-starts a dungeon-lead session on an already-formed,
+all-bot 5-man group that queued via the real LFG tool for a dungeon you've named — no player has to
+type `startdungeon`. It never forms, groups, or teleports a bot itself (that's a larger, separate,
+not-yet-built feature — see [ADR-002](docs/architecture/adr-002-autobot-canary.md)); it only watches
+groups the playerbot LFG system already formed on its own. A real player anywhere in the group blocks
+it from starting and stops it immediately if one joins mid-session. Bounded by a concurrency cap and
+a timeout so a stuck run can't occupy a slot forever.
+
+To try it: set `AiPlayerbot.DungeonLead.CanaryEnabled = 1` and
+`AiPlayerbot.DungeonLead.CanaryAllowedLfgIds = 1` (Ragefire Chasm's LFG id — check
+`lfg_dungeon_template` for others), `.reload config`. Sessions it starts show `origin=auto_canary`
+in the `start` CSV/log event; `startdungeon status` still works normally on whichever bot ends up
+leading.
 
 ## Known limits / next steps
 
@@ -229,9 +268,10 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 - Boss order was verified against 3.3.x-era sources; the few judgement calls (Stockade order, Sunken Temple troll
   order, BRD Prison order) are documented in `data/routes.tsv`.
 
-See `docs/architecture/` for design notes on planned work before it's implemented (currently:
-[ADR-001](docs/architecture/adr-001-l1.4-capability-scenarios.md), the L1.4 capability-scenario
-testing framework - proposed, not yet built).
+See `docs/architecture/` for design notes: [ADR-001](docs/architecture/adr-001-l1.4-capability-scenarios.md)
+(L1.4 capability-scenario testing framework - proposed, not yet built) and
+[ADR-002](docs/architecture/adr-002-autobot-canary.md) (AutoBot Canary - stage 0/1 implemented,
+later stages proposed).
 
 ## License
 

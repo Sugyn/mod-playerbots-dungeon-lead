@@ -90,6 +90,44 @@ that don't need a running worldserver.
   a matching one-shot `We're waiting for <name> to catch up!` ping (re-sent if a different bot
   becomes the farthest-behind one), plus the name in the `waiting` CSV/log detail.
 
+AutoBot Canary, Stage 0/1 of the design reviewed in `docs/architecture/` - the first slice that
+actually runs, deliberately narrow (see that doc for the full staged plan; later stages are not
+implemented yet).
+
+### Added
+- `DungeonLeadSessionOrigin` (`Manual` / `AutoCanary`) on `DungeonLeadState`, so telemetry, logs,
+  and the reconciliation loop can all tell a human-requested run apart from one the canary
+  controller started on its own. `ToString()`'d into both the CSV and `LOG_INFO` lines.
+- `DungeonLead::StartSession()`: the leadership-takeover/snapshot/strategy-application/state-reset
+  tail of `startdungeon`, pulled out into a shared function so the canary controller doesn't
+  duplicate it. `StartDungChatShortcutAction::Execute` now just does its own permission/precondition
+  checks (group, 5-man, "only the current leader can start this") and calls it - no behavior change
+  for the manual chat command, verified by diffing the refactor against the pre-refactor logic
+  line-for-line before deploying.
+- **AutoBot Canary controller** (`DungeonLeadCanary.h/.cpp`, `DungeonLead::CanaryTick()`, called
+  from `PlayerbotsWorldScript::OnUpdate` right next to `GuardActiveSessions()`): watches for
+  already-formed, all-bot 5-man groups that queued via the real LFG tool for a dungeon named in
+  `AiPlayerbot.DungeonLead.CanaryAllowedLfgIds`, and auto-starts a (`testMode`) dungeon-lead session
+  on one, up to `CanaryMaxConcurrent` at a time. Every canary session is force-stopped (leadership
+  handed back, outcome recorded) the moment a real player is found in its group, checked every tick
+  independent of whether a new session is about to start, and again on `CanaryTimeoutMinutes` if it
+  never reaches a terminal outcome. Off by default (`CanaryEnabled=0`) and inert even when enabled
+  until dungeons are explicitly allowlisted (`CanaryAllowedLfgIds` empty by default) - a fresh
+  checkout of this patch auto-starts nothing.
+  - **Deliberately does NOT** actively assemble a party or bypass LFG for a specific requested
+    dungeon ("I want to test Wailing Caverns right now, don't make me wait for it to come up by
+    chance") - that's a real, separate, larger feature (new bot-selection/grouping/summon code) and
+    is intentionally left for a later stage, not rushed into this one. See `DungeonLeadCanary.h`'s
+    own comment for the exact scope line.
+  - Candidate selection is deterministic when more than one eligible group exists on the same tick
+    (lowest `ObjectGuid` wins) rather than "whichever the bot map happens to iterate first" -
+    reproducible, easy to reason about in a bug report.
+- Updated `DungeonLead::GuardActiveSessions()`'s own comment to document, with the actual AC
+  call-chain evidence (`World::Update()` → `sMapMgr->Update()` → `MapUpdater::wait()`, before
+  `sScriptMgr->OnWorldUpdate()`), why it's safe for this world-thread function to mutate bot AI
+  state that map-update threads also touch - raised as an open question in external review,
+  verified by reading AC core rather than left as an assumption.
+
 ## [0.5.2] - 2026-09-12
 
 L0 closeout, per the project's architecture roadmap: the remaining runtime-correctness gaps after

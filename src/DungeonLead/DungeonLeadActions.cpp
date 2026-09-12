@@ -22,6 +22,7 @@
 #include "PlayerbotOperations.h"
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
+#include "PositionValue.h"
 #include "RtiTargetValue.h"
 #include "Log.h"
 #include "Timer.h"
@@ -224,6 +225,23 @@ namespace
         }
         botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
         botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
+    }
+
+    // Equivalent to PositionsResetAction::ResetReturnPosition()/ResetStayPosition() (see
+    // ChatShortcutActions.cpp) reimplemented as a free function: StartSession() is shared between
+    // the chat-command Action (which has that base class) and the AutoBot Canary controller (a
+    // plain namespace function, no Action to inherit it from). Same AiObjectContext "position"
+    // value both ways - a leftover stay/return position (e.g. from RPG wandering right before the
+    // canary controller picked this bot) must not fight the leader's own movement.
+    void ResetPositions(PlayerbotAI* botAI)
+    {
+        PositionMap& posMap = botAI->GetAiObjectContext()->GetValue<PositionMap&>("position")->Get();
+        for (char const* key : {"return", "stay"})
+        {
+            PositionInfo pos = posMap[key];
+            pos.Reset();
+            posMap[key] = pos;
+        }
     }
 }
 
@@ -484,6 +502,19 @@ void DungeonLead::GuardActiveSessions()
 {
     // Called every world tick from PlayerbotsWorldScript::OnUpdate - throttle internally so the
     // call site there stays a single unconditional line, not something that needs its own timer.
+    //
+    // Thread-affinity (raised in external review, verified by reading AC core, not assumed):
+    // this mutates bot AI state from the WORLD thread while bots' own AI ticks run on MAP UPDATE
+    // threads (MapUpdate.Threads = 6 on this server) - a naive reading suggests those could race.
+    // They cannot, because of AC's own fork-join barrier: World::Update() calls
+    // sMapMgr->Update(diff) (World.cpp) BEFORE sScriptMgr->OnWorldUpdate(diff) (the hook that
+    // invokes PlayerbotsWorldScript::OnUpdate, i.e. this function) much later in the same
+    // function. MapMgr::Update() (MapMgr.cpp) schedules every map's update and then calls
+    // m_updater.wait() before returning, which blocks (MapUpdater.cpp) on a condition variable
+    // until every dispatched map-update task has actually finished. So by construction, no map
+    // thread is still ticking any bot's AI by the time this function's call site is even reached
+    // for that same world tick - the join has already fully happened. Safe today; would need
+    // re-checking only if AC's own fork-join ordering in World::Update() ever changes.
     static uint32 lastRunTs = 0;
     uint32 now = getMSTime();
     if (lastRunTs && now - lastRunTs < 2000)
@@ -584,6 +615,86 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
     sDungeonRouteMgr.ResetState(bot->GetGUID());
 }
 
+// Shared tail of both "startdungeon" and the AutoBot Canary controller - see the declaration
+// comment in DungeonLeadActions.h for the split of responsibilities. `bot` must already be a
+// member of `group`; the caller has already decided this bot should lead.
+bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSessionOrigin origin, Player* master,
+                                bool testMode)
+{
+    Player* bot = botAI->GetBot();
+
+    // snapshot every follower's current formation/strategies BEFORE touching anything (and before
+    // any leadership change below), so Stop() can put them back to what they *actually* had going
+    // in, not to whatever an external reset leaves them at - see Stop() above.
+    std::vector<DungeonLeadMemberSnapshot> snapshots;
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member == bot)
+            continue;
+        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+        if (!memberAI || !memberAI->GetAiObjectContext())
+            continue;
+        snapshots.push_back(SnapshotMember(member, memberAI));
+    }
+
+    if (group->GetLeaderGUID() != bot->GetGUID())
+    {
+        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
+        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
+    }
+
+    ApplyLeaderFollowerStrategies(botAI, group);
+
+    sDungeonRouteMgr.ResetState(bot->GetGUID());
+    {
+        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+        st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
+        st.memberSnapshots = std::move(snapshots);
+        st.runId = NextRunId();
+        st.origin = origin;
+        st.sessionStartTs = getMSTime();
+        if (testMode)
+        {
+            st.testMode = true;
+            st.testStartTs = getMSTime();
+        }
+    }
+    botAI->Reset();
+    ResetPositions(botAI);
+    ApplyLeaderFollowerStrategies(botAI, group);  // Reset() above wipes the leader's own strategies again
+
+    // mark self with the star icon: a visible "I'm leading, follow me" signal for the party
+    group->SetTargetIcon(RtiTargetValue::starIndex, bot->GetGUID(), bot->GetGUID());
+
+    if (master)
+        botAI->TellMaster("Dungeon lead: ON - taking the lead, the others will follow me");
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} START by {} origin={} in map={} instance={} (tank={})",
+             bot->GetName(), master ? master->GetName() : "canary", ToString(origin), bot->GetMapId(),
+             bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
+    DungeonLead::RecordEvent(botAI, "start",
+                              "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no") +
+                              " origin=" + ToString(origin));
+
+    // CRITICAL BUG found in live testing, fixed by the reconciliation loop below rather than by
+    // this function: a group leadership change (needed above whenever the tank wasn't already
+    // leader) makes every bot in the group receive SMSG_GROUP_LIST, which the base module's
+    // WorldPacketHandlerStrategy maps straight to ResetAiAction ("reset botAI" - wipes ALL
+    // strategies back to class/spec defaults; see WorldPacketHandlerStrategy.cpp's "group list"
+    // trigger). GroupSetLeaderOperation runs asynchronously on the world thread, and every other
+    // bot processes that packet on ITS OWN AI tick, entirely decoupled from this function's own
+    // timing - so there is no fixed delay (2 seconds, 6 seconds, anything) that is guaranteed long
+    // enough under real conditions (world-thread queue backlog, a slow tick, N bots all reacting
+    // at slightly different times). A single "wait then apply once" fix is just a race condition
+    // with smaller odds, not a fix. See DungeonLead::GuardActiveSessions() (called every ~2s from
+    // PlayerbotsWorldScript::OnUpdate, independent of any bot's own Strategy/Engine state - the
+    // wipe removes the "dungeon lead" strategy object itself, so nothing owned by that strategy
+    // could ever detect or heal its own absence) for the actual, unbounded fix: continuously
+    // reassert the desired strategy state for every active session for as long as it's active, so
+    // this self-heals whenever the external reset actually lands, however long that takes.
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------
 // dungeon lead next: walk to the next route step
 // ---------------------------------------------------------------------------------------------
@@ -647,6 +758,15 @@ bool DungeonLeadNextAction::isUseful()
         if (!st.lastWaitLogTs || now - st.lastWaitLogTs > 10000)
         {
             st.lastWaitLogTs = now;
+
+            // DIAGNOSTIC (temporary): DungeonLeadDebug.log has stayed 0 bytes all session despite
+            // DebugDefault=1 and RecordEvent (CSV) firing correctly from this same throttled block
+            // - meaning either st.debugMode isn't actually true at this point, or RecordDebug's
+            // fopen is silently failing. This unconditional line (not gated on debugMode) settles
+            // which, directly from the next test run, instead of guessing further. Remove once
+            // the debug log is confirmed working again.
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} debugMode={} runId={}", bot->GetName(),
+                     st.debugMode, st.runId);
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} waiting: {}{}{}", bot->GetName(), wait,
                      waitDetail.empty() ? "" : " - ", waitDetail);
             DungeonLead::RecordEvent(botAI, "waiting", waitDetail.empty() ? wait : std::string(wait) + " - " + waitDetail);
@@ -977,12 +1097,22 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         std::ostringstream out;
         out << "Dungeon lead: can't reach " << step.boss << ", skipping";
         botAI->TellMasterNoFacing(out);
-        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} stuck {}s at dist {:.1f} to step {} '{}' ({:.1f},{:.1f},{:.1f}) -> skip",
+        // Both positions on purpose: `dest` alone (the target's own coordinates, effectively just
+        // repeating the already-known route waypoint) was useless for telling where the bot
+        // actually ended up stuck versus where it was trying to go - `bot->GetPosition*()` is the
+        // bot's own real position at the moment it gave up.
+        LOG_INFO("playerbots.dungeonlead",
+                 "[DungeonLead] {} stuck {}s at dist {:.1f} to step {} '{}', target=({:.1f},{:.1f},{:.1f}) "
+                 "actual=({:.1f},{:.1f},{:.1f}) -> skip",
                  bot->GetName(), GetMSTimeDiffToNow(st.stuckTs) / 1000, disToDest, step.step, step.boss,
-                 dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+                 dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                 bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
         DungeonLead::RecordEvent(botAI, "skip_stuck",
-            step.boss + " dist=" + std::to_string(disToDest) + " pos=(" + std::to_string(dest.GetPositionX()) + "," +
-            std::to_string(dest.GetPositionY()) + "," + std::to_string(dest.GetPositionZ()) + ")");
+            step.boss + " dist=" + std::to_string(disToDest) +
+            " target=(" + std::to_string(dest.GetPositionX()) + "," + std::to_string(dest.GetPositionY()) + "," +
+            std::to_string(dest.GetPositionZ()) + ")" +
+            " actual=(" + std::to_string(bot->GetPositionX()) + "," + std::to_string(bot->GetPositionY()) + "," +
+            std::to_string(bot->GetPositionZ()) + ")");
         st.skippedSteps.push_back(step.boss);
         if (step.IsMandatory())
         {
@@ -1254,73 +1384,11 @@ bool StartDungChatShortcutAction::Execute(Event event)
         botAI->TellMaster("startdungeon: only the current party leader can start this");
         return false;
     }
-    // snapshot every follower's current formation/strategies BEFORE touching anything (and before
-    // any leadership change below), so "stopdungeon" can put them back to what they *actually* had
-    // going in, not to whatever an external reset (see below) leaves them at - see DungeonLead::Stop()
-    std::vector<DungeonLeadMemberSnapshot> snapshots;
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || member == bot)
-            continue;
-        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
-        if (!memberAI || !memberAI->GetAiObjectContext())
-            continue;
-        snapshots.push_back(SnapshotMember(member, memberAI));
-    }
 
-    if (group->GetLeaderGUID() != bot->GetGUID())
-    {
-        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
-        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
-    }
-
-    ApplyLeaderFollowerStrategies(botAI, group);
-
-    sDungeonRouteMgr.ResetState(bot->GetGUID());
-    {
-        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
-        st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
-        st.memberSnapshots = std::move(snapshots);
-        st.runId = NextRunId();
-        if (sub == "test")
-        {
-            // L1.3 first live smoke-test command: same start as plain "startdungeon", just report
-            // a structured result once the run reaches a terminal outcome (see the "route
-            // complete"/"route PARTIAL" block in Execute()) instead of only the normal chat lines.
-            st.testMode = true;
-            st.testStartTs = getMSTime();
-        }
-    }
-    botAI->Reset();
-    ResetReturnPosition();
-    ResetStayPosition();
-    ApplyLeaderFollowerStrategies(botAI, group);  // Reset() above wipes the leader's own strategies again
-
-    // mark self with the star icon: a visible "I'm leading, follow me" signal for the party
-    group->SetTargetIcon(RtiTargetValue::starIndex, bot->GetGUID(), bot->GetGUID());
-
-    botAI->TellMaster("Dungeon lead: ON - taking the lead, the others will follow me");
-    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} START by {} in map={} instance={} (tank={})", bot->GetName(),
-             master->GetName(), bot->GetMapId(), bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
-    DungeonLead::RecordEvent(botAI, "start", "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no"));
-
-    // CRITICAL BUG found in live testing, fixed by the reconciliation loop below rather than by
-    // this function: a group leadership change (needed above whenever the tank wasn't already
-    // leader) makes every bot in the group receive SMSG_GROUP_LIST, which the base module's
-    // WorldPacketHandlerStrategy maps straight to ResetAiAction ("reset botAI" - wipes ALL
-    // strategies back to class/spec defaults; see WorldPacketHandlerStrategy.cpp's "group list"
-    // trigger). GroupSetLeaderOperation runs asynchronously on the world thread, and every other
-    // bot processes that packet on ITS OWN AI tick, entirely decoupled from this function's own
-    // timing - so there is no fixed delay (2 seconds, 6 seconds, anything) that is guaranteed long
-    // enough under real conditions (world-thread queue backlog, a slow tick, N bots all reacting
-    // at slightly different times). A single "wait then apply once" fix is just a race condition
-    // with smaller odds, not a fix. See DungeonLead::GuardActiveSessions() (called every ~2s from
-    // PlayerbotsWorldScript::OnUpdate, independent of any bot's own Strategy/Engine state - the
-    // wipe removes the "dungeon lead" strategy object itself, so nothing owned by that strategy
-    // could ever detect or heal its own absence) for the actual, unbounded fix: continuously
-    // reassert the desired strategy state for every active session for as long as it's active, so
-    // this self-heals whenever the external reset actually lands, however long that takes.
+    // L1.3 first live smoke-test command: same start as plain "startdungeon", just report a
+    // structured result once the run reaches a terminal outcome (see the "route complete"/"route
+    // PARTIAL" block below) instead of only the normal chat lines.
+    DungeonLead::StartSession(botAI, group, DungeonLeadSessionOrigin::Manual, master, /*testMode*/ sub == "test");
     return true;
 }
 

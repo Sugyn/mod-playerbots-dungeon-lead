@@ -191,3 +191,13 @@ char const* ToString(DungeonFailureReason v)
     }
     return "unknown";
 }
+
+char const* ToString(DungeonLeadSessionOrigin v)
+{
+    switch (v)
+    {
+        case DungeonLeadSessionOrigin::Manual:     return "manual";
+        case DungeonLeadSessionOrigin::AutoCanary: return "auto_canary";
+    }
+    return "unknown";
+}

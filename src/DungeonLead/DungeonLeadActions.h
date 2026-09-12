@@ -41,6 +41,17 @@ namespace DungeonLead
     // how long it takes to actually land. Called from PlayerbotsWorldScript::OnUpdate - not tied
     // to any particular bot's own Strategy/Engine state (which is exactly what can get wiped).
     void GuardActiveSessions();
+
+    // Shared session-start logic behind both the "startdungeon" chat command and the AutoBot
+    // Canary controller (DungeonLeadCanary.h) - leadership takeover, follower snapshot, strategy
+    // application, state reset, the star icon, logging. Callers do their OWN preconditions first
+    // (group/5-man/permission checks for the chat command; pure-bot/allowlist/concurrency checks
+    // for the canary controller) since those differ by origin - this function assumes the caller
+    // has already decided "yes, start here" and `bot` is already in `group`.
+    // `master`: who to attribute/notify for a Manual session; pass nullptr for AutoCanary (nothing
+    // asked permission, nothing to tell).
+    bool StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSessionOrigin origin, Player* master,
+                       bool testMode = false);
     void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
     // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
     // event, detail) - see README "Debugging". Not gated behind "startdungeon debug".
