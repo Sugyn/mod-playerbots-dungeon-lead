@@ -186,7 +186,11 @@ namespace
     // Idempotent by construction (ChangeStrategy's +/- deltas are no-ops when already applied), so
     // this is safe to call repeatedly - both at "startdungeon" itself and from the reconciliation
     // loop (GuardActiveSessions) that keeps reasserting it for as long as the session is active.
-    void ApplyLeaderFollowerStrategies(PlayerbotAI* botAI, Group* group)
+    // logWipeDetection: only meaningful when called from the reconciliation loop (GuardActiveSessions)
+    // - checks and logs, per bot, whether it actually needed fixing before reapplying, so a healed
+    // external reset is directly observable in the log instead of only inferable by elimination.
+    // Off at "startdungeon" itself, where everyone is expected to need the full application anyway.
+    void ApplyLeaderFollowerStrategies(PlayerbotAI* botAI, Group* group, bool logWipeDetection = false)
     {
         Player* bot = botAI->GetBot();
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
@@ -197,8 +201,23 @@ namespace
             PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
             if (!memberAI || !memberAI->GetAiObjectContext())
                 continue;
-            if (FormationValue* fv = dynamic_cast<FormationValue*>(
-                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
+
+            FormationValue* fv = dynamic_cast<FormationValue*>(
+                memberAI->GetAiObjectContext()->GetValue<Formation*>("formation"));
+            if (logWipeDetection)
+            {
+                bool formationWiped = fv && fv->Save() != "leader";
+                bool strategyWiped = !memberAI->HasStrategy("follow", BOT_STATE_NON_COMBAT);
+                if (formationWiped || strategyWiped)
+                {
+                    LOG_INFO("playerbots.dungeonlead",
+                             "[DungeonLead] follower {} was missing formation/strategy (external AI "
+                             "reset) - reconciliation loop restoring it (formation={} strategy={})",
+                             member->GetName(), formationWiped, strategyWiped);
+                    DungeonLead::RecordEvent(botAI, "strategy_restored", "follower=" + member->GetName());
+                }
+            }
+            if (fv)
                 fv->Load("leader");
             memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
             memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
@@ -483,12 +502,26 @@ void DungeonLead::GuardActiveSessions()
         if (!group)
             continue;
 
+        // Observability only - the reapply below is unconditional regardless of this check (a
+        // FOLLOWER-only wipe wouldn't show up here at all, see below), but logging specifically
+        // when the LEADER's own strategy was found missing gives a direct, queryable confirmation
+        // that a wipe actually happened and was healed here, instead of having to infer it by
+        // elimination from "AI was reset to defaults" chat lines plus "nothing else could have
+        // reapplied it".
+        if (!DungeonLead::IsOn(botAI))
+        {
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} strategy was missing (external AI reset) - "
+                     "reconciliation loop restoring it", bot->GetName());
+            DungeonLead::RecordEvent(botAI, "strategy_restored", "external reset detected");
+        }
+
         // Unconditional, not "only if something looks wrong": ApplyLeaderFollowerStrategies is
         // idempotent, and checking only the leader's own HasStrategy("dungeon lead") would miss the
         // case where only a FOLLOWER's strategy got wiped (its own independent packet-processing
-        // tick, not tied to the leader's at all) while the leader's own happened to survive. Cheap
+        // tick, not tied to the leader's at all) while the leader's own happened to survive - hence
+        // logWipeDetection=true here, which checks and logs each follower individually too. Cheap
         // enough at the handful of concurrent sessions a server actually has running at once.
-        ApplyLeaderFollowerStrategies(botAI, group);
+        ApplyLeaderFollowerStrategies(botAI, group, /*logWipeDetection*/ true);
     }
 }
 
