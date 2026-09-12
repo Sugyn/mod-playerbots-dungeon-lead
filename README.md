@@ -1,5 +1,9 @@
 # mod-playerbots: Dungeon Lead
 
+> **⚠️ Work in progress.** Under active development and testing on a live server. Behavior, chat
+> commands and config keys can still change between commits. Known limitations are tracked below
+> and in `CHANGELOG.md` — read those before reporting something already listed there.
+
 **Autonomous dungeon module for [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots)
 (AzerothCore 3.3.5a).** The tank bot takes the lead of a 5-man dungeon on its own: it becomes group leader, the
 other bots follow *it* instead of the player, it walks the boss route, decides what to pull next, marks the kill
