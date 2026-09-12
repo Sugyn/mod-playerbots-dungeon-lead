@@ -14,7 +14,7 @@
 
 class PlayerbotAI;
 
-// Added to BOTH engines by the "startdung" chat command (see DungeonLeadActions.cpp).
+// Added to BOTH engines by the "startdungeon" chat command (see DungeonLeadActions.cpp).
 class DungeonLeadStrategy : public Strategy
 {
 public:

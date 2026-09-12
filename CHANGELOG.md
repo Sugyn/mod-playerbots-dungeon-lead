@@ -4,6 +4,14 @@ All notable changes to this patch, by version and date. Format is [Keep a Change
 Versioning is pre-1.0 (0.MINOR.PATCH) while this is under active development against a single live
 test dungeon — see README "Testing status" for what's actually been run in-game.
 
+## [0.5.1] - 2026-09-12
+
+### Changed
+- **Breaking: chat commands renamed `startdung`/`stopdung` -> `startdungeon`/`stopdungeon`**
+  (still plain whispers to the leading bot, same mechanism - only the word changed, not how it's
+  invoked). Subcommands follow: `startdungeon pause`/`continue`/`reset`/`debug`. Update any macro
+  or muscle memory from earlier versions.
+
 ## Known limitations (current, not tied to one version)
 - Doors/keys/scripted gates (Shadowforge Key, Scarlet Key, Crescent Key, Viewing Room Key, Ring of
   Law, elevators, altars, ...) are annotated in the route data (`kind = door`/`event`) but the
@@ -24,8 +32,8 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
   doesn't need per-field locking on top of protecting the `states` map's own structure - see the
   class's own comment. If dungeon-lead code ever reaches into another bot's state from a different
   thread, that assumption needs revisiting.
-- `stopdung` restores followers to formation `chaos` and clears the strategies dungeon-lead added,
-  rather than recording and restoring each member's actual pre-`startdung` strategy/formation set.
+- `stopdungeon` restores followers to formation `chaos` and clears the strategies dungeon-lead added,
+  rather than recording and restoring each member's actual pre-`startdungeon` strategy/formation set.
   In practice this is a reasonable default, not a currently-known bug, but it isn't a byte-for-byte
   restore.
 - `kind` (route step type) is a free-form string, not a validated enum - a typo in the DB silently
@@ -39,21 +47,21 @@ Fixes from an external code review of 0.4.0 (see the repo's issue tracker for th
 verified against the actual source before applying - not applied blind.
 
 ### Fixed
-- **`debugMode`/`paused`/owned marks were silently wiped seconds after every single `startdung`.**
+- **`debugMode`/`paused`/owned marks were silently wiped seconds after every single `startdungeon`.**
   `DungeonLeadNextAction::ResolveRoute()` called a full `DungeonLeadState::Reset()` the first time
-  it ran after a fresh state - which is *every* `startdung`, since `lfgId` starts at 0 - undoing
-  whatever `startdung` had just set (most importantly `DebugDefault`). Split state into
+  it ran after a fresh state - which is *every* `startdungeon`, since `lfgId` starts at 0 - undoing
+  whatever `startdungeon` had just set (most importantly `DebugDefault`). Split state into
   route-progress fields (cleared by the new `ResetRouteProgress()`) and session fields (debug mode,
-  pause, owned marks - survive a route reset, only a real `startdung`/`stopdung` touches them).
-  `startdung reset` now uses `ResetRouteProgress()` for the same reason.
-- **`stopdung` could leave a moon mark stuck forever.** `Stop()` called `ResetState()` (erasing
+  pause, owned marks - survive a route reset, only a real `startdungeon`/`stopdungeon` touches them).
+  `startdungeon reset` now uses `ResetRouteProgress()` for the same reason.
+- **`stopdungeon` could leave a moon mark stuck forever.** `Stop()` called `ResetState()` (erasing
   `ccGuid`) *before* trying to clean up marks, so it had nothing left to identify which moon mark
   was its own; it also never tracked which creature it skull-marked, so it could only ever clear
   the star icon. Now captures owned skull/moon GUIDs before resetting state, and clears only marks
   it actually placed.
 - **`RecordEvent("stop", ...)` was logged after `Stop()` had already erased the state it reads**
   (lfg_id, dungeon name), leaving every "stop" CSV row with an empty dungeon/lfg_id. Reordered to
-  log before cleanup in both `stopdung` and the automatic "left the instance" stop.
+  log before cleanup in both `stopdungeon` and the automatic "left the instance" stop.
 - **A player who left the instance/logged elsewhere no longer counted as "too far".**
   `MasterTooFar()` compared map IDs and returned `false` (not too far) the instant the real player
   wasn't on the same map at all - the opposite of what a leash should do. Now treats "not on the
@@ -62,9 +70,9 @@ verified against the actual source before applying - not applied blind.
   `DungeonLeadMultiplier` gated `"dungeon lead next"` on `MasterTooFar()`/`GroupTooSpread()` but not
   `"attack anything"`/`"pull my target"`/`"pull rti target"` - the tank could stand still "waiting
   for you" and still open a brand new pull the moment something wandered into range. Now gates both.
-- **Any party member could hand their own bot group leadership via `startdung`**, regardless of who
+- **Any party member could hand their own bot group leadership via `startdungeon`**, regardless of who
   actually held it, because the leadership-takeover check only asked "is the bot already leader?",
-  never "is the person asking currently the leader?". `startdung` now refuses unless the requester
+  never "is the person asking currently the leader?". `startdungeon` now refuses unless the requester
   already is the party leader (or the bot already is).
 - **CSV escaping wasn't real escaping.** Commas/quotes/newlines in a boss or player name were
   replaced with `;`, silently corrupting the field instead of preserving it. Every field is already
@@ -121,14 +129,14 @@ verified against the actual source before applying - not applied blind.
 
 ### Added
 - Per-instance-ID kill memory: once a routed boss is confirmed dead, that dungeon instance never
-  paths back to it again — not after `startdung reset`, not after a route re-resolution, and not if
+  paths back to it again — not after `startdungeon reset`, not after a route re-resolution, and not if
   its corpse/entity later falls outside probe range.
 - Always-on structured event log, `DungeonLeadSessions.csv` (one row per run start/stop, boss
   reached, boss already dead, mark placed/released, stuck-skip, waiting — keyed by player, date,
   dungeon, and which bots were in the group). Plain `fopen`/`fprintf` file I/O, independent of
   `worldserver.conf` logger config (the `Appender.*`/`Logger.*` mechanism from 0.2.0 never reliably
   wrote to a dedicated file — abandoned).
-- `startdung debug`'s verbose log (`DungeonLeadDebug.log`) reimplemented on the same plain-file
+- `startdungeon debug`'s verbose log (`DungeonLeadDebug.log`) reimplemented on the same plain-file
   mechanism as the CSV above, replacing the broken logger-config version from 0.2.0.
 - Config: `AiPlayerbot.DungeonLead.DebugDefault` (default `0`; only the maintainer's own live
   server overrides it to `1` in its local, uncommitted `playerbots.conf`).
@@ -138,12 +146,12 @@ verified against the actual source before applying - not applied blind.
 First live end-to-end run, on Wailing Caverns.
 
 ### Added
-- `startdung pause` / `startdung continue` — freeze/resume walking and pulling without tearing down
+- `startdungeon pause` / `startdungeon continue` — freeze/resume walking and pulling without tearing down
   leadership or formations.
-- `startdung reset` — reset route progress back to the first stop without redoing the leadership
+- `startdungeon reset` — reset route progress back to the first stop without redoing the leadership
   handoff (useful after a stuck run, without the "AI was reset to defaults" churn a full restart
   causes for every bot in the group).
-- `startdung debug` — toggle for verbose per-wait diagnostics (position, distance to every group
+- `startdungeon debug` — toggle for verbose per-wait diagnostics (position, distance to every group
   member, current step); see 0.4.0 for the logging mechanism it actually shipped with.
 - The leading bot marks itself with the star icon on start, and clears it on stop.
 - A "heading to X" chat line each time the leader commits to a new route stop.
@@ -181,7 +189,7 @@ First live end-to-end run, on Wailing Caverns.
   distance. (Reverted in 0.4.0 — the wide version traded one problem for a worse one.)
 - Trash packs never got a shared kill-priority mark unless a boss was nearby — `DpsTargetValue`
   only forces group-wide single-target focus when a skull mark exists, so ordinary trash was
-  targeted independently per bot (fine most of the time, riskier in heroics). `startdung` now also
+  targeted independently per bot (fine most of the time, riskier in heroics). `startdungeon` now also
   enables the base game's generic `mark rti` strategy (skull on the lowest-HP attacker) in combat,
   with the boss-specific mark kept at higher relevance so a real boss never loses the skull to a
   low-HP add standing next to it.
@@ -201,7 +209,7 @@ First live end-to-end run, on Wailing Caverns.
 Initial release.
 
 ### Added
-- Dungeon Lead feature: `startdung`/`stopdung` chat commands, `DungeonLeadStrategy`,
+- Dungeon Lead feature: `startdungeon`/`stopdungeon` chat commands, `DungeonLeadStrategy`,
   route-following via `playerbots_dungeon_route`, boss/CC marking, formation `leader`.
 - Hand-authored + DB-resolved boss routes for all 64 base LFD entries (96 incl. heroics), sourced
   from Classic-era wiki/Icy Veins/Wowhead pages — see `data/routes.tsv` for the source per dungeon.

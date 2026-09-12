@@ -45,11 +45,11 @@ struct DungeonRoute
 // Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
 //
 // Split into two groups on purpose: route-progress fields are cleared by ResetRouteProgress()
-// (a fresh ResolveRoute() after entering a new instance, or "startdung reset"), while session
-// fields survive that and are only cleared by a full Reset() (a real "startdung"/"stopdung").
+// (a fresh ResolveRoute() after entering a new instance, or "startdungeon reset"), while session
+// fields survive that and are only cleared by a full Reset() (a real "startdungeon"/"stopdungeon").
 // Before this split, ResolveRoute()'s internal wipe used the same Reset() as a real stop/start,
 // which meant debugMode (and any owned mark) silently reverted seconds after every single
-// "startdung", the moment the first route-resolution tick ran - see CHANGELOG.
+// "startdungeon", the moment the first route-resolution tick ran - see CHANGELOG.
 struct DungeonLeadState
 {
     // --- route progress: cleared by ResetRouteProgress() ---
@@ -74,8 +74,8 @@ struct DungeonLeadState
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
     uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
     ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)
-    bool paused = false;    // "startdung pause" / "startdung continue"
-    bool debugMode = false; // "startdung debug": verbose per-wait diagnostics to DungeonLeadDebug.log
+    bool paused = false;    // "startdungeon pause" / "startdungeon continue"
+    bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
 
     void ResetRouteProgress()
     {
@@ -124,10 +124,10 @@ public:
     // across a ResetState()/ResetRouteProgress() call on the SAME guid from the SAME call chain;
     // callers avoid that by capturing any fields they still need before resetting (see Stop()).
     DungeonLeadState& State(ObjectGuid guid);
-    void ResetState(ObjectGuid guid);          // full wipe: real "startdung"/"stopdung" only
-    void ResetRouteProgress(ObjectGuid guid);  // route fields only - "startdung reset" / re-resolution
+    void ResetState(ObjectGuid guid);          // full wipe: real "startdungeon"/"stopdungeon" only
+    void ResetRouteProgress(ObjectGuid guid);  // route fields only - "startdungeon reset" / re-resolution
 
-    // Per-instance "already killed" memory: survives a per-bot state reset (startdung reset, a
+    // Per-instance "already killed" memory: survives a per-bot state reset (startdungeon reset, a
     // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never
     // walked back to just because its corpse/entity is no longer within probe range or a later
     // bot session lost track of it. Keyed by the WoW instance id, not the bot - shared by every

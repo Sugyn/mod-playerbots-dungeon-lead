@@ -34,9 +34,9 @@ namespace DungeonLead
     void CheckCcMark(PlayerbotAI* botAI);
     void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
     // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
-    // event, detail) - see README "Debugging". Not gated behind "startdung debug".
+    // event, detail) - see README "Debugging". Not gated behind "startdungeon debug".
     void RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail);
-    // "startdung debug" verbose dump (position/distances every wait), plain file, no logger config
+    // "startdungeon debug" verbose dump (position/distances every wait), plain file, no logger config
     // dependency. Gated behind DungeonLeadState::debugMode, defaulting to
     // AiPlayerbot.DungeonLead.DebugDefault (0 for a fresh checkout of this patch).
     void RecordDebug(PlayerbotAI* botAI, std::string const& line);
@@ -95,7 +95,7 @@ public:
 class StartDungChatShortcutAction : public PositionsResetAction
 {
 public:
-    StartDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "startdung chat shortcut") {}
+    StartDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "startdungeon chat shortcut") {}
 
     bool Execute(Event event) override;
 };
@@ -103,7 +103,7 @@ public:
 class StopDungChatShortcutAction : public PositionsResetAction
 {
 public:
-    StopDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "stopdung chat shortcut") {}
+    StopDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "stopdungeon chat shortcut") {}
 
     bool Execute(Event event) override;
 };

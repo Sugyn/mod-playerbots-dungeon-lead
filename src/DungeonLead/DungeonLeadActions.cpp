@@ -400,7 +400,7 @@ bool DungeonLeadNextAction::isUseful()
 
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
     if (st.paused)
-        return false;  // "startdung pause": stand still until "startdung continue"
+        return false;  // "startdungeon pause": stand still until "startdungeon continue"
 
     // "waiting for you": a one-shot chat ping on the transition into master-too-far, not spammed
     // every tick, and cleared as soon as the player is back in range.
@@ -435,7 +435,7 @@ bool DungeonLeadNextAction::isUseful()
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} waiting: {}", bot->GetName(), wait);
             DungeonLead::RecordEvent(botAI, "waiting", wait);
 
-            // "startdung debug": enough detail on every wait to reconstruct a run from a plain
+            // "startdungeon debug": enough detail on every wait to reconstruct a run from a plain
             // file alone - positions, distances to the whole group, current step - without needing
             // a verbal bug report. Meant to be turned on for one troubleshooting run and attached
             // to a bug report (see README "Debugging" section), not left on permanently. Written
@@ -487,7 +487,7 @@ DungeonRoute const* DungeonLeadNextAction::ResolveRoute(DungeonLeadState& st)
 
     // route fields only - NOT a full Reset(). This used to wipe debugMode/paused/owned marks too,
     // which meant they reverted the moment the very first route-resolution tick ran after every
-    // single "startdung" (this branch always runs once right after a fresh state, since lfgId
+    // single "startdungeon" (this branch always runs once right after a fresh state, since lfgId
     // starts at 0) - see CHANGELOG and DungeonLeadState's own comment.
     st.ResetRouteProgress();
     st.mapId = mapId;
@@ -886,7 +886,7 @@ bool DungeonLeadStopAction::Execute(Event /*event*/)
 }
 
 // ---------------------------------------------------------------------------------------------
-// chat shortcuts: startdung / stopdung
+// chat shortcuts: startdungeon / stopdungeon
 // ---------------------------------------------------------------------------------------------
 namespace
 {
@@ -911,14 +911,14 @@ bool StartDungChatShortcutAction::Execute(Event event)
     {
         if (!DungeonLead::IsOn(botAI))
         {
-            botAI->TellMaster("startdung: not currently leading a dungeon - use plain 'startdung' first");
+            botAI->TellMaster("startdungeon: not currently leading a dungeon - use plain 'startdungeon' first");
             return false;
         }
         DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
         if (sub == "pause")
         {
             st.paused = true;
-            botAI->TellMaster("Dungeon lead: PAUSED - staying put until 'startdung continue'");
+            botAI->TellMaster("Dungeon lead: PAUSED - staying put until 'startdungeon continue'");
         }
         else if (sub == "continue")
         {
@@ -947,23 +947,23 @@ bool StartDungChatShortcutAction::Execute(Event event)
     Group* group = bot->GetGroup();
     if (!group)
     {
-        botAI->TellMaster("startdung: I'm not in a group");
+        botAI->TellMaster("startdungeon: I'm not in a group");
         return false;
     }
     if (!DungeonLead::InFiveMan(bot))
     {
-        botAI->TellMaster("startdung: only works inside a 5-man dungeon");
+        botAI->TellMaster("startdungeon: only works inside a 5-man dungeon");
         return false;
     }
     if (!PlayerbotAI::IsTank(bot))
-        botAI->TellMaster("startdung: I'm not a tank, but fine - leading anyway");
+        botAI->TellMaster("startdungeon: I'm not a tank, but fine - leading anyway");
 
     // only take leadership away from whoever currently holds it if the person asking IS that
     // leader (or the bot already is) - otherwise any member could hand themselves control of the
     // group's leadership through their own bot without the actual leader's say-so
     if (group->GetLeaderGUID() != bot->GetGUID() && group->GetLeaderGUID() != master->GetGUID())
     {
-        botAI->TellMaster("startdung: only the current party leader can start this");
+        botAI->TellMaster("startdungeon: only the current party leader can start this");
         return false;
     }
     if (group->GetLeaderGUID() != bot->GetGUID())

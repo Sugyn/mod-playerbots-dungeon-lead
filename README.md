@@ -35,7 +35,7 @@ you see" once the route runs out.
 - Route positions (`data/dungeon_routes.csv` → `sql/playerbots_dungeon_route.sql`) were resolved against a
   standard/Blizzlike-ish AzerothCore world database. A heavily customized world DB (moved spawns, different
   creature entries for the same boss) may need positions re-resolved — see `tools/resolve_routes.py`.
-- No RBAC/GM permission is required for `startdung`/`stopdung`/etc. — any player commanding their own bot can use
+- No RBAC/GM permission is required for `startdungeon`/`stopdungeon`/etc. — any player commanding their own bot can use
   them, same as any other mod-playerbots chat command.
 
 ## In-game usage
@@ -44,12 +44,12 @@ Whisper (or /w) the tank bot inside the dungeon:
 
 | command | effect |
 |---|---|
-| `startdung` | bot takes group leadership, sets every other bot to formation `leader` (follow the group leader), enables `cc` on all bots, marks itself with the star icon, and starts walking the route |
-| `startdung pause` | stops walking/pulling in place; everything else (leadership, marks, combat) stays as-is |
-| `startdung continue` | resumes after a pause |
-| `startdung reset` | resets route progress back to the first stop, without redoing leadership/formations |
-| `startdung debug` | toggles verbose per-wait diagnostics to a dedicated log file, for bug reports (see "Debugging" below) |
-| `stopdung` | ends the run: leadership goes back to you, formations reset to `chaos`, star/marks cleared, route state cleared |
+| `startdungeon` | bot takes group leadership, sets every other bot to formation `leader` (follow the group leader), enables `cc` on all bots, marks itself with the star icon, and starts walking the route |
+| `startdungeon pause` | stops walking/pulling in place; everything else (leadership, marks, combat) stays as-is |
+| `startdungeon continue` | resumes after a pause |
+| `startdungeon reset` | resets route progress back to the first stop, without redoing leadership/formations |
+| `startdungeon debug` | toggles verbose per-wait diagnostics to a dedicated log file, for bug reports (see "Debugging" below) |
+| `stopdungeon` | ends the run: leadership goes back to you, formations reset to `chaos`, star/marks cleared, route state cleared |
 
 The bot reports what it does ("heading to Lady Anacondra", "reached Lady Anacondra", "can't reach X, skipping",
 "route complete", "We're waiting for you!" when you fall behind). Leaving the instance switches the mode off
@@ -75,15 +75,15 @@ dead, skull/moon mark placed, CC mark released, stuck-and-skipped, waiting, ...)
 leave on for everyone — it's what lets an admin see, across many players' runs, which dungeons/steps actually cause
 trouble without asking anyone to write anything up.
 
-**Opt-in — `DungeonLeadDebug.log`.** Whisper the leading bot `startdung debug` before reproducing a problem. It
+**Opt-in — `DungeonLeadDebug.log`.** Whisper the leading bot `startdungeon debug` before reproducing a problem. It
 replies `Dungeon lead debug activated, file is being saved to DungeonLeadDebug.log (same folder as Playerbots.log)`
 and starts writing one verbose line per wait/decision (position, current step, whether it's moving, in combat,
-distance to master, distance to every group member). Reproduce the issue, then whisper `startdung debug` again — it
+distance to master, distance to every group member). Reproduce the issue, then whisper `startdungeon debug` again — it
 replies `Dungeon lead debug stopped, file is saved to DungeonLeadDebug.log (same folder as Playerbots.log)`. This is
 off by default for a fresh checkout of this patch (`AiPlayerbot.DungeonLead.DebugDefault = 0` in
 `playerbots.conf.dist`), so nobody pays for the verbose logging unless they explicitly ask for it.
 
-To report a bug: reproduce it with `startdung debug` on, then attach both `DungeonLeadSessions.csv` (or just the
+To report a bug: reproduce it with `startdungeon debug` on, then attach both `DungeonLeadSessions.csv` (or just the
 relevant rows) and `DungeonLeadDebug.log` to a GitHub issue on this repo. That's far more useful than a description
 of what it looked like on screen.
 
@@ -182,7 +182,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 ## How it works (short)
 
-- `DungeonLeadStrategy` ("dungeon lead") is added to both engines by `startdung`. Non-combat triggers:
+- `DungeonLeadStrategy` ("dungeon lead") is added to both engines by `startdungeon`. Non-combat triggers:
   `dungeon lead idle` → walk to the next route stop (relevance 3.5, i.e. *below* grind's "attack anything" 4.0 and
   food/drink), `dungeon lead boss near` → mark skull/moon, `dungeon lead left instance` → auto stop.
 - `DungeonLeadMultiplier` zeroes "attack anything" / "pull my target" / walking while the healer is low or someone

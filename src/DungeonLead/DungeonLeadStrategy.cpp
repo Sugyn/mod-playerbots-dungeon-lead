@@ -42,7 +42,7 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         return 1.0f;
 
     if (sDungeonRouteMgr.State(botAI->GetBot()->GetGUID()).paused)
-        return 0.0f;  // "startdung pause": no new pulls either, not just no walking
+        return 0.0f;  // "startdungeon pause": no new pulls either, not just no walking
     if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
         return 0.0f;
     if (isWalk && DungeonLead::GroupInCombat(botAI))

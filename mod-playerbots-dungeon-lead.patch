@@ -1,5 +1,5 @@
 diff --git a/conf/playerbots.conf.dist b/conf/playerbots.conf.dist
-index bcf2600f..0096ce23 100644
+index bcf2600f..a5d42be3 100644
 --- a/conf/playerbots.conf.dist
 +++ b/conf/playerbots.conf.dist
 @@ -411,6 +411,33 @@ AiPlayerbot.ContactDistance = 0.45
@@ -7,7 +7,7 @@ index bcf2600f..0096ce23 100644
  AiPlayerbot.RpgDistance = 200
  AiPlayerbot.GrindDistance = 75.0
 +
-+# Dungeon lead ("startdung"/"stopdung" whispered to a bot inside a 5-man dungeon): the bot becomes
++# Dungeon lead ("startdungeon"/"stopdungeon" whispered to a bot inside a 5-man dungeon): the bot becomes
 +# group leader, the other bots follow it (formation "leader"), and it walks the hand-authored route
 +# from playerbots_dungeon_route, grinding on the way and marking bosses (skull) / CC targets (moon).
 +# HealerManaPct: do not pull / walk on while a healer is below this mana %.
@@ -23,13 +23,13 @@ index bcf2600f..0096ce23 100644
 +AiPlayerbot.DungeonLead.SkipOptional = 0
 +AiPlayerbot.DungeonLead.MarkCc = 1
 +
-+# DebugDefault: 1 = every "startdung" starts with verbose debug logging already on (see
-+# DungeonLeadDebug.log). Leave at 0 for a normal install - turn it on per-run with "startdung
++# DebugDefault: 1 = every "startdungeon" starts with verbose debug logging already on (see
++# DungeonLeadDebug.log). Leave at 0 for a normal install - turn it on per-run with "startdungeon
 +# debug" instead. A server that wants it always on for troubleshooting can set this to 1.
 +AiPlayerbot.DungeonLead.DebugDefault = 0
 +
 +# Dungeon Lead always writes a structured DungeonLeadSessions.csv (one row per run event: player,
-+# dungeon, tank, group, event, detail) next to Playerbots.log, no config needed. "startdung debug"
++# dungeon, tank, group, event, detail) next to Playerbots.log, no config needed. "startdungeon debug"
 +# additionally writes a verbose per-wait DungeonLeadDebug.log (position, distance to every group
 +# member). Both use plain file I/O, not the AC logger config, so they work the same on every
 +# server. See README "Debugging" for what each file contains and where to send it.
@@ -71,7 +71,7 @@ index 6e41eb06..c70ad24d 100644
      static Action* attack_enemy_player(PlayerbotAI* botAI) { return new AttackEnemyPlayerAction(botAI); }
      static Action* stay(PlayerbotAI* botAI) { return new StayAction(botAI); }
 diff --git a/src/Ai/Base/ChatActionContext.h b/src/Ai/Base/ChatActionContext.h
-index 67e6288b..ac0a73f9 100644
+index 67e6288b..546e30ab 100644
 --- a/src/Ai/Base/ChatActionContext.h
 +++ b/src/Ai/Base/ChatActionContext.h
 @@ -89,6 +89,7 @@
@@ -86,8 +86,8 @@ index 67e6288b..ac0a73f9 100644
          creators["runaway chat shortcut"] = &ChatActionContext::runaway_chat_shortcut;
          creators["move from group chat shortcut"] = &ChatActionContext::move_from_group_chat_shortcut;
          creators["grind chat shortcut"] = &ChatActionContext::grind_chat_shortcut;
-+        creators["startdung chat shortcut"] = &ChatActionContext::startdung_chat_shortcut;
-+        creators["stopdung chat shortcut"] = &ChatActionContext::stopdung_chat_shortcut;
++        creators["startdungeon chat shortcut"] = &ChatActionContext::startdung_chat_shortcut;
++        creators["stopdungeon chat shortcut"] = &ChatActionContext::stopdung_chat_shortcut;
          creators["tank attack chat shortcut"] = &ChatActionContext::tank_attack_chat_shortcut;
          creators["gossip hello"] = &ChatActionContext::gossip_hello;
          creators["cast custom spell"] = &ChatActionContext::cast_custom_spell;
@@ -101,15 +101,15 @@ index 67e6288b..ac0a73f9 100644
      static Action* runaway_chat_shortcut(PlayerbotAI* botAI) { return new GoawayChatShortcutAction(botAI); }
      static Action* stay_chat_shortcut(PlayerbotAI* botAI) { return new StayChatShortcutAction(botAI); }
 diff --git a/src/Ai/Base/ChatTriggerContext.h b/src/Ai/Base/ChatTriggerContext.h
-index 55792aa5..97d1a0ff 100644
+index 55792aa5..53690086 100644
 --- a/src/Ai/Base/ChatTriggerContext.h
 +++ b/src/Ai/Base/ChatTriggerContext.h
 @@ -88,6 +88,8 @@ public:
          creators["stay"] = &ChatTriggerContext::stay;
          creators["flee"] = &ChatTriggerContext::flee;
          creators["grind"] = &ChatTriggerContext::grind;
-+        creators["startdung"] = &ChatTriggerContext::startdung;
-+        creators["stopdung"] = &ChatTriggerContext::stopdung;
++        creators["startdungeon"] = &ChatTriggerContext::startdungeon;
++        creators["stopdungeon"] = &ChatTriggerContext::stopdungeon;
          creators["tank attack"] = &ChatTriggerContext::tank_attack;
          creators["talk"] = &ChatTriggerContext::talk;
          creators["enter vehicle"] = &ChatTriggerContext::enter_vehicle;
@@ -117,14 +117,14 @@ index 55792aa5..97d1a0ff 100644
      static Trigger* leave_vehicle(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "leave vehicle"); }
      static Trigger* flee(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "flee"); }
      static Trigger* grind(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "grind"); }
-+    static Trigger* startdung(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "startdung"); }
-+    static Trigger* stopdung(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "stopdung"); }
++    static Trigger* startdungeon(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "startdungeon"); }
++    static Trigger* stopdungeon(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "stopdungeon"); }
      static Trigger* tank_attack(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "tank attack"); }
      static Trigger* stay(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "stay"); }
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..afba72c1
+index 00000000..38ed5ae5
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 @@ -0,0 +1,1021 @@
@@ -530,7 +530,7 @@ index 00000000..afba72c1
 +
 +    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
 +    if (st.paused)
-+        return false;  // "startdung pause": stand still until "startdung continue"
++        return false;  // "startdungeon pause": stand still until "startdungeon continue"
 +
 +    // "waiting for you": a one-shot chat ping on the transition into master-too-far, not spammed
 +    // every tick, and cleared as soon as the player is back in range.
@@ -565,7 +565,7 @@ index 00000000..afba72c1
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} waiting: {}", bot->GetName(), wait);
 +            DungeonLead::RecordEvent(botAI, "waiting", wait);
 +
-+            // "startdung debug": enough detail on every wait to reconstruct a run from a plain
++            // "startdungeon debug": enough detail on every wait to reconstruct a run from a plain
 +            // file alone - positions, distances to the whole group, current step - without needing
 +            // a verbal bug report. Meant to be turned on for one troubleshooting run and attached
 +            // to a bug report (see README "Debugging" section), not left on permanently. Written
@@ -617,7 +617,7 @@ index 00000000..afba72c1
 +
 +    // route fields only - NOT a full Reset(). This used to wipe debugMode/paused/owned marks too,
 +    // which meant they reverted the moment the very first route-resolution tick ran after every
-+    // single "startdung" (this branch always runs once right after a fresh state, since lfgId
++    // single "startdungeon" (this branch always runs once right after a fresh state, since lfgId
 +    // starts at 0) - see CHANGELOG and DungeonLeadState's own comment.
 +    st.ResetRouteProgress();
 +    st.mapId = mapId;
@@ -1016,7 +1016,7 @@ index 00000000..afba72c1
 +}
 +
 +// ---------------------------------------------------------------------------------------------
-+// chat shortcuts: startdung / stopdung
++// chat shortcuts: startdungeon / stopdungeon
 +// ---------------------------------------------------------------------------------------------
 +namespace
 +{
@@ -1041,14 +1041,14 @@ index 00000000..afba72c1
 +    {
 +        if (!DungeonLead::IsOn(botAI))
 +        {
-+            botAI->TellMaster("startdung: not currently leading a dungeon - use plain 'startdung' first");
++            botAI->TellMaster("startdungeon: not currently leading a dungeon - use plain 'startdungeon' first");
 +            return false;
 +        }
 +        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
 +        if (sub == "pause")
 +        {
 +            st.paused = true;
-+            botAI->TellMaster("Dungeon lead: PAUSED - staying put until 'startdung continue'");
++            botAI->TellMaster("Dungeon lead: PAUSED - staying put until 'startdungeon continue'");
 +        }
 +        else if (sub == "continue")
 +        {
@@ -1077,23 +1077,23 @@ index 00000000..afba72c1
 +    Group* group = bot->GetGroup();
 +    if (!group)
 +    {
-+        botAI->TellMaster("startdung: I'm not in a group");
++        botAI->TellMaster("startdungeon: I'm not in a group");
 +        return false;
 +    }
 +    if (!DungeonLead::InFiveMan(bot))
 +    {
-+        botAI->TellMaster("startdung: only works inside a 5-man dungeon");
++        botAI->TellMaster("startdungeon: only works inside a 5-man dungeon");
 +        return false;
 +    }
 +    if (!PlayerbotAI::IsTank(bot))
-+        botAI->TellMaster("startdung: I'm not a tank, but fine - leading anyway");
++        botAI->TellMaster("startdungeon: I'm not a tank, but fine - leading anyway");
 +
 +    // only take leadership away from whoever currently holds it if the person asking IS that
 +    // leader (or the bot already is) - otherwise any member could hand themselves control of the
 +    // group's leadership through their own bot without the actual leader's say-so
 +    if (group->GetLeaderGUID() != bot->GetGUID() && group->GetLeaderGUID() != master->GetGUID())
 +    {
-+        botAI->TellMaster("startdung: only the current party leader can start this");
++        botAI->TellMaster("startdungeon: only the current party leader can start this");
 +        return false;
 +    }
 +    if (group->GetLeaderGUID() != bot->GetGUID())
@@ -1151,7 +1151,7 @@ index 00000000..afba72c1
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..a137bf85
+index 00000000..488cb44d
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 @@ -0,0 +1,111 @@
@@ -1191,9 +1191,9 @@ index 00000000..a137bf85
 +    void CheckCcMark(PlayerbotAI* botAI);
 +    void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
 +    // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
-+    // event, detail) - see README "Debugging". Not gated behind "startdung debug".
++    // event, detail) - see README "Debugging". Not gated behind "startdungeon debug".
 +    void RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail);
-+    // "startdung debug" verbose dump (position/distances every wait), plain file, no logger config
++    // "startdungeon debug" verbose dump (position/distances every wait), plain file, no logger config
 +    // dependency. Gated behind DungeonLeadState::debugMode, defaulting to
 +    // AiPlayerbot.DungeonLead.DebugDefault (0 for a fresh checkout of this patch).
 +    void RecordDebug(PlayerbotAI* botAI, std::string const& line);
@@ -1252,7 +1252,7 @@ index 00000000..a137bf85
 +class StartDungChatShortcutAction : public PositionsResetAction
 +{
 +public:
-+    StartDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "startdung chat shortcut") {}
++    StartDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "startdungeon chat shortcut") {}
 +
 +    bool Execute(Event event) override;
 +};
@@ -1260,7 +1260,7 @@ index 00000000..a137bf85
 +class StopDungChatShortcutAction : public PositionsResetAction
 +{
 +public:
-+    StopDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "stopdung chat shortcut") {}
++    StopDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "stopdungeon chat shortcut") {}
 +
 +    bool Execute(Event event) override;
 +};
@@ -1268,7 +1268,7 @@ index 00000000..a137bf85
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
 new file mode 100644
-index 00000000..36371338
+index 00000000..33586cc5
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
 @@ -0,0 +1,57 @@
@@ -1316,7 +1316,7 @@ index 00000000..36371338
 +        return 1.0f;
 +
 +    if (sDungeonRouteMgr.State(botAI->GetBot()->GetGUID()).paused)
-+        return 0.0f;  // "startdung pause": no new pulls either, not just no walking
++        return 0.0f;  // "startdungeon pause": no new pulls either, not just no walking
 +    if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
 +        return 0.0f;
 +    if (isWalk && DungeonLead::GroupInCombat(botAI))
@@ -1331,7 +1331,7 @@ index 00000000..36371338
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h
 new file mode 100644
-index 00000000..6cabb503
+index 00000000..69745db7
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h
 @@ -0,0 +1,37 @@
@@ -1351,7 +1351,7 @@ index 00000000..6cabb503
 +
 +class PlayerbotAI;
 +
-+// Added to BOTH engines by the "startdung" chat command (see DungeonLeadActions.cpp).
++// Added to BOTH engines by the "startdungeon" chat command (see DungeonLeadActions.cpp).
 +class DungeonLeadStrategy : public Strategy
 +{
 +public:
@@ -1586,7 +1586,7 @@ index 00000000..e4ad5090
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..780d7d16
+index 00000000..51cd95b7
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 @@ -0,0 +1,151 @@
@@ -1637,11 +1637,11 @@ index 00000000..780d7d16
 +// Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
 +//
 +// Split into two groups on purpose: route-progress fields are cleared by ResetRouteProgress()
-+// (a fresh ResolveRoute() after entering a new instance, or "startdung reset"), while session
-+// fields survive that and are only cleared by a full Reset() (a real "startdung"/"stopdung").
++// (a fresh ResolveRoute() after entering a new instance, or "startdungeon reset"), while session
++// fields survive that and are only cleared by a full Reset() (a real "startdungeon"/"stopdungeon").
 +// Before this split, ResolveRoute()'s internal wipe used the same Reset() as a real stop/start,
 +// which meant debugMode (and any owned mark) silently reverted seconds after every single
-+// "startdung", the moment the first route-resolution tick ran - see CHANGELOG.
++// "startdungeon", the moment the first route-resolution tick ran - see CHANGELOG.
 +struct DungeonLeadState
 +{
 +    // --- route progress: cleared by ResetRouteProgress() ---
@@ -1666,8 +1666,8 @@ index 00000000..780d7d16
 +    ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
 +    uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
 +    ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)
-+    bool paused = false;    // "startdung pause" / "startdung continue"
-+    bool debugMode = false; // "startdung debug": verbose per-wait diagnostics to DungeonLeadDebug.log
++    bool paused = false;    // "startdungeon pause" / "startdungeon continue"
++    bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
 +
 +    void ResetRouteProgress()
 +    {
@@ -1716,10 +1716,10 @@ index 00000000..780d7d16
 +    // across a ResetState()/ResetRouteProgress() call on the SAME guid from the SAME call chain;
 +    // callers avoid that by capturing any fields they still need before resetting (see Stop()).
 +    DungeonLeadState& State(ObjectGuid guid);
-+    void ResetState(ObjectGuid guid);          // full wipe: real "startdung"/"stopdung" only
-+    void ResetRouteProgress(ObjectGuid guid);  // route fields only - "startdung reset" / re-resolution
++    void ResetState(ObjectGuid guid);          // full wipe: real "startdungeon"/"stopdungeon" only
++    void ResetRouteProgress(ObjectGuid guid);  // route fields only - "startdungeon reset" / re-resolution
 +
-+    // Per-instance "already killed" memory: survives a per-bot state reset (startdung reset, a
++    // Per-instance "already killed" memory: survives a per-bot state reset (startdungeon reset, a
 +    // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never
 +    // walked back to just because its corpse/entity is no longer within probe range or a later
 +    // bot session lost track of it. Keyed by the WoW instance id, not the bot - shared by every
@@ -1742,15 +1742,15 @@ index 00000000..780d7d16
 +
 +#endif
 diff --git a/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp b/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp
-index 0f158fb8..7569e184 100644
+index 0f158fb8..e0a3aef7 100644
 --- a/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp
 +++ b/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp
 @@ -54,6 +54,8 @@ void ChatCommandHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
      triggers.push_back(new TriggerNode("flee", { NextAction("flee chat shortcut", relevance) }));
      triggers.push_back(new TriggerNode("tank attack", { NextAction("tank attack chat shortcut", relevance) }));
      triggers.push_back(new TriggerNode("grind", { NextAction("grind chat shortcut", relevance) }));
-+    triggers.push_back(new TriggerNode("startdung", { NextAction("startdung chat shortcut", relevance) }));
-+    triggers.push_back(new TriggerNode("stopdung", { NextAction("stopdung chat shortcut", relevance) }));
++    triggers.push_back(new TriggerNode("startdungeon", { NextAction("startdungeon chat shortcut", relevance) }));
++    triggers.push_back(new TriggerNode("stopdungeon", { NextAction("stopdungeon chat shortcut", relevance) }));
      triggers.push_back(new TriggerNode("talk",
          { NextAction("gossip hello", relevance),
          NextAction("talk to quest giver", relevance) }));
