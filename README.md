@@ -184,7 +184,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 | path | content |
 |------|---------|
-| `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`b949b50b`) — 8 new files + 11 touched |
+| `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`b949b50b`) — 8 new files + 12 touched |
 | `src/DungeonLead/` | the new sources on their own (`src/Ai/Base/DungeonLead/` in the module) |
 | `sql/playerbots_dungeon_route.sql` | route table for the `acore_playerbots` database (408 steps, 96 LFD entries incl. heroics) |
 | `data/routes.tsv` | hand-authored boss order per LFD entry with source per dungeon (Classic-era wiki / Icy Veins Classic / Wowhead TBC) |

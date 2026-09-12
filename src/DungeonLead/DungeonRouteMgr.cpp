@@ -123,6 +123,16 @@ void DungeonRouteMgr::ResetRouteProgress(ObjectGuid guid)
         it->second.ResetRouteProgress();
 }
 
+std::vector<ObjectGuid> DungeonRouteMgr::GetActiveSessionGuids()
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    std::vector<ObjectGuid> guids;
+    guids.reserve(states.size());
+    for (auto const& kv : states)
+        guids.push_back(kv.first);
+    return guids;
+}
+
 bool DungeonRouteMgr::IsStepKilled(uint32 instanceId, uint32 entry)
 {
     std::lock_guard<std::mutex> lock(mtx);

@@ -180,6 +180,32 @@ namespace
                 if (fv->Save() != snap.formation)
                     fv->Load(snap.formation);
     }
+
+    // The actual desired strategy state for an active dungeon-lead session: followers on "leader"
+    // formation with +follow/+cc, the leader itself on +dungeon lead/+grind/+cc/+mark rti.
+    // Idempotent by construction (ChangeStrategy's +/- deltas are no-ops when already applied), so
+    // this is safe to call repeatedly - both at "startdungeon" itself and from the reconciliation
+    // loop (GuardActiveSessions) that keeps reasserting it for as long as the session is active.
+    void ApplyLeaderFollowerStrategies(PlayerbotAI* botAI, Group* group)
+    {
+        Player* bot = botAI->GetBot();
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || member == bot)
+                continue;
+            PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+            if (!memberAI || !memberAI->GetAiObjectContext())
+                continue;
+            if (FormationValue* fv = dynamic_cast<FormationValue*>(
+                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
+                fv->Load("leader");
+            memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
+            memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
+        }
+        botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
+        botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
+    }
 }
 
 void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail)
@@ -433,6 +459,37 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
         group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
     st.ccGuid.Clear();
+}
+
+void DungeonLead::GuardActiveSessions()
+{
+    // Called every world tick from PlayerbotsWorldScript::OnUpdate - throttle internally so the
+    // call site there stays a single unconditional line, not something that needs its own timer.
+    static uint32 lastRunTs = 0;
+    uint32 now = getMSTime();
+    if (lastRunTs && now - lastRunTs < 2000)
+        return;
+    lastRunTs = now;
+
+    for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
+    {
+        Player* bot = ObjectAccessor::FindPlayer(guid);
+        if (!bot || !bot->IsInWorld())
+            continue;
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+        if (!botAI)
+            continue;
+        Group* group = bot->GetGroup();
+        if (!group)
+            continue;
+
+        // Unconditional, not "only if something looks wrong": ApplyLeaderFollowerStrategies is
+        // idempotent, and checking only the leader's own HasStrategy("dungeon lead") would miss the
+        // case where only a FOLLOWER's strategy got wiped (its own independent packet-processing
+        // tick, not tied to the leader's at all) while the leader's own happened to survive. Cheap
+        // enough at the handful of concurrent sessions a server actually has running at once.
+        ApplyLeaderFollowerStrategies(botAI, group);
+    }
 }
 
 void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
@@ -1164,14 +1221,9 @@ bool StartDungChatShortcutAction::Execute(Event event)
         botAI->TellMaster("startdungeon: only the current party leader can start this");
         return false;
     }
-    if (group->GetLeaderGUID() != bot->GetGUID())
-    {
-        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
-        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
-    }
-
-    // snapshot every follower's current formation/strategies BEFORE touching anything, so
-    // "stopdungeon" can put them back exactly - see DungeonLead::Stop()
+    // snapshot every follower's current formation/strategies BEFORE touching anything (and before
+    // any leadership change below), so "stopdungeon" can put them back to what they *actually* had
+    // going in, not to whatever an external reset (see below) leaves them at - see DungeonLead::Stop()
     std::vector<DungeonLeadMemberSnapshot> snapshots;
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
@@ -1181,15 +1233,16 @@ bool StartDungChatShortcutAction::Execute(Event event)
         PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
         if (!memberAI || !memberAI->GetAiObjectContext())
             continue;
-
         snapshots.push_back(SnapshotMember(member, memberAI));
-
-        if (FormationValue* fv = dynamic_cast<FormationValue*>(
-                memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
-            fv->Load("leader");
-        memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
-        memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
     }
+
+    if (group->GetLeaderGUID() != bot->GetGUID())
+    {
+        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
+        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
+    }
+
+    ApplyLeaderFollowerStrategies(botAI, group);
 
     sDungeonRouteMgr.ResetState(bot->GetGUID());
     {
@@ -1209,8 +1262,7 @@ bool StartDungChatShortcutAction::Execute(Event event)
     botAI->Reset();
     ResetReturnPosition();
     ResetStayPosition();
-    botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
-    botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
+    ApplyLeaderFollowerStrategies(botAI, group);  // Reset() above wipes the leader's own strategies again
 
     // mark self with the star icon: a visible "I'm leading, follow me" signal for the party
     group->SetTargetIcon(RtiTargetValue::starIndex, bot->GetGUID(), bot->GetGUID());
@@ -1219,6 +1271,23 @@ bool StartDungChatShortcutAction::Execute(Event event)
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} START by {} in map={} instance={} (tank={})", bot->GetName(),
              master->GetName(), bot->GetMapId(), bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
     DungeonLead::RecordEvent(botAI, "start", "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no"));
+
+    // CRITICAL BUG found in live testing, fixed by the reconciliation loop below rather than by
+    // this function: a group leadership change (needed above whenever the tank wasn't already
+    // leader) makes every bot in the group receive SMSG_GROUP_LIST, which the base module's
+    // WorldPacketHandlerStrategy maps straight to ResetAiAction ("reset botAI" - wipes ALL
+    // strategies back to class/spec defaults; see WorldPacketHandlerStrategy.cpp's "group list"
+    // trigger). GroupSetLeaderOperation runs asynchronously on the world thread, and every other
+    // bot processes that packet on ITS OWN AI tick, entirely decoupled from this function's own
+    // timing - so there is no fixed delay (2 seconds, 6 seconds, anything) that is guaranteed long
+    // enough under real conditions (world-thread queue backlog, a slow tick, N bots all reacting
+    // at slightly different times). A single "wait then apply once" fix is just a race condition
+    // with smaller odds, not a fix. See DungeonLead::GuardActiveSessions() (called every ~2s from
+    // PlayerbotsWorldScript::OnUpdate, independent of any bot's own Strategy/Engine state - the
+    // wipe removes the "dungeon lead" strategy object itself, so nothing owned by that strategy
+    // could ever detect or heal its own absence) for the actual, unbounded fix: continuously
+    // reassert the desired strategy state for every active session for as long as it's active, so
+    // this self-heals whenever the external reset actually lands, however long that takes.
     return true;
 }
 

@@ -34,6 +34,13 @@ namespace DungeonLead
     bool MasterUnavailable(PlayerbotAI* botAI);
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
     void CheckCcMark(PlayerbotAI* botAI);
+
+    // Reconciliation loop (see the big comment at its call site in Playerbots.cpp / its definition
+    // in DungeonLeadActions.cpp): continuously re-asserts the desired strategy state for every
+    // active session, for as long as it stays active, to heal an external AI reset regardless of
+    // how long it takes to actually land. Called from PlayerbotsWorldScript::OnUpdate - not tied
+    // to any particular bot's own Strategy/Engine state (which is exactly what can get wiped).
+    void GuardActiveSessions();
     void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
     // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
     // event, detail) - see README "Debugging". Not gated behind "startdungeon debug".

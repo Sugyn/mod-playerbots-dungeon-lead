@@ -230,6 +230,12 @@ public:
     void ResetState(ObjectGuid guid);          // full wipe: real "startdungeon"/"stopdungeon" only
     void ResetRouteProgress(ObjectGuid guid);  // route fields only - "startdungeon reset" / re-resolution
 
+    // Every guid with an entry here is, by definition, an active dungeon-lead session (ResetState()
+    // is the only thing that erases an entry, and that only happens on a real stop). Used by
+    // DungeonLead::GuardActiveSessions() to know which bots' strategy state to keep reasserting -
+    // see that function for why this needs to be unbounded/ongoing rather than a one-shot check.
+    std::vector<ObjectGuid> GetActiveSessionGuids();
+
     // Per-instance "already killed" memory: survives a per-bot state reset (startdungeon reset, a
     // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never
     // walked back to just because its corpse/entity is no longer within probe range or a later

@@ -6,6 +6,26 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 
 ## [Unreleased]
 
+### Fixed
+- **CRITICAL: `startdungeon` silently did nothing whenever the tank wasn't already party leader.**
+  Found live: taking leadership (needed on essentially every real-world `startdungeon`, since the
+  tank usually isn't already leader) makes every bot in the group receive `SMSG_GROUP_LIST`, which
+  the base module's `WorldPacketHandlerStrategy` unconditionally maps to `ResetAiAction` ("reset
+  botAI" - wipes *all* strategies back to class/spec defaults). `GroupSetLeaderOperation` runs
+  asynchronously on the world thread, and each bot processes that packet on its own AI tick,
+  entirely decoupled from `startdungeon`'s own timing - so the reset landed a moment after
+  `startdungeon` had already applied `+dungeon lead`, silently erasing it. The tank was left
+  standing in place forever with no error, no log line - "Dungeon lead: ON" had already printed
+  and was already a lie by the time anyone read it. A first attempt fixed this by delaying the
+  strategy application by a fixed 2 seconds; correctly rejected in review as still just a smaller
+  race condition, not a fix (no fixed delay is long enough under bad network/DB/queue conditions).
+  Replaced with `DungeonLead::GuardActiveSessions()`: a small reconciliation loop, called every ~2s
+  from `PlayerbotsWorldScript::OnUpdate` (independent of any bot's own Strategy/Engine state, since
+  the wipe removes the "dungeon lead" strategy object itself - nothing it owns could ever detect or
+  heal its own absence), that unconditionally re-asserts the desired strategy for every session
+  `DungeonRouteMgr` considers active, for as long as it stays active. Self-heals regardless of how
+  long the external reset takes to land, with no arbitrary timeout to get wrong.
+
 ### Added
 - `startdungeon status`: read-only, no effect on the run - reports current run id, dungeon, step,
   outcome (with domain/reason if `Partial`), paused/debug/test-mode flags, on demand. Part of L1.1/

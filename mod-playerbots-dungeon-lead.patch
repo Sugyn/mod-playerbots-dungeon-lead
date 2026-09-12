@@ -124,10 +124,10 @@ index 55792aa5..53690086 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..c33b0a85
+index 00000000..7e51e856
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1238 @@
+@@ -0,0 +1,1307 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -309,6 +309,32 @@ index 00000000..c33b0a85
 +                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
 +                if (fv->Save() != snap.formation)
 +                    fv->Load(snap.formation);
++    }
++
++    // The actual desired strategy state for an active dungeon-lead session: followers on "leader"
++    // formation with +follow/+cc, the leader itself on +dungeon lead/+grind/+cc/+mark rti.
++    // Idempotent by construction (ChangeStrategy's +/- deltas are no-ops when already applied), so
++    // this is safe to call repeatedly - both at "startdungeon" itself and from the reconciliation
++    // loop (GuardActiveSessions) that keeps reasserting it for as long as the session is active.
++    void ApplyLeaderFollowerStrategies(PlayerbotAI* botAI, Group* group)
++    {
++        Player* bot = botAI->GetBot();
++        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++        {
++            Player* member = ref->GetSource();
++            if (!member || member == bot)
++                continue;
++            PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
++            if (!memberAI || !memberAI->GetAiObjectContext())
++                continue;
++            if (FormationValue* fv = dynamic_cast<FormationValue*>(
++                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
++                fv->Load("leader");
++            memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
++            memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
++        }
++        botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
++        botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
 +    }
 +}
 +
@@ -563,6 +589,37 @@ index 00000000..c33b0a85
 +    if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
 +        group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
 +    st.ccGuid.Clear();
++}
++
++void DungeonLead::GuardActiveSessions()
++{
++    // Called every world tick from PlayerbotsWorldScript::OnUpdate - throttle internally so the
++    // call site there stays a single unconditional line, not something that needs its own timer.
++    static uint32 lastRunTs = 0;
++    uint32 now = getMSTime();
++    if (lastRunTs && now - lastRunTs < 2000)
++        return;
++    lastRunTs = now;
++
++    for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
++    {
++        Player* bot = ObjectAccessor::FindPlayer(guid);
++        if (!bot || !bot->IsInWorld())
++            continue;
++        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
++        if (!botAI)
++            continue;
++        Group* group = bot->GetGroup();
++        if (!group)
++            continue;
++
++        // Unconditional, not "only if something looks wrong": ApplyLeaderFollowerStrategies is
++        // idempotent, and checking only the leader's own HasStrategy("dungeon lead") would miss the
++        // case where only a FOLLOWER's strategy got wiped (its own independent packet-processing
++        // tick, not tied to the leader's at all) while the leader's own happened to survive. Cheap
++        // enough at the handful of concurrent sessions a server actually has running at once.
++        ApplyLeaderFollowerStrategies(botAI, group);
++    }
 +}
 +
 +void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
@@ -1294,14 +1351,9 @@ index 00000000..c33b0a85
 +        botAI->TellMaster("startdungeon: only the current party leader can start this");
 +        return false;
 +    }
-+    if (group->GetLeaderGUID() != bot->GetGUID())
-+    {
-+        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
-+        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
-+    }
-+
-+    // snapshot every follower's current formation/strategies BEFORE touching anything, so
-+    // "stopdungeon" can put them back exactly - see DungeonLead::Stop()
++    // snapshot every follower's current formation/strategies BEFORE touching anything (and before
++    // any leadership change below), so "stopdungeon" can put them back to what they *actually* had
++    // going in, not to whatever an external reset (see below) leaves them at - see DungeonLead::Stop()
 +    std::vector<DungeonLeadMemberSnapshot> snapshots;
 +    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
 +    {
@@ -1311,15 +1363,16 @@ index 00000000..c33b0a85
 +        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
 +        if (!memberAI || !memberAI->GetAiObjectContext())
 +            continue;
-+
 +        snapshots.push_back(SnapshotMember(member, memberAI));
-+
-+        if (FormationValue* fv = dynamic_cast<FormationValue*>(
-+                memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
-+            fv->Load("leader");
-+        memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
-+        memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
 +    }
++
++    if (group->GetLeaderGUID() != bot->GetGUID())
++    {
++        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
++        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
++    }
++
++    ApplyLeaderFollowerStrategies(botAI, group);
 +
 +    sDungeonRouteMgr.ResetState(bot->GetGUID());
 +    {
@@ -1339,8 +1392,7 @@ index 00000000..c33b0a85
 +    botAI->Reset();
 +    ResetReturnPosition();
 +    ResetStayPosition();
-+    botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
-+    botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
++    ApplyLeaderFollowerStrategies(botAI, group);  // Reset() above wipes the leader's own strategies again
 +
 +    // mark self with the star icon: a visible "I'm leading, follow me" signal for the party
 +    group->SetTargetIcon(RtiTargetValue::starIndex, bot->GetGUID(), bot->GetGUID());
@@ -1349,6 +1401,23 @@ index 00000000..c33b0a85
 +    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} START by {} in map={} instance={} (tank={})", bot->GetName(),
 +             master->GetName(), bot->GetMapId(), bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
 +    DungeonLead::RecordEvent(botAI, "start", "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no"));
++
++    // CRITICAL BUG found in live testing, fixed by the reconciliation loop below rather than by
++    // this function: a group leadership change (needed above whenever the tank wasn't already
++    // leader) makes every bot in the group receive SMSG_GROUP_LIST, which the base module's
++    // WorldPacketHandlerStrategy maps straight to ResetAiAction ("reset botAI" - wipes ALL
++    // strategies back to class/spec defaults; see WorldPacketHandlerStrategy.cpp's "group list"
++    // trigger). GroupSetLeaderOperation runs asynchronously on the world thread, and every other
++    // bot processes that packet on ITS OWN AI tick, entirely decoupled from this function's own
++    // timing - so there is no fixed delay (2 seconds, 6 seconds, anything) that is guaranteed long
++    // enough under real conditions (world-thread queue backlog, a slow tick, N bots all reacting
++    // at slightly different times). A single "wait then apply once" fix is just a race condition
++    // with smaller odds, not a fix. See DungeonLead::GuardActiveSessions() (called every ~2s from
++    // PlayerbotsWorldScript::OnUpdate, independent of any bot's own Strategy/Engine state - the
++    // wipe removes the "dungeon lead" strategy object itself, so nothing owned by that strategy
++    // could ever detect or heal its own absence) for the actual, unbounded fix: continuously
++    // reassert the desired strategy state for every active session for as long as it's active, so
++    // this self-heals whenever the external reset actually lands, however long that takes.
 +    return true;
 +}
 +
@@ -1368,10 +1437,10 @@ index 00000000..c33b0a85
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..6e1cbe37
+index 00000000..9c6c1822
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,120 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1408,6 +1477,13 @@ index 00000000..6e1cbe37
 +    bool MasterUnavailable(PlayerbotAI* botAI);
 +    Creature* FindBossNear(PlayerbotAI* botAI, float range);
 +    void CheckCcMark(PlayerbotAI* botAI);
++
++    // Reconciliation loop (see the big comment at its call site in Playerbots.cpp / its definition
++    // in DungeonLeadActions.cpp): continuously re-asserts the desired strategy state for every
++    // active session, for as long as it stays active, to heal an external AI reset regardless of
++    // how long it takes to actually land. Called from PlayerbotsWorldScript::OnUpdate - not tied
++    // to any particular bot's own Strategy/Engine state (which is exactly what can get wiped).
++    void GuardActiveSessions();
 +    void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
 +    // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
 +    // event, detail) - see README "Debugging". Not gated behind "startdungeon debug".
@@ -1690,10 +1766,10 @@ index 00000000..4f0b4148
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
 new file mode 100644
-index 00000000..25b491de
+index 00000000..c1231ed1
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,193 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1819,6 +1895,16 @@ index 00000000..25b491de
 +        it->second.ResetRouteProgress();
 +}
 +
++std::vector<ObjectGuid> DungeonRouteMgr::GetActiveSessionGuids()
++{
++    std::lock_guard<std::mutex> lock(mtx);
++    std::vector<ObjectGuid> guids;
++    guids.reserve(states.size());
++    for (auto const& kv : states)
++        guids.push_back(kv.first);
++    return guids;
++}
++
 +bool DungeonRouteMgr::IsStepKilled(uint32 instanceId, uint32 entry)
 +{
 +    std::lock_guard<std::mutex> lock(mtx);
@@ -1879,10 +1965,10 @@ index 00000000..25b491de
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..57a0357b
+index 00000000..1602591e
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,260 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2115,6 +2201,12 @@ index 00000000..57a0357b
 +    void ResetState(ObjectGuid guid);          // full wipe: real "startdungeon"/"stopdungeon" only
 +    void ResetRouteProgress(ObjectGuid guid);  // route fields only - "startdungeon reset" / re-resolution
 +
++    // Every guid with an entry here is, by definition, an active dungeon-lead session (ResetState()
++    // is the only thing that erases an entry, and that only happens on a real stop). Used by
++    // DungeonLead::GuardActiveSessions() to know which bots' strategy state to keep reasserting -
++    // see that function for why this needs to be unbounded/ongoing rather than a one-shot check.
++    std::vector<ObjectGuid> GetActiveSessionGuids();
++
 +    // Per-instance "already killed" memory: survives a per-bot state reset (startdungeon reset, a
 +    // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never
 +    // walked back to just because its corpse/entity is no longer within probe range or a later
@@ -2305,3 +2397,29 @@ index 769bfba8..2ed2d9d4 100644
      bool autoSaveMana;
      uint32 saveManaThreshold;
      AutoPartyBuffMode autoGreaterBlessings;
+diff --git a/src/Script/Playerbots.cpp b/src/Script/Playerbots.cpp
+index fcea6b8d..e4e575f5 100644
+--- a/src/Script/Playerbots.cpp
++++ b/src/Script/Playerbots.cpp
+@@ -11,6 +11,7 @@
+ #include "Config.h"
+ #include "DatabaseEnv.h"
+ #include "DatabaseLoader.h"
++#include "DungeonLeadActions.h"
+ #include "GuildTaskMgr.h"
+ #include "PlayerScript.h"
+ #include "PlayerbotAIConfig.h"
+@@ -370,6 +371,13 @@ public:
+     {
+         PlayerbotWorldThreadProcessor::instance().Update(diff);
+         sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
++
++        // Dungeon Lead reconciliation loop: continuously re-asserts the desired strategy state for
++        // every active dungeon-lead session (self-throttled internally to ~2s) - see its own
++        // comment in DungeonLeadActions.cpp for why this needs to live here, outside any bot's own
++        // Strategy/Engine state, rather than as a one-shot delay/retry inside the "startdungeon"
++        // action itself.
++        DungeonLead::GuardActiveSessions();
+     }
+ };
+ 
