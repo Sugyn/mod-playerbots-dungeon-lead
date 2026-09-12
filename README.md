@@ -155,8 +155,6 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 ## What is in this repo
 
-## What is in this repo
-
 | path | content |
 |------|---------|
 | `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`b949b50b`) — 8 new files + 11 touched |
