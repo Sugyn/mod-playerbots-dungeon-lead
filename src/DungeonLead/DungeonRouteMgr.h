@@ -52,6 +52,12 @@ struct DungeonLeadState
     bool noRouteTold = false;
     bool doneTold = false;
     uint32 lastWaitLogTs = 0;
+    ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
+    uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
+    bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
+    bool paused = false;             // "startdung pause" / "startdung continue"
+    int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
+    bool debugMode = false;          // "startdung debug": verbose per-wait diagnostics to DungeonLeadDebug.log
     std::vector<uint8> visited;
 
     void Reset() { *this = DungeonLeadState(); }

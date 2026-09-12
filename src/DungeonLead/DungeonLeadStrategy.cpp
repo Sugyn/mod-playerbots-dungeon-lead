@@ -14,7 +14,7 @@ void DungeonLeadStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     // below "attack anything" (4.0, from grind) and food/drink (4.1/4.2): fight and eat first, walk on after
     triggers.push_back(new TriggerNode("dungeon lead idle", { NextAction("dungeon lead next", 3.5f) }));
-    triggers.push_back(new TriggerNode("dungeon lead boss near", { NextAction("dungeon lead mark", 5.0f) }));
+    triggers.push_back(new TriggerNode("dungeon lead boss near", { NextAction("dungeon lead mark", 15.0f) }));  // > ACTION_NORMAL (mark rti), boss keeps the skull over a low-HP add
     triggers.push_back(new TriggerNode("dungeon lead left instance", { NextAction("dungeon lead stop", 9.0f) }));
 }
 
@@ -34,6 +34,8 @@ float DungeonLeadMultiplier::GetValue(Action* action)
     if (!isPull && !isWalk)
         return 1.0f;
 
+    if (sDungeonRouteMgr.State(botAI->GetBot()->GetGUID()).paused)
+        return 0.0f;  // "startdung pause": no new pulls either, not just no walking
     if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
         return 0.0f;
     if (isWalk && DungeonLead::GroupInCombat(botAI))

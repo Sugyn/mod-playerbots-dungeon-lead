@@ -13,12 +13,12 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 ### Wailing Caverns (LFD 1, map 43)
 
 1. **Lady Anacondra** — entry 3671 @ (-67.8, 122.6, -92.8) — Screaming Gully
-2. **Lord Cobrahn** — entry 3669 @ (-151.1, 414.4, -72.6)
-3. **Kresh** *(optional)* — entry 3653 @ (-64.4, 319.1, -106.7) — river turtle
-4. **Lord Pythas** — entry 3670 @ (36.8, -241.1, -79.5)
-5. **Skum** *(optional)* — entry 3674 @ (-285.6, -313, -69.2)
-6. **Lord Serpentis** — entry 3673 @ (-120.2, -24.6, -28.6)
-7. **Verdan the Everliving** *(optional)* — entry 5775 @ (-81.9, 32.3, -31)
+2. **Kresh** *(optional)* — entry 3653 @ (-64.4, 319.1, -106.7) — river turtle
+3. **Verdan the Everliving** *(optional)* — entry 5775 @ (-81.9, 32.3, -31)
+4. **Lord Serpentis** — entry 3673 @ (-120.2, -24.6, -28.6)
+5. **Lord Pythas** — entry 3670 @ (36.8, -241.1, -79.5)
+6. **Skum** *(optional)* — entry 3674 @ (-285.6, -313, -69.2)
+7. **Lord Cobrahn** — entry 3669 @ (-151.1, 414.4, -72.6)
 8. **Disciple of Naralex** **[event]** — entry 3678 @ (-135, 125.4, -78.1) — escort from entrance after 4 Fanglords -> spawns Mutanus
 9. **Mutanus the Devourer** **[event]** `script` — entry 3654 (no static spawn) — script-spawned by escort
 ### Deadmines (LFD 6, map 36)
@@ -57,9 +57,9 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. **Targorr the Dread** — entry 1696 @ (159.6, 1.3, -25.6) — variable cell
 2. **Kam Deepfury** — entry 1666 @ (142.6, -71.9, -34.9) — variable cell
-3. **Dextren Ward** — entry 1663 @ (166.8, 134.8, -33.9) — end of west/left wing
-4. **Hamhock** — entry 1717 @ (105.5, -105.8, -35.1) — east/right wing
-5. **Bazil Thredd** — entry 1716 @ (89.6, -136.9, -33.9) — beyond Hamhock, east wing
+3. **Hamhock** — entry 1717 @ (105.5, -105.8, -35.1) — east/right wing
+4. **Bazil Thredd** — entry 1716 @ (89.6, -136.9, -33.9) — beyond Hamhock, east wing
+5. **Dextren Ward** — entry 1663 @ (166.8, 134.8, -33.9) — end of west/left wing
 6. **Bruegal Ironknuckle** *(optional)* — entry 1720 @ (160.1, 45.7, -34.8) — rare
 ### Gnomeregan (LFD 14, map 90)
 
@@ -74,8 +74,8 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. **Roogug** — entry 6168 @ (2143, 1581.6, 80.4)
 2. **Aggem Thorncurse** — entry 4424 @ (2082.3, 1463.5, 73.2)
-3. **Death Speaker Jargba** — entry 4428 @ (2146.4, 1411.2, 74)
-4. **Overlord Ramtusk** — entry 4420 @ (2203.1, 1640.1, 85.9)
+3. **Overlord Ramtusk** — entry 4420 @ (2203.1, 1640.1, 85.9)
+4. **Death Speaker Jargba** — entry 4428 @ (2146.4, 1411.2, 74)
 5. **Earthcaller Halmgar** *(optional)* — entry 4842 @ (2118.6, 1695.3, 80.3) — rare
 6. **Agathelos the Raging** — entry 4422 @ (1994.4, 1976.4, 63.3)
 7. **Blind Hunter** *(optional)* — entry 4425 @ (2200.8, 1978.2, 56.7) — rare
@@ -146,8 +146,8 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. **Loro** — entry 5714 @ (-466.7, 24.4, -66.8) — Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route
 2. **Gasher** — entry 5713 @ (-528, 59.5, -66.7) — Atal'ai Defender 2/6
-3. **Mijan** — entry 5717 @ (-406.2, 131.1, -66.9) — Atal'ai Defender 3/6
-4. **Zolo** — entry 5712 @ (-528.6, 130.2, -66.8) — Atal'ai Defender 4/6
+3. **Zolo** — entry 5712 @ (-528.6, 130.2, -66.8) — Atal'ai Defender 4/6
+4. **Mijan** — entry 5717 @ (-406.2, 131.1, -66.9) — Atal'ai Defender 3/6
 5. **Zul'Lor** — entry 5716 @ (-467.4, 166, -66.7) — Atal'ai Defender 5/6
 6. **Hukku** — entry 5715 @ (-405.5, 60.5, -67.1) — Atal'ai Defender 6/6 -> Jammal'an shield drops
 7. **Jammal'an the Prophet** — entry 5710 @ (-425.9, -86.1, -88.2) — with Ogom the Wretched
@@ -174,8 +174,8 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. [Upper] **General Angerforge** — entry 9033 @ (652.4, 21.4, -60)
 2. [Upper] **Golem Lord Argelmach** — entry 8983 @ (846.8, 16.3, -53.6)
-3. [Upper] **Phalanx** *(optional)* — entry 9502 @ (869, -225, -43.7) — Grim Guzzler
-4. [Upper] **Ribbly Screwspigot** *(optional)* — entry 9543 @ (878.5, -167.7, -49.7) — Grim Guzzler
+3. [Upper] **Ribbly Screwspigot** *(optional)* — entry 9543 @ (878.5, -167.7, -49.7) — Grim Guzzler
+4. [Upper] **Phalanx** *(optional)* — entry 9502 @ (869, -225, -43.7) — Grim Guzzler
 5. [Upper] **Hurley Blackbreath** *(optional)* — entry 9537 @ (878.1, -153.1, -49.8) — Grim Guzzler
 6. [Upper] **Grim Guzzler back door** **[door]** — Plugger bar fight / Rocknot event
 7. [Upper] **Ambassador Flamelash** — entry 9156 @ (1009.8, -239, -61.3)
@@ -189,8 +189,8 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 2. **Shadow Hunter Vosh'gajin** — entry 9236 @ (-121.2, -482.2, 24.7)
 3. **War Master Voone** — entry 9237 @ (-17, -459.1, -18.6)
 4. **Mother Smolderweb** — entry 10596 @ (-135.5, -565.8, 10.2)
-5. **Quartermaster Zigris** — entry 9736 @ (-190.5, -475.6, 87.4)
-6. **Halycon** *(optional)* — entry 10220 @ (-193.9, -338.1, 64.5)
+5. **Halycon** *(optional)* — entry 10220 @ (-193.9, -338.1, 64.5)
+6. **Quartermaster Zigris** — entry 9736 @ (-190.5, -475.6, 87.4)
 7. **Gizrul the Slavener** *(optional)* `script` — entry 10268 (no static spawn) — spawns after Halycon
 8. **Overlord Wyrmthalak** — entry 9568 @ (-22.6, -486.2, 90.8)
 ### Scholomance (LFD 2, map 289)
@@ -201,13 +201,13 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 4. **Viewing Room door** **[door]** — Rattlegore key
 5. **Marduk Blackpool** — entry 10433 @ (150.4, 116.2, 104.7)
 6. **Vectus** — entry 10432 @ (143.5, 99.1, 104.7)
-7. **Ras Frostwhisper** — entry 10508 @ (-25.1, 141.3, 83.9)
-8. **Instructor Malicia** — entry 10505 @ (86.7, -2, 85.3)
-9. **Doctor Theolen Krastinov** — entry 11261 @ (182.2, -95.4, 85.3)
-10. **Lorekeeper Polkelt** — entry 10901 @ (274.9, 1.3, 85.3)
-11. **The Ravenian** — entry 10507 @ (103.3, -1.7, 75.2)
-12. **Lord Alexei Barov** — entry 10504 @ (178.7, -91, 70.9)
-13. **Lady Illucia Barov** — entry 10502 @ (266, 0.9, 75.3)
+7. **The Ravenian** — entry 10507 @ (103.3, -1.7, 75.2)
+8. **Lord Alexei Barov** — entry 10504 @ (178.7, -91, 70.9)
+9. **Instructor Malicia** — entry 10505 @ (86.7, -2, 85.3)
+10. **Doctor Theolen Krastinov** — entry 11261 @ (182.2, -95.4, 85.3)
+11. **Lorekeeper Polkelt** — entry 10901 @ (274.9, 1.3, 85.3)
+12. **Lady Illucia Barov** — entry 10502 @ (266, 0.9, 75.3)
+13. **Ras Frostwhisper** — entry 10508 @ (-25.1, 141.3, 83.9)
 14. **Darkmaster Gandling** **[event]** — entry 1853 @ (180.8, -5.4, 75.6) — spawns after all six
 ### Stratholme - Main Gate (LFD 40, map 329)
 
@@ -277,8 +277,8 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 ### Hellfire Ramparts (LFD 136, map 543, heroic LFD 188)
 
 1. **Watchkeeper Gargolmar** — entry 17306 @ (-1187.2, 1530.5, 68.5)
-2. **Omor the Unscarred** — entry 17308 @ (-1122.3, 1718.4, 89.4)
-3. **Vazruden the Herald** — entry 17307 @ (-1378.5, 1698.2, 104.1) — Nazan lands after Vazruden dismounts (script)
+2. **Vazruden the Herald** — entry 17307 @ (-1378.5, 1698.2, 104.1) — Nazan lands after Vazruden dismounts (script)
+3. **Omor the Unscarred** — entry 17308 @ (-1122.3, 1718.4, 89.4)
 ### Blood Furnace (LFD 137, map 542, heroic LFD 187)
 
 1. **The Maker** — entry 17381 @ (327.2, 137.8, 9.6)
@@ -329,23 +329,23 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 ### The Mechanar (LFD 172, map 554, heroic LFD 192)
 
 1. **Gatewatcher Gyro-Kill** — entry 19218 @ (85.5, 20.2, 15)
-2. **Gatewatcher Iron-Hand** — entry 19710 @ (181.9, -77.1, 0)
+2. **Nethermancer Sepethrea** *(optional)* — entry 19221 @ (326.5, 13.2, 27.9)
 3. **Mechano-Lord Capacitus** *(optional)* — entry 19219 @ (208.2, -13, -2.1)
-4. **Nethermancer Sepethrea** *(optional)* — entry 19221 @ (326.5, 13.2, 27.9)
+4. **Gatewatcher Iron-Hand** — entry 19710 @ (181.9, -77.1, 0)
 5. **Elevator** **[door]** — after both gatewatchers
 6. **Pathaleon the Calculator** — entry 19220 @ (139.5, 149.3, 25.7)
 ### The Botanica (LFD 173, map 553, heroic LFD 191)
 
 1. **Commander Sarannis** *(optional)* — entry 17976 @ (151, 296, -4.6)
-2. **High Botanist Freywinn** *(optional)* — entry 17975 @ (116.3, 455.6, -4.9)
-3. **Thorngrin the Tender** *(optional)* — entry 17978 @ (4.9, 596.6, -15.1)
-4. **Laj** *(optional)* — entry 17980 @ (-204.1, 391.2, -11.2)
-5. **Warp Splinter** — entry 17977 @ (63.8, 391.9, -27.9)
+2. **Warp Splinter** — entry 17977 @ (63.8, 391.9, -27.9)
+3. **Laj** *(optional)* — entry 17980 @ (-204.1, 391.2, -11.2)
+4. **Thorngrin the Tender** *(optional)* — entry 17978 @ (4.9, 596.6, -15.1)
+5. **High Botanist Freywinn** *(optional)* — entry 17975 @ (116.3, 455.6, -4.9)
 ### The Arcatraz (LFD 174, map 552, heroic LFD 190)
 
 1. **Zereketh the Unbound** — entry 20870 @ (273.6, -123, -10)
-2. **Dalliah the Doomsayer** — entry 20885 @ (137.2, 128.5, 22.5)
-3. **Wrath-Scryer Soccothrates** — entry 20886 @ (136.2, 168.3, 22.5)
+2. **Wrath-Scryer Soccothrates** — entry 20886 @ (136.2, 168.3, 22.5)
+3. **Dalliah the Doomsayer** — entry 20885 @ (137.2, 128.5, 22.5)
 4. **Warden Mellichar** **[event]** — entry 20904 @ (445.8, -169, 43.6) — cell event -> Harbinger Skyriss
 5. **Harbinger Skyriss** **[event]** `script` — entry 20912 (no static spawn) — script-spawned
 ### The Escape From Durnholde (LFD 170, map 560, heroic LFD 183)
@@ -422,8 +422,8 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 ### Ahn'kahet: The Old Kingdom (LFD 218, map 619, heroic LFD 219)
 
 1. **Elder Nadox** *(optional)* — entry 29309 @ (679.9, -905.5, 25.7)
-2. **Prince Taldaram** — entry 29308 @ (528.7, -846, 42) — 2 spheres open door
-3. **Jedoga Shadowseeker** *(optional)* — entry 29310 @ (372.3, -705.3, -0.6)
+2. **Jedoga Shadowseeker** *(optional)* — entry 29310 @ (372.3, -705.3, -0.6)
+3. **Prince Taldaram** — entry 29308 @ (528.7, -846, 42) — 2 spheres open door
 5. **Herald Volazj** — entry 29311 @ (519.9, -441.8, 26.4)
 ### The Forge of Souls (LFD 251, map 632, heroic LFD 252)
 

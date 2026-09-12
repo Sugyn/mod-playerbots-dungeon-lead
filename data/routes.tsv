@@ -8,12 +8,12 @@
 4	-	4	boss	Bazzalan	upper walkway
 # Wailing Caverns (src: warcraft.wiki.gg/Wailing_Caverns)
 1	-	1	boss	Lady Anacondra	Screaming Gully
-1	-	2	boss	Lord Cobrahn
-1	-	3	optional	Kresh	river turtle
-1	-	4	boss	Lord Pythas
-1	-	5	optional	Skum
-1	-	6	boss	Lord Serpentis
-1	-	7	optional	Verdan the Everliving
+1	-	2	optional	Kresh	river turtle
+1	-	3	optional	Verdan the Everliving
+1	-	4	boss	Lord Serpentis
+1	-	5	boss	Lord Pythas
+1	-	6	optional	Skum
+1	-	7	boss	Lord Cobrahn
 1	-	8	event	Disciple of Naralex	escort from entrance after 4 Fanglords -> spawns Mutanus
 1	-	9	event	Mutanus the Devourer	script-spawned by escort
 # Deadmines (src: warcraft.wiki.gg/Deadmines_(Classic))
@@ -48,9 +48,9 @@
 # Stormwind Stockade (src: warcraft.wiki.gg/Stormwind_Stockade_(Classic); Targorr and Kam have variable spawn locations (several cells) and the dungeon branches into east/west wings, so encounter order may vary. Listed: west wing first.)
 12	-	1	boss	Targorr the Dread	variable cell
 12	-	2	boss	Kam Deepfury	variable cell
-12	-	3	boss	Dextren Ward	end of west/left wing
-12	-	4	boss	Hamhock	east/right wing
-12	-	5	boss	Bazil Thredd	beyond Hamhock, east wing
+12	-	3	boss	Hamhock	east/right wing
+12	-	4	boss	Bazil Thredd	beyond Hamhock, east wing
+12	-	5	boss	Dextren Ward	end of west/left wing
 12	-	6	optional	Bruegal Ironknuckle	rare
 # Gnomeregan (src: warcraft.wiki.gg/Gnomeregan_(instance))
 14	-	1	optional	Viscous Fallout	Hall of Gears
@@ -63,8 +63,8 @@
 # Razorfen Kraul (src: warcraft.wiki.gg/Razorfen_Kraul_(Classic))
 16	-	1	boss	Roogug
 16	-	2	boss	Aggem Thorncurse
-16	-	3	boss	Death Speaker Jargba
-16	-	4	boss	Overlord Ramtusk
+16	-	3	boss	Overlord Ramtusk
+16	-	4	boss	Death Speaker Jargba
 16	-	5	optional	Earthcaller Halmgar	rare
 16	-	6	boss	Agathelos the Raging
 16	-	7	optional	Blind Hunter	rare
@@ -119,8 +119,8 @@
 # Sunken Temple (src: warcraft.wiki.gg/Temple_of_Atal'Hakkar_(Classic))
 28	-	1	boss	Loro	Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route
 28	-	2	boss	Gasher	Atal'ai Defender 2/6
-28	-	3	boss	Mijan	Atal'ai Defender 3/6
-28	-	4	boss	Zolo	Atal'ai Defender 4/6
+28	-	3	boss	Zolo	Atal'ai Defender 4/6
+28	-	4	boss	Mijan	Atal'ai Defender 3/6
 28	-	5	boss	Zul'Lor	Atal'ai Defender 5/6
 28	-	6	boss	Hukku	Atal'ai Defender 6/6 -> Jammal'an shield drops
 28	-	7	boss	Jammal'an the Prophet	with Ogom the Wretched
@@ -145,8 +145,8 @@
 # Blackrock Depths Upper City (src: icy-veins.com/wow-classic/blackrock-depths-upper-city-dungeon-guide)
 276	Upper	1	boss	General Angerforge
 276	Upper	2	boss	Golem Lord Argelmach
-276	Upper	3	optional	Phalanx	Grim Guzzler
-276	Upper	4	optional	Ribbly Screwspigot	Grim Guzzler
+276	Upper	3	optional	Ribbly Screwspigot	Grim Guzzler
+276	Upper	4	optional	Phalanx	Grim Guzzler
 276	Upper	5	optional	Hurley Blackbreath	Grim Guzzler
 276	Upper	6	door	Grim Guzzler back door	Plugger bar fight / Rocknot event
 276	Upper	7	boss	Ambassador Flamelash
@@ -159,8 +159,8 @@
 32	-	2	boss	Shadow Hunter Vosh'gajin
 32	-	3	boss	War Master Voone
 32	-	4	boss	Mother Smolderweb
-32	-	5	boss	Quartermaster Zigris
-32	-	6	optional	Halycon
+32	-	5	optional	Halycon
+32	-	6	boss	Quartermaster Zigris
 32	-	7	optional	Gizrul the Slavener	spawns after Halycon
 32	-	8	boss	Overlord Wyrmthalak
 # Scholomance (src: warcraft.wiki.gg/Scholomance_(Classic))
@@ -170,13 +170,13 @@
 2	-	4	door	Viewing Room door	Rattlegore key
 2	-	5	boss	Marduk Blackpool
 2	-	6	boss	Vectus
-2	-	7	boss	Ras Frostwhisper
-2	-	8	boss	Instructor Malicia
-2	-	9	boss	Doctor Theolen Krastinov
-2	-	10	boss	Lorekeeper Polkelt
-2	-	11	boss	The Ravenian
-2	-	12	boss	Lord Alexei Barov
-2	-	13	boss	Lady Illucia Barov
+2	-	7	boss	The Ravenian
+2	-	8	boss	Lord Alexei Barov
+2	-	9	boss	Instructor Malicia
+2	-	10	boss	Doctor Theolen Krastinov
+2	-	11	boss	Lorekeeper Polkelt
+2	-	12	boss	Lady Illucia Barov
+2	-	13	boss	Ras Frostwhisper
 2	-	14	event	Darkmaster Gandling	spawns after all six
 # Stratholme Main Gate / Live (src: icy-veins.com/wow-classic/stratholme-live-dungeon-guide)
 40	Live	1	optional	Timmy the Cruel	script-spawned in Market Row
@@ -225,8 +225,8 @@
 288	-	1	event	Apothecary Hummel	Love is in the Air only
 # ===================== TBC (normal ids; heroics derived by map) =====================
 136	-	1	boss	Watchkeeper Gargolmar
-136	-	2	boss	Omor the Unscarred
-136	-	3	boss	Vazruden the Herald	Nazan lands after Vazruden dismounts (script)
+136	-	2	boss	Vazruden the Herald	Nazan lands after Vazruden dismounts (script)
+136	-	3	boss	Omor the Unscarred
 137	-	1	boss	The Maker
 137	-	2	event	Broggok	cell waves lever
 137	-	3	boss	Keli'dan the Breaker	channelers first
@@ -260,19 +260,19 @@
 151	-	3	boss	Grandmaster Vorpil
 151	-	4	boss	Murmur
 172	-	1	boss	Gatewatcher Gyro-Kill
-172	-	2	boss	Gatewatcher Iron-Hand
+172	-	2	optional	Nethermancer Sepethrea
 172	-	3	optional	Mechano-Lord Capacitus
-172	-	4	optional	Nethermancer Sepethrea
+172	-	4	boss	Gatewatcher Iron-Hand
 172	-	5	door	Elevator	after both gatewatchers
 172	-	6	boss	Pathaleon the Calculator
 173	-	1	optional	Commander Sarannis
-173	-	2	optional	High Botanist Freywinn
-173	-	3	optional	Thorngrin the Tender
-173	-	4	optional	Laj
-173	-	5	boss	Warp Splinter
+173	-	2	boss	Warp Splinter
+173	-	3	optional	Laj
+173	-	4	optional	Thorngrin the Tender
+173	-	5	optional	High Botanist Freywinn
 174	-	1	boss	Zereketh the Unbound
-174	-	2	boss	Dalliah the Doomsayer
-174	-	3	boss	Wrath-Scryer Soccothrates
+174	-	2	boss	Wrath-Scryer Soccothrates
+174	-	3	boss	Dalliah the Doomsayer
 174	-	4	event	Warden Mellichar	cell event -> Harbinger Skyriss
 174	-	5	event	Harbinger Skyriss	script-spawned
 170	-	1	skip	Escape from Durnholde	event dungeon: barrels -> Lieutenant Drake -> Captain Skarloc -> Thrall escort -> Epoch Hunter
@@ -320,8 +320,8 @@
 216	-	6	heroic_only	Eck the Ferocious
 220	-	1	skip	The Violet Hold	event dungeon: 18 waves, 2 random of Erekem/Moragg/Ichoron/Xevozz/Lavanthor/Zuramat, Cyanigosa
 218	-	1	optional	Elder Nadox
-218	-	2	boss	Prince Taldaram	2 spheres open door
-218	-	3	optional	Jedoga Shadowseeker
+218	-	2	optional	Jedoga Shadowseeker
+218	-	3	boss	Prince Taldaram	2 spheres open door
 218	-	4	heroic_only	Amanitar
 218	-	5	boss	Herald Volazj
 251	-	1	boss	Bronjahm

@@ -4,12 +4,12 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 4,Ragefire Chasm,389,0,0,-,3,boss,Jergosh the Invoker,11518,-376.8,209.2,-21.8,spawn,
 4,Ragefire Chasm,389,0,0,-,4,boss,Bazzalan,11519,-384.9,146,7.8,spawn,upper walkway
 1,Wailing Caverns,43,0,0,-,1,boss,Lady Anacondra,3671,-67.8,122.6,-92.8,spawn,Screaming Gully
-1,Wailing Caverns,43,0,0,-,2,boss,Lord Cobrahn,3669,-151.1,414.4,-72.6,spawn,
-1,Wailing Caverns,43,0,0,-,3,optional,Kresh,3653,-64.4,319.1,-106.7,spawn,river turtle
-1,Wailing Caverns,43,0,0,-,4,boss,Lord Pythas,3670,36.8,-241.1,-79.5,spawn,
-1,Wailing Caverns,43,0,0,-,5,optional,Skum,3674,-285.6,-313,-69.2,spawn,
-1,Wailing Caverns,43,0,0,-,6,boss,Lord Serpentis,3673,-120.2,-24.6,-28.6,spawn,
-1,Wailing Caverns,43,0,0,-,7,optional,Verdan the Everliving,5775,-81.9,32.3,-31,spawn,
+1,Wailing Caverns,43,0,0,-,2,optional,Kresh,3653,-64.4,319.1,-106.7,spawn,river turtle
+1,Wailing Caverns,43,0,0,-,3,optional,Verdan the Everliving,5775,-81.9,32.3,-31,spawn,
+1,Wailing Caverns,43,0,0,-,4,boss,Lord Serpentis,3673,-120.2,-24.6,-28.6,spawn,
+1,Wailing Caverns,43,0,0,-,5,boss,Lord Pythas,3670,36.8,-241.1,-79.5,spawn,
+1,Wailing Caverns,43,0,0,-,6,optional,Skum,3674,-285.6,-313,-69.2,spawn,
+1,Wailing Caverns,43,0,0,-,7,boss,Lord Cobrahn,3669,-151.1,414.4,-72.6,spawn,
 1,Wailing Caverns,43,0,0,-,8,event,Disciple of Naralex,3678,-135,125.4,-78.1,spawn,escort from entrance after 4 Fanglords -> spawns Mutanus
 1,Wailing Caverns,43,0,0,-,9,event,Mutanus the Devourer,3654,NULL,NULL,NULL,script,script-spawned by escort
 6,Deadmines,36,0,0,-,1,boss,Rhahk'Zor,644,-192.9,-448.2,54.4,spawn,
@@ -40,9 +40,9 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 10,Blackfathom Deeps,48,0,0,-,9,event,Aku'mai,4829,-848.4,-453.9,-33.9,spawn,script-spawned
 12,Stormwind Stockade,34,0,0,-,1,boss,Targorr the Dread,1696,159.6,1.3,-25.6,spawn,variable cell
 12,Stormwind Stockade,34,0,0,-,2,boss,Kam Deepfury,1666,142.6,-71.9,-34.9,spawn,variable cell
-12,Stormwind Stockade,34,0,0,-,3,boss,Dextren Ward,1663,166.8,134.8,-33.9,spawn,end of west/left wing
-12,Stormwind Stockade,34,0,0,-,4,boss,Hamhock,1717,105.5,-105.8,-35.1,spawn,east/right wing
-12,Stormwind Stockade,34,0,0,-,5,boss,Bazil Thredd,1716,89.6,-136.9,-33.9,spawn,"beyond Hamhock, east wing"
+12,Stormwind Stockade,34,0,0,-,3,boss,Hamhock,1717,105.5,-105.8,-35.1,spawn,east/right wing
+12,Stormwind Stockade,34,0,0,-,4,boss,Bazil Thredd,1716,89.6,-136.9,-33.9,spawn,"beyond Hamhock, east wing"
+12,Stormwind Stockade,34,0,0,-,5,boss,Dextren Ward,1663,166.8,134.8,-33.9,spawn,end of west/left wing
 12,Stormwind Stockade,34,0,0,-,6,optional,Bruegal Ironknuckle,1720,160.1,45.7,-34.8,spawn,rare
 14,Gnomeregan,90,0,0,-,1,optional,Viscous Fallout,7079,-471.4,48.5,-208,spawn,Hall of Gears
 14,Gnomeregan,90,0,0,-,2,event,Blastmaster Emi Shortfuse,7998,-514.9,-138.5,-152.4,spawn,Grubbis event (script-spawned Grubbis)
@@ -53,8 +53,8 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 14,Gnomeregan,90,0,0,-,7,boss,Mekgineer Thermaplugg,7800,-531.3,670.2,-325.2,spawn,buttons must be pressed during fight (scripted)
 16,Razorfen Kraul,47,0,0,-,1,boss,Roogug,6168,2143,1581.6,80.4,spawn,
 16,Razorfen Kraul,47,0,0,-,2,boss,Aggem Thorncurse,4424,2082.3,1463.5,73.2,spawn,
-16,Razorfen Kraul,47,0,0,-,3,boss,Death Speaker Jargba,4428,2146.4,1411.2,74,spawn,
-16,Razorfen Kraul,47,0,0,-,4,boss,Overlord Ramtusk,4420,2203.1,1640.1,85.9,spawn,
+16,Razorfen Kraul,47,0,0,-,3,boss,Overlord Ramtusk,4420,2203.1,1640.1,85.9,spawn,
+16,Razorfen Kraul,47,0,0,-,4,boss,Death Speaker Jargba,4428,2146.4,1411.2,74,spawn,
 16,Razorfen Kraul,47,0,0,-,5,optional,Earthcaller Halmgar,4842,2118.6,1695.3,80.3,spawn,rare
 16,Razorfen Kraul,47,0,0,-,6,boss,Agathelos the Raging,4422,1994.4,1976.4,63.3,spawn,
 16,Razorfen Kraul,47,0,0,-,7,optional,Blind Hunter,4425,2200.8,1978.2,56.7,spawn,rare
@@ -103,8 +103,8 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 273,Maraudon - Pristine Waters,349,0,0,Earth Song Falls,5,boss,Princess Theradras,12201,27.9,83.2,-124.5,spawn,
 28,Sunken Temple,109,0,0,-,1,boss,Loro,5714,-466.7,24.4,-66.8,spawn,"Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route"
 28,Sunken Temple,109,0,0,-,2,boss,Gasher,5713,-528,59.5,-66.7,spawn,Atal'ai Defender 2/6
-28,Sunken Temple,109,0,0,-,3,boss,Mijan,5717,-406.2,131.1,-66.9,spawn,Atal'ai Defender 3/6
-28,Sunken Temple,109,0,0,-,4,boss,Zolo,5712,-528.6,130.2,-66.8,spawn,Atal'ai Defender 4/6
+28,Sunken Temple,109,0,0,-,3,boss,Zolo,5712,-528.6,130.2,-66.8,spawn,Atal'ai Defender 4/6
+28,Sunken Temple,109,0,0,-,4,boss,Mijan,5717,-406.2,131.1,-66.9,spawn,Atal'ai Defender 3/6
 28,Sunken Temple,109,0,0,-,5,boss,Zul'Lor,5716,-467.4,166,-66.7,spawn,Atal'ai Defender 5/6
 28,Sunken Temple,109,0,0,-,6,boss,Hukku,5715,-405.5,60.5,-67.1,spawn,Atal'ai Defender 6/6 -> Jammal'an shield drops
 28,Sunken Temple,109,0,0,-,7,boss,Jammal'an the Prophet,5710,-425.9,-86.1,-88.2,spawn,with Ogom the Wretched
@@ -127,8 +127,8 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 30,Blackrock Depths - Prison,230,0,0,Prison,10,optional,Watchman Doomgrip,9476,NULL,NULL,NULL,script,event: spawns when relic coffers are opened (12 keys)
 276,Blackrock Depths - Upper City,230,0,0,Upper,1,boss,General Angerforge,9033,652.4,21.4,-60,spawn,
 276,Blackrock Depths - Upper City,230,0,0,Upper,2,boss,Golem Lord Argelmach,8983,846.8,16.3,-53.6,spawn,
-276,Blackrock Depths - Upper City,230,0,0,Upper,3,optional,Phalanx,9502,869,-225,-43.7,spawn,Grim Guzzler
-276,Blackrock Depths - Upper City,230,0,0,Upper,4,optional,Ribbly Screwspigot,9543,878.5,-167.7,-49.7,spawn,Grim Guzzler
+276,Blackrock Depths - Upper City,230,0,0,Upper,3,optional,Ribbly Screwspigot,9543,878.5,-167.7,-49.7,spawn,Grim Guzzler
+276,Blackrock Depths - Upper City,230,0,0,Upper,4,optional,Phalanx,9502,869,-225,-43.7,spawn,Grim Guzzler
 276,Blackrock Depths - Upper City,230,0,0,Upper,5,optional,Hurley Blackbreath,9537,878.1,-153.1,-49.8,spawn,Grim Guzzler
 276,Blackrock Depths - Upper City,230,0,0,Upper,6,door,Grim Guzzler back door,,,,,-,Plugger bar fight / Rocknot event
 276,Blackrock Depths - Upper City,230,0,0,Upper,7,boss,Ambassador Flamelash,9156,1009.8,-239,-61.3,spawn,
@@ -140,8 +140,8 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 32,Lower Blackrock Spire,229,0,0,-,2,boss,Shadow Hunter Vosh'gajin,9236,-121.2,-482.2,24.7,spawn,
 32,Lower Blackrock Spire,229,0,0,-,3,boss,War Master Voone,9237,-17,-459.1,-18.6,spawn,
 32,Lower Blackrock Spire,229,0,0,-,4,boss,Mother Smolderweb,10596,-135.5,-565.8,10.2,spawn,
-32,Lower Blackrock Spire,229,0,0,-,5,boss,Quartermaster Zigris,9736,-190.5,-475.6,87.4,spawn,
-32,Lower Blackrock Spire,229,0,0,-,6,optional,Halycon,10220,-193.9,-338.1,64.5,spawn,
+32,Lower Blackrock Spire,229,0,0,-,5,optional,Halycon,10220,-193.9,-338.1,64.5,spawn,
+32,Lower Blackrock Spire,229,0,0,-,6,boss,Quartermaster Zigris,9736,-190.5,-475.6,87.4,spawn,
 32,Lower Blackrock Spire,229,0,0,-,7,optional,Gizrul the Slavener,10268,NULL,NULL,NULL,script,spawns after Halycon
 32,Lower Blackrock Spire,229,0,0,-,8,boss,Overlord Wyrmthalak,9568,-22.6,-486.2,90.8,spawn,
 2,Scholomance,289,0,0,-,1,optional,Kirtonos the Herald,10506,NULL,NULL,NULL,script,summon (Blood of Innocents)
@@ -150,13 +150,13 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 2,Scholomance,289,0,0,-,4,door,Viewing Room door,,,,,-,Rattlegore key
 2,Scholomance,289,0,0,-,5,boss,Marduk Blackpool,10433,150.4,116.2,104.7,spawn,
 2,Scholomance,289,0,0,-,6,boss,Vectus,10432,143.5,99.1,104.7,spawn,
-2,Scholomance,289,0,0,-,7,boss,Ras Frostwhisper,10508,-25.1,141.3,83.9,spawn,
-2,Scholomance,289,0,0,-,8,boss,Instructor Malicia,10505,86.7,-2,85.3,spawn,
-2,Scholomance,289,0,0,-,9,boss,Doctor Theolen Krastinov,11261,182.2,-95.4,85.3,spawn,
-2,Scholomance,289,0,0,-,10,boss,Lorekeeper Polkelt,10901,274.9,1.3,85.3,spawn,
-2,Scholomance,289,0,0,-,11,boss,The Ravenian,10507,103.3,-1.7,75.2,spawn,
-2,Scholomance,289,0,0,-,12,boss,Lord Alexei Barov,10504,178.7,-91,70.9,spawn,
-2,Scholomance,289,0,0,-,13,boss,Lady Illucia Barov,10502,266,0.9,75.3,spawn,
+2,Scholomance,289,0,0,-,7,boss,The Ravenian,10507,103.3,-1.7,75.2,spawn,
+2,Scholomance,289,0,0,-,8,boss,Lord Alexei Barov,10504,178.7,-91,70.9,spawn,
+2,Scholomance,289,0,0,-,9,boss,Instructor Malicia,10505,86.7,-2,85.3,spawn,
+2,Scholomance,289,0,0,-,10,boss,Doctor Theolen Krastinov,11261,182.2,-95.4,85.3,spawn,
+2,Scholomance,289,0,0,-,11,boss,Lorekeeper Polkelt,10901,274.9,1.3,85.3,spawn,
+2,Scholomance,289,0,0,-,12,boss,Lady Illucia Barov,10502,266,0.9,75.3,spawn,
+2,Scholomance,289,0,0,-,13,boss,Ras Frostwhisper,10508,-25.1,141.3,83.9,spawn,
 2,Scholomance,289,0,0,-,14,event,Darkmaster Gandling,1853,180.8,-5.4,75.6,spawn,spawns after all six
 40,Stratholme - Main Gate,329,0,0,Live,1,optional,Timmy the Cruel,10808,3614.7,-3187.6,131.4,spawn,script-spawned in Market Row
 40,Stratholme - Main Gate,329,0,0,Live,2,optional,The Unforgiven,10516,3719.8,-3426.2,131.8,spawn,
@@ -200,8 +200,8 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 286,The Frost Lord Ahune,547,0,1,-,1,event,Lord Ahune,,,,,unknown,Midsummer only
 288,The Crown Chemical Co.,33,0,0,-,1,event,Apothecary Hummel,36296,-208.1,2217.4,79.8,spawn,Love is in the Air only
 136,Hellfire Ramparts,543,0,1,-,1,boss,Watchkeeper Gargolmar,17306,-1187.2,1530.5,68.5,spawn,
-136,Hellfire Ramparts,543,0,1,-,2,boss,Omor the Unscarred,17308,-1122.3,1718.4,89.4,spawn,
-136,Hellfire Ramparts,543,0,1,-,3,boss,Vazruden the Herald,17307,-1378.5,1698.2,104.1,spawn,Nazan lands after Vazruden dismounts (script)
+136,Hellfire Ramparts,543,0,1,-,2,boss,Vazruden the Herald,17307,-1378.5,1698.2,104.1,spawn,Nazan lands after Vazruden dismounts (script)
+136,Hellfire Ramparts,543,0,1,-,3,boss,Omor the Unscarred,17308,-1122.3,1718.4,89.4,spawn,
 137,Blood Furnace,542,0,1,-,1,boss,The Maker,17381,327.2,137.8,9.6,spawn,
 137,Blood Furnace,542,0,1,-,2,event,Broggok,17380,455.3,-1.8,9.6,spawn,cell waves lever
 137,Blood Furnace,542,0,1,-,3,boss,Keli'dan the Breaker,17377,326.5,-86,-24.6,spawn,channelers first
@@ -232,19 +232,19 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 151,Shadow Labyrinth,555,0,1,-,3,boss,Grandmaster Vorpil,18732,-253.5,-263.6,17.2,spawn,
 151,Shadow Labyrinth,555,0,1,-,4,boss,Murmur,18708,-157.9,-497.3,15.9,spawn,
 172,The Mechanar,554,0,1,-,1,boss,Gatewatcher Gyro-Kill,19218,85.5,20.2,15,spawn,
-172,The Mechanar,554,0,1,-,2,boss,Gatewatcher Iron-Hand,19710,181.9,-77.1,0,spawn,
+172,The Mechanar,554,0,1,-,2,optional,Nethermancer Sepethrea,19221,326.5,13.2,27.9,spawn,
 172,The Mechanar,554,0,1,-,3,optional,Mechano-Lord Capacitus,19219,208.2,-13,-2.1,spawn,
-172,The Mechanar,554,0,1,-,4,optional,Nethermancer Sepethrea,19221,326.5,13.2,27.9,spawn,
+172,The Mechanar,554,0,1,-,4,boss,Gatewatcher Iron-Hand,19710,181.9,-77.1,0,spawn,
 172,The Mechanar,554,0,1,-,5,door,Elevator,,,,,-,after both gatewatchers
 172,The Mechanar,554,0,1,-,6,boss,Pathaleon the Calculator,19220,139.5,149.3,25.7,spawn,
 173,The Botanica,553,0,1,-,1,optional,Commander Sarannis,17976,151,296,-4.6,spawn,
-173,The Botanica,553,0,1,-,2,optional,High Botanist Freywinn,17975,116.3,455.6,-4.9,spawn,
-173,The Botanica,553,0,1,-,3,optional,Thorngrin the Tender,17978,4.9,596.6,-15.1,spawn,
-173,The Botanica,553,0,1,-,4,optional,Laj,17980,-204.1,391.2,-11.2,spawn,
-173,The Botanica,553,0,1,-,5,boss,Warp Splinter,17977,63.8,391.9,-27.9,spawn,
+173,The Botanica,553,0,1,-,2,boss,Warp Splinter,17977,63.8,391.9,-27.9,spawn,
+173,The Botanica,553,0,1,-,3,optional,Laj,17980,-204.1,391.2,-11.2,spawn,
+173,The Botanica,553,0,1,-,4,optional,Thorngrin the Tender,17978,4.9,596.6,-15.1,spawn,
+173,The Botanica,553,0,1,-,5,optional,High Botanist Freywinn,17975,116.3,455.6,-4.9,spawn,
 174,The Arcatraz,552,0,1,-,1,boss,Zereketh the Unbound,20870,273.6,-123,-10,spawn,
-174,The Arcatraz,552,0,1,-,2,boss,Dalliah the Doomsayer,20885,137.2,128.5,22.5,spawn,
-174,The Arcatraz,552,0,1,-,3,boss,Wrath-Scryer Soccothrates,20886,136.2,168.3,22.5,spawn,
+174,The Arcatraz,552,0,1,-,2,boss,Wrath-Scryer Soccothrates,20886,136.2,168.3,22.5,spawn,
+174,The Arcatraz,552,0,1,-,3,boss,Dalliah the Doomsayer,20885,137.2,128.5,22.5,spawn,
 174,The Arcatraz,552,0,1,-,4,event,Warden Mellichar,20904,445.8,-169,43.6,spawn,cell event -> Harbinger Skyriss
 174,The Arcatraz,552,0,1,-,5,event,Harbinger Skyriss,20912,NULL,NULL,NULL,script,script-spawned
 170,The Escape From Durnholde,560,0,1,-,1,skip,Escape from Durnholde,,,,,-,event dungeon: barrels -> Lieutenant Drake -> Captain Skarloc -> Thrall escort -> Epoch Hunter
@@ -289,8 +289,8 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 216,Gundrak,604,0,2,-,5,boss,Gal'darah,29306,1914.8,743.7,136.6,spawn,
 220,Violet Hold,608,0,2,-,1,skip,The Violet Hold,,,,,-,"event dungeon: 18 waves, 2 random of Erekem/Moragg/Ichoron/Xevozz/Lavanthor/Zuramat, Cyanigosa"
 218,Ahn'kahet: The Old Kingdom,619,0,2,-,1,optional,Elder Nadox,29309,679.9,-905.5,25.7,spawn,
-218,Ahn'kahet: The Old Kingdom,619,0,2,-,2,boss,Prince Taldaram,29308,528.7,-846,42,spawn,2 spheres open door
-218,Ahn'kahet: The Old Kingdom,619,0,2,-,3,optional,Jedoga Shadowseeker,29310,372.3,-705.3,-0.6,spawn,
+218,Ahn'kahet: The Old Kingdom,619,0,2,-,2,optional,Jedoga Shadowseeker,29310,372.3,-705.3,-0.6,spawn,
+218,Ahn'kahet: The Old Kingdom,619,0,2,-,3,boss,Prince Taldaram,29308,528.7,-846,42,spawn,2 spheres open door
 218,Ahn'kahet: The Old Kingdom,619,0,2,-,5,boss,Herald Volazj,29311,519.9,-441.8,26.4,spawn,
 251,The Forge of Souls,632,0,2,-,1,boss,Bronjahm,36497,5297.3,2506.5,686.2,spawn,
 251,The Forge of Souls,632,0,2,-,2,boss,Devourer of Souls,36502,5661.8,2507.4,708.9,spawn,
@@ -330,27 +330,27 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 187,Blood Furnace,542,1,1,-,2,event,Broggok,17380,455.3,-1.8,9.6,spawn,cell waves lever
 187,Blood Furnace,542,1,1,-,3,boss,Keli'dan the Breaker,17377,326.5,-86,-24.6,spawn,channelers first
 188,Hellfire Ramparts,543,1,1,-,1,boss,Watchkeeper Gargolmar,17306,-1187.2,1530.5,68.5,spawn,
-188,Hellfire Ramparts,543,1,1,-,2,boss,Omor the Unscarred,17308,-1122.3,1718.4,89.4,spawn,
-188,Hellfire Ramparts,543,1,1,-,3,boss,Vazruden the Herald,17307,-1378.5,1698.2,104.1,spawn,Nazan lands after Vazruden dismounts (script)
+188,Hellfire Ramparts,543,1,1,-,2,boss,Vazruden the Herald,17307,-1378.5,1698.2,104.1,spawn,Nazan lands after Vazruden dismounts (script)
+188,Hellfire Ramparts,543,1,1,-,3,boss,Omor the Unscarred,17308,-1122.3,1718.4,89.4,spawn,
 189,Shattered Halls,540,1,1,-,1,boss,Grand Warlock Nethekurse,16807,172.7,289.6,-8.1,spawn,
 189,Shattered Halls,540,1,1,-,2,event,Gauntlet of Flame,,,,,unknown,archers gauntlet
 189,Shattered Halls,540,1,1,-,3,heroic_only,Blood Guard Porung,,,,,-,
 189,Shattered Halls,540,1,1,-,4,boss,Warbringer O'mrogg,16809,375.1,57.6,-7.2,spawn,
 189,Shattered Halls,540,1,1,-,5,boss,Warchief Kargath Bladefist,16808,231.2,-83.6,5,spawn,
 190,The Arcatraz,552,1,1,-,1,boss,Zereketh the Unbound,20870,273.6,-123,-10,spawn,
-190,The Arcatraz,552,1,1,-,2,boss,Dalliah the Doomsayer,20885,137.2,128.5,22.5,spawn,
-190,The Arcatraz,552,1,1,-,3,boss,Wrath-Scryer Soccothrates,20886,136.2,168.3,22.5,spawn,
+190,The Arcatraz,552,1,1,-,2,boss,Wrath-Scryer Soccothrates,20886,136.2,168.3,22.5,spawn,
+190,The Arcatraz,552,1,1,-,3,boss,Dalliah the Doomsayer,20885,137.2,128.5,22.5,spawn,
 190,The Arcatraz,552,1,1,-,4,event,Warden Mellichar,20904,445.8,-169,43.6,spawn,cell event -> Harbinger Skyriss
 190,The Arcatraz,552,1,1,-,5,event,Harbinger Skyriss,20912,NULL,NULL,NULL,script,script-spawned
 191,The Botanica,553,1,1,-,1,optional,Commander Sarannis,17976,151,296,-4.6,spawn,
-191,The Botanica,553,1,1,-,2,optional,High Botanist Freywinn,17975,116.3,455.6,-4.9,spawn,
-191,The Botanica,553,1,1,-,3,optional,Thorngrin the Tender,17978,4.9,596.6,-15.1,spawn,
-191,The Botanica,553,1,1,-,4,optional,Laj,17980,-204.1,391.2,-11.2,spawn,
-191,The Botanica,553,1,1,-,5,boss,Warp Splinter,17977,63.8,391.9,-27.9,spawn,
+191,The Botanica,553,1,1,-,2,boss,Warp Splinter,17977,63.8,391.9,-27.9,spawn,
+191,The Botanica,553,1,1,-,3,optional,Laj,17980,-204.1,391.2,-11.2,spawn,
+191,The Botanica,553,1,1,-,4,optional,Thorngrin the Tender,17978,4.9,596.6,-15.1,spawn,
+191,The Botanica,553,1,1,-,5,optional,High Botanist Freywinn,17975,116.3,455.6,-4.9,spawn,
 192,The Mechanar,554,1,1,-,1,boss,Gatewatcher Gyro-Kill,19218,85.5,20.2,15,spawn,
-192,The Mechanar,554,1,1,-,2,boss,Gatewatcher Iron-Hand,19710,181.9,-77.1,0,spawn,
+192,The Mechanar,554,1,1,-,2,optional,Nethermancer Sepethrea,19221,326.5,13.2,27.9,spawn,
 192,The Mechanar,554,1,1,-,3,optional,Mechano-Lord Capacitus,19219,208.2,-13,-2.1,spawn,
-192,The Mechanar,554,1,1,-,4,optional,Nethermancer Sepethrea,19221,326.5,13.2,27.9,spawn,
+192,The Mechanar,554,1,1,-,4,boss,Gatewatcher Iron-Hand,19710,181.9,-77.1,0,spawn,
 192,The Mechanar,554,1,1,-,5,door,Elevator,,,,,-,after both gatewatchers
 192,The Mechanar,554,1,1,-,6,boss,Pathaleon the Calculator,19220,139.5,149.3,25.7,spawn,
 201,Magisters' Terrace,585,1,1,-,1,boss,Selin Fireheart,24723,242.1,0.3,1.8,spawn,
@@ -383,8 +383,8 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 217,Gundrak,604,1,2,-,5,boss,Gal'darah,29306,1914.8,743.7,136.6,spawn,
 217,Gundrak,604,1,2,-,6,heroic_only,Eck the Ferocious,,,,,-,
 219,Ahn'kahet: The Old Kingdom,619,1,2,-,1,optional,Elder Nadox,29309,679.9,-905.5,25.7,spawn,
-219,Ahn'kahet: The Old Kingdom,619,1,2,-,2,boss,Prince Taldaram,29308,528.7,-846,42,spawn,2 spheres open door
-219,Ahn'kahet: The Old Kingdom,619,1,2,-,3,optional,Jedoga Shadowseeker,29310,372.3,-705.3,-0.6,spawn,
+219,Ahn'kahet: The Old Kingdom,619,1,2,-,2,optional,Jedoga Shadowseeker,29310,372.3,-705.3,-0.6,spawn,
+219,Ahn'kahet: The Old Kingdom,619,1,2,-,3,boss,Prince Taldaram,29308,528.7,-846,42,spawn,2 spheres open door
 219,Ahn'kahet: The Old Kingdom,619,1,2,-,4,heroic_only,Amanitar,,,,,-,
 219,Ahn'kahet: The Old Kingdom,619,1,2,-,5,boss,Herald Volazj,29311,519.9,-441.8,26.4,spawn,
 221,Violet Hold,608,1,2,-,1,skip,The Violet Hold,,,,,-,"event dungeon: 18 waves, 2 random of Erekem/Moragg/Ichoron/Xevozz/Lavanthor/Zuramat, Cyanigosa"
