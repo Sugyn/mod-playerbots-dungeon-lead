@@ -1,40 +1,81 @@
 # Changelog
 
-All notable changes to this patch. Format is loosely [Keep a Changelog](https://keepachangelog.com/).
+All notable changes to this patch, by version and date. Format is [Keep a Changelog](https://keepachangelog.com/).
+Versioning is pre-1.0 (0.MINOR.PATCH) while this is under active development against a single live
+test dungeon — see README "Testing status" for what's actually been run in-game.
 
-## [Unreleased]
+## Known limitations (current, not tied to one version)
+- Doors/keys/scripted gates (Shadowforge Key, Scarlet Key, Crescent Key, Viewing Room Key, Ring of
+  Law, elevators, altars, ...) are annotated in the route data (`kind = door`/`event`) but the
+  leader does not yet wait for them — see the README testing-status table for which dungeons this
+  affects.
+- Bots path via `PathGenerator`/mmaps, which doesn't distinguish terrain a *player* can walk from
+  terrain any creature can path across (steep rock, deep water). A bot can end up somewhere the
+  real player physically can't follow; the leash mechanism makes it stop and wait there rather than
+  run off further, but doesn't relocate it to reachable ground. The real fix is walking the
+  precomputed `playerbots_travelnode_path` waypoint polylines node-to-node instead of raw
+  point-to-point `PathGenerator` calls between arbitrary boss positions — not done yet.
+- Multi-wing dungeons are identified by LFD id when queued via the dungeon finder; walking in on
+  foot picks whichever wing's first stop is nearest, which can guess wrong.
+- 5 dungeons (Keristrasza, Amnennar the Coldbringer, Princess Theradras, and the two others sharing
+  their maps) still use the original hand-authored step order rather than the graph-reordered one —
+  see 0.3.0 below.
 
-Work in progress — see README "Testing status".
+## [0.4.0] - 2026-09-12
+
+### Fixed
+- **Critical: a moon-marked CC target could stay stuck forever, even with the 0.3.0 timeout.** The
+  release check (`DungeonLead::CheckCcMark`) was only ever called from
+  `DungeonLeadNextAction::isUseful()`, which bails out immediately if the bot is in combat — but a
+  target nobody can CC keeps the whole group combat-tagged indefinitely (even a shaman's autonomous
+  Searing Totem alone is enough, via the shared threat table), which is exactly the situation the
+  timeout exists for. The mob just sat there excluded from DPS targeting while everyone milled
+  around it. Moved the check to its own action (`DungeonLeadCcWatchAction`), wired to the base
+  module's generic `"often"` trigger, which fires regardless of combat state.
+- **Unstick sampling, dialed back.** 0.3.0 widened the fallback probe (see below) to a full 360°
+  circle at 8 attempts to fix a pillar-snag case, but this let bots find "technically pathable"
+  routes in arbitrary directions with no bias toward the intended corridor — worsening reports of
+  bots wandering off-route, off-map, or through walls. Back to a forward-biased ±90° arc, 5
+  attempts, a shorter 0.2–0.5x pathfinder distance per probe.
+- Inaccurate header comment on all 8 source files: they claimed to be part of mod-playerbots itself
+  with an `AUTHORS` file backing copyright, which is wrong for a standalone derivative patch that
+  ships no `AUTHORS` file of its own. Replaced with an accurate header referencing this repo's own
+  `LICENSE`.
 
 ### Added
-- Initial Dungeon Lead feature: `startdung`/`stopdung` chat commands, `DungeonLeadStrategy`,
-  route-following via `playerbots_dungeon_route`, boss/CC marking, formation `leader`.
-- Hand-authored + DB-resolved boss routes for all 64 base LFD entries (96 incl. heroics), sourced
-  from Classic-era wiki/Icy Veins/Wowhead pages — see `data/routes.tsv` for the source per dungeon.
+- Per-instance-ID kill memory: once a routed boss is confirmed dead, that dungeon instance never
+  paths back to it again — not after `startdung reset`, not after a route re-resolution, and not if
+  its corpse/entity later falls outside probe range.
+- Always-on structured event log, `DungeonLeadSessions.csv` (one row per run start/stop, boss
+  reached, boss already dead, mark placed/released, stuck-skip, waiting — keyed by player, date,
+  dungeon, and which bots were in the group). Plain `fopen`/`fprintf` file I/O, independent of
+  `worldserver.conf` logger config (the `Appender.*`/`Logger.*` mechanism from 0.2.0 never reliably
+  wrote to a dedicated file — abandoned).
+- `startdung debug`'s verbose log (`DungeonLeadDebug.log`) reimplemented on the same plain-file
+  mechanism as the CSV above, replacing the broken logger-config version from 0.2.0.
+- Config: `AiPlayerbot.DungeonLead.DebugDefault` (default `0`; only the maintainer's own live
+  server overrides it to `1` in its local, uncommitted `playerbots.conf`).
+
+## [0.3.0] - 2026-09-12
+
+First live end-to-end run, on Wailing Caverns.
+
+### Added
 - `startdung pause` / `startdung continue` — freeze/resume walking and pulling without tearing down
   leadership or formations.
 - `startdung reset` — reset route progress back to the first stop without redoing the leadership
   handoff (useful after a stuck run, without the "AI was reset to defaults" churn a full restart
   causes for every bot in the group).
-- `startdung debug` — toggles verbose per-wait diagnostics (position, distance to every group
-  member, current step) to a dedicated `DungeonLeadDebug.log`, so a bug report can ship a self-
-  contained log instead of a description of what it looked like on screen.
+- `startdung debug` — toggle for verbose per-wait diagnostics (position, distance to every group
+  member, current step); see 0.4.0 for the logging mechanism it actually shipped with.
 - The leading bot marks itself with the star icon on start, and clears it on stop.
 - A "heading to X" chat line each time the leader commits to a new route stop.
 - A one-shot "We're waiting for you!" ping (not repeated every tick) when the real player falls
   behind the leash distance; the bot stops in place instead of continuing on alone.
-- Config: `AiPlayerbot.DungeonLead.{HealerManaPct, Leash, ArriveDistance, StuckSeconds,
-  CcTimeoutSeconds, SkipOptional, MarkCc, DebugDefault}`.
-- Always-on structured event log, `DungeonLeadSessions.csv` (one row per run start/stop, boss
-  reached, boss already dead, mark placed/released, stuck-skip, waiting — keyed by player, date,
-  dungeon and which bots were in the group), so an admin can see across many players' runs which
-  dungeons/steps actually cause trouble without asking anyone to write anything up. Plain file I/O,
-  independent of `worldserver.conf` logger config — see README "Debugging".
-- Per-instance-ID kill memory: once a routed boss is confirmed dead, that instance never paths back
-  to it again (e.g. after `startdung reset`, or a route mismatch triggering re-resolution), even if
-  its corpse/entity later falls outside probe range.
+- Config: `AiPlayerbot.DungeonLead.{Leash, ArriveDistance, StuckSeconds, CcTimeoutSeconds,
+  SkipOptional, MarkCc}`.
 
-### Fixed (found during live testing on Wailing Caverns)
+### Fixed
 - **Route order didn't match the actual travelnode graph.** The first hand-authored order followed
   a human "clearing guide" sequence; three consecutive steps had *no* direct edge in
   `playerbots_travelnode_link` at all, so the bot fell back to raw point-to-point pathing across a
@@ -55,23 +96,12 @@ Work in progress — see README "Testing status".
   can't land on that creature type, or it's on cooldown, that mob just sat there alive while the
   rest of the room died around it, and the party moved on without killing it. The mark now expires
   after `CcTimeoutSeconds` if `Unit::HasBreakableByDamageCrowdControlAura()` never confirms an
-  actual CC landed, releasing it back to normal DPS targeting.
-- **A moon-marked CC target could stay ignored forever even with the timeout above.** The release
-  check (`DungeonLead::CheckCcMark`) was only ever called from `DungeonLeadNextAction::isUseful()`,
-  which bails out immediately if the bot is in combat — but a marked target that nobody can CC stays
-  in combat indefinitely (a shaman's autonomous Searing Totem alone is enough to keep the whole
-  party combat-tagged through the shared threat table), which is exactly the situation the timeout
-  exists for. The mob just sat there excluded from DPS targeting while everyone milled around it.
-  Moved the check to its own action (`DungeonLeadCcWatchAction`) wired to the base module's generic
-  `"often"` trigger, which fires regardless of combat state, instead of the combat-gated one.
-- **Unstick sampling was widened, then that made things worse.** Originally forward-cone-only,
-  2 attempts, 0.5-1.0x pathfinder distance (mirroring upstream `NewRpgBaseAction::MoveFarTo`) — a
-  column or wall corner directly on the line to a distant destination boxed the bot in on every
-  sample. Widened to a full 360° circle, 8 attempts, 0.3-1.0x distance to fix that, but this let the
-  bot find "technically pathable" routes in arbitrary directions with no bias toward the intended
-  corridor, worsening reports of bots wandering off-route/off-map/through walls. Dialed back to a
-  forward-biased ±90° arc, 5 attempts, a shorter 0.2-0.5x distance — more retries than upstream, but
-  each one a short, cautious probe instead of a long blind reach.
+  actual CC landed, releasing it back to normal DPS targeting. (Turned out to be incomplete — see
+  the critical fix in 0.4.0.)
+- **Unstick sampling was forward-cone-only and gave up after 2 tries.** A column or wall corner
+  directly on the line to a distant destination boxed the bot in on every forward-biased sample.
+  Widened to a full 360° circle around the bot, 8 attempts instead of 2, 0.3–1.0x pathfinder
+  distance. (Reverted in 0.4.0 — the wide version traded one problem for a worse one.)
 - Trash packs never got a shared kill-priority mark unless a boss was nearby — `DpsTargetValue`
   only forces group-wide single-target focus when a skull mark exists, so ordinary trash was
   targeted independently per bot (fine most of the time, riskier in heroics). `startdung` now also
@@ -79,16 +109,26 @@ Work in progress — see README "Testing status".
   with the boss-specific mark kept at higher relevance so a real boss never loses the skull to a
   low-HP add standing next to it.
 
-### Known limitations
-- Doors/keys/scripted gates (Shadowforge Key, Scarlet Key, Crescent Key, Viewing Room Key, Ring of
-  Law, elevators, altars, ...) are annotated in the route data (`kind = door`/`event`) but the
-  leader does not yet wait for them — see the README testing-status table for which dungeons this
-  affects.
-- Bots path via `PathGenerator`/mmaps, which doesn't distinguish terrain a *player* can walk from
-  terrain any creature can path across (steep rock, deep water). A bot can end up somewhere the
-  real player physically can't follow; the leash mechanism makes it stop and wait there rather than
-  run off further, but doesn't relocate it to reachable ground. The real fix is walking the
-  precomputed `playerbots_travelnode_path` waypoint polylines node-to-node instead of raw
-  point-to-point `PathGenerator` calls between arbitrary boss positions — not done yet.
-- Multi-wing dungeons are identified by LFD id when queued via the dungeon finder; walking in on
-  foot picks whichever wing's first stop is nearest, which can guess wrong.
+## [0.2.0] - 2026-09-12
+
+### Added
+- `[DungeonLead]`-prefixed progress logging.
+- README reframed around what this actually is (an autonomous module, not a scripted macro); added
+  as work-in-progress.
+- README Prerequisites section, per-dungeon testing-status table, and an initial Debugging section
+  (superseded by 0.4.0's plain-file mechanism).
+- This CHANGELOG.
+
+## [0.1.0] - 2026-09-12
+
+Initial release.
+
+### Added
+- Dungeon Lead feature: `startdung`/`stopdung` chat commands, `DungeonLeadStrategy`,
+  route-following via `playerbots_dungeon_route`, boss/CC marking, formation `leader`.
+- Hand-authored + DB-resolved boss routes for all 64 base LFD entries (96 incl. heroics), sourced
+  from Classic-era wiki/Icy Veins/Wowhead pages — see `data/routes.tsv` for the source per dungeon.
+- GPL-2.0 license (derivative of mod-playerbots, itself GPL-2.0-or-later).
+
+### Fixed
+- Whisper shortcut used the wrong slash command (`/p` instead of `/w`) for talking to the tank bot.
