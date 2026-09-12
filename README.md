@@ -229,6 +229,10 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 - Boss order was verified against 3.3.x-era sources; the few judgement calls (Stockade order, Sunken Temple troll
   order, BRD Prison order) are documented in `data/routes.tsv`.
 
+See `docs/architecture/` for design notes on planned work before it's implemented (currently:
+[ADR-001](docs/architecture/adr-001-l1.4-capability-scenarios.md), the L1.4 capability-scenario
+testing framework - proposed, not yet built).
+
 ## License
 
 GPL-2.0-or-later — same as mod-playerbots, of which this is a derivative work. See `LICENSE`.
