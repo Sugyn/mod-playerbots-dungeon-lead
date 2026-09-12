@@ -72,3 +72,7 @@ Rules the leader follows before walking on or pulling:
 - Multi-wing dungeons are identified by LFD id; walking in on foot picks the wing whose first stop is nearest.
 - Boss order was verified against 3.3.x-era sources; the few judgement calls (Stockade order, Sunken Temple troll
   order, BRD Prison order) are documented in `data/routes.tsv`.
+
+## License
+
+GPL-2.0-or-later — same as mod-playerbots, of which this is a derivative work. See `LICENSE`.
