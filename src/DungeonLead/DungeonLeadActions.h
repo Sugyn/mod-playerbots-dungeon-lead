@@ -30,6 +30,7 @@ namespace DungeonLead
     bool HealerManaLow(PlayerbotAI* botAI);
     bool GroupTooSpread(PlayerbotAI* botAI);
     bool MasterTooFar(PlayerbotAI* botAI);
+    bool MasterUnavailable(PlayerbotAI* botAI);
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
     void CheckCcMark(PlayerbotAI* botAI);
     void Stop(PlayerbotAI* botAI, bool giveLeaderBack);

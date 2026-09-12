@@ -43,6 +43,8 @@ float DungeonLeadMultiplier::GetValue(Action* action)
 
     if (sDungeonRouteMgr.State(botAI->GetBot()->GetGUID()).paused)
         return 0.0f;  // "startdungeon pause": no new pulls either, not just no walking
+    if (DungeonLead::MasterUnavailable(botAI))
+        return 0.0f;  // dead/disconnected/left the party: no new pulls until the run has a player again
     if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
         return 0.0f;
     if (isWalk && DungeonLead::GroupInCombat(botAI))

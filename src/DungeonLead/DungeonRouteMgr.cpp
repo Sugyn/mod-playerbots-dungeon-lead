@@ -109,3 +109,49 @@ void DungeonRouteMgr::MarkStepKilled(uint32 instanceId, uint32 entry)
     std::lock_guard<std::mutex> lock(mtx);
     killedByInstance[instanceId].insert(entry);
 }
+
+char const* ToString(DungeonRunOutcome v)
+{
+    switch (v)
+    {
+        case DungeonRunOutcome::Running:  return "running";
+        case DungeonRunOutcome::Complete: return "complete";
+        case DungeonRunOutcome::Partial:  return "partial";
+        case DungeonRunOutcome::Blocked:  return "blocked";
+        case DungeonRunOutcome::Failed:   return "failed";
+        case DungeonRunOutcome::Aborted:  return "aborted";
+    }
+    return "unknown";
+}
+
+char const* ToString(DungeonFailureDomain v)
+{
+    switch (v)
+    {
+        case DungeonFailureDomain::None:            return "none";
+        case DungeonFailureDomain::Navigation:       return "navigation";
+        case DungeonFailureDomain::PartyCoordination: return "party_coordination";
+        case DungeonFailureDomain::PullPlanning:     return "pull_planning";
+        case DungeonFailureDomain::Combat:           return "combat";
+        case DungeonFailureDomain::Encounter:        return "encounter";
+        case DungeonFailureDomain::Recovery:         return "recovery";
+        case DungeonFailureDomain::Infrastructure:   return "infrastructure";
+    }
+    return "unknown";
+}
+
+char const* ToString(DungeonFailureReason v)
+{
+    switch (v)
+    {
+        case DungeonFailureReason::None:             return "none";
+        case DungeonFailureReason::PathFailed:        return "path_failed";
+        case DungeonFailureReason::ObjectiveTimeout:  return "objective_timeout";
+        case DungeonFailureReason::BossEvade:         return "boss_evade";
+        case DungeonFailureReason::PartyWipe:         return "party_wipe";
+        case DungeonFailureReason::PlayerMissing:     return "player_missing";
+        case DungeonFailureReason::UnsupportedEvent:  return "unsupported_event";
+        case DungeonFailureReason::InternalInvariant: return "internal_invariant";
+    }
+    return "unknown";
+}

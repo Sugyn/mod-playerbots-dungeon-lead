@@ -4,6 +4,50 @@ All notable changes to this patch, by version and date. Format is [Keep a Change
 Versioning is pre-1.0 (0.MINOR.PATCH) while this is under active development against a single live
 test dungeon — see README "Testing status" for what's actually been run in-game.
 
+## [0.5.2] - 2026-09-12
+
+L0 closeout, per the project's architecture roadmap: the remaining runtime-correctness gaps after
+0.5.0/0.5.1, before any Level 1 (automated testing) or larger architecture work begins.
+
+### Added
+- **Exact session snapshot/restore.** `startdungeon` now records each follower's formation and
+  full active strategy set (`PlayerbotAI::GetStrategies`) before changing anything; `stopdungeon`
+  restores each follower to exactly that, computing a strategy delta rather than leaving whatever
+  dungeon-lead's own +/- changes happened to leave behind. The leader itself gets a full `Reset()`
+  on stop (mirroring the `Reset()` already done on start), rather than only stripping the two
+  strategies dungeon-lead itself had added - a leader that picked up `+cc`/`+mark rti` at start (it
+  does, on its own combat state) previously kept them forever after `stopdungeon`. A follower who
+  joined mid-run with no snapshot falls back to the old `chaos`-formation default.
+- **`RunOutcome`: a route can no longer silently report "complete" after skipping a mandatory
+  boss.** Route steps skipped for being stuck or never found are now checked against a new
+  `DungeonRouteStep::IsMandatory()` (currently `kind == "boss"`, kept as one named policy boundary
+  rather than the literal comparison repeated at each call site, since a future mandatory door/event
+  shouldn't need every caller updated); if any mandatory step was skipped, the run reports
+  "route PARTIAL (N stop(s) skipped: ...)" instead of "route complete", and the CSV event is
+  `route_partial` instead of `route_complete` so telemetry can tell the two apart without parsing
+  chat text.
+- **Master dead/disconnected/left-the-party now blocks new pulls and route progress**, not just
+  "wait for them to catch up" the way merely-too-far-but-fine does. Previously a dead master was
+  explicitly treated as *not* blocking (reasoning: a ghost running back is still "coming"), but the
+  project's architecture roadmap frames the real player as part of the run contract - a dead/gone
+  player should pause the run, not let it continue attacking things nobody is meaningfully leading.
+  Wired into the same wait-gating `isUseful()` uses for other conditions, plus the pull multiplier.
+- **Small L1 (test/observability) foundations, added now per the architecture roadmap rather than
+  reopening this same code once Level 1 starts:**
+  - `DungeonRunOutcome` (`Running`/`Complete`/`Partial`/`Blocked`/`Failed`/`Aborted`) as a real
+    enum on `DungeonLeadState`, not just chat-line wording - `Blocked`/`Failed`/`Aborted` are
+    reserved for later recovery-manager/test-harness work and not produced yet.
+  - `DungeonFailureDomain` (`Navigation`/`PartyCoordination`/`PullPlanning`/`Combat`/`Encounter`/
+    `Recovery`/`Infrastructure`) and `DungeonFailureReason` (`PathFailed`/`ObjectiveTimeout`/
+    `BossEvade`/`PartyWipe`/`PlayerMissing`/`UnsupportedEvent`/`InternalInvariant`) - only the
+    combinations the engine can actually produce today are populated (stuck-skip ->
+    Navigation/PathFailed, not-found -> Navigation/ObjectiveTimeout); the rest exist as vocabulary
+    for later, not simulated behavior.
+  - `run_id`: a per-session correlation id (monotonic per worldserver process), now the second
+    column in `DungeonLeadSessions.csv` and prefixed onto every `startdungeon debug` line, so one
+    run's rows/lines can be pulled out of a file that interleaves every dungeon-lead bot on the
+    server.
+
 ## [0.5.1] - 2026-09-12
 
 ### Changed
@@ -32,10 +76,6 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
   doesn't need per-field locking on top of protecting the `states` map's own structure - see the
   class's own comment. If dungeon-lead code ever reaches into another bot's state from a different
   thread, that assumption needs revisiting.
-- `stopdungeon` restores followers to formation `chaos` and clears the strategies dungeon-lead added,
-  rather than recording and restoring each member's actual pre-`startdungeon` strategy/formation set.
-  In practice this is a reasonable default, not a currently-known bug, but it isn't a byte-for-byte
-  restore.
 - `kind` (route step type) is a free-form string, not a validated enum - a typo in the DB silently
   becomes a non-walkable step instead of a load-time error.
 - No automated route data validation (duplicate/missing steps, unknown `kind`, non-finite

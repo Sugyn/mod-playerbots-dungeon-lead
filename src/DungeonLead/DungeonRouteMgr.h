@@ -31,7 +31,56 @@ struct DungeonRouteStep
 
     bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
     bool IsWalkable() const { return HasPosition() && (kind == "boss" || kind == "optional" || kind == "heroic_only" || kind == "event"); }
+
+    // Policy boundary for "must this be satisfied for the run to count as Complete rather than
+    // Partial" - kept as one named function instead of repeating `kind == "boss"` at every call
+    // site, since a future mandatory kind (a required door/event, not just a boss) should only
+    // need this one line updated, not every place that currently checks it. See the architecture
+    // roadmap's L0 closeout notes.
+    bool IsMandatory() const { return kind == "boss"; }
 };
+
+// Run-level outcome, shared vocabulary between the runtime and (eventually) an automated test
+// harness - see the architecture roadmap's L1 RunResult contract. Deliberately small for now:
+// only Running/Complete/Partial are actually produced by the current engine (Blocked/Failed/
+// Aborted are reserved for later recovery-manager/test-harness work, not populated yet).
+enum class DungeonRunOutcome : uint8
+{
+    Running,
+    Complete,
+    Partial,
+    Blocked,
+    Failed,
+    Aborted
+};
+
+enum class DungeonFailureDomain : uint8
+{
+    None,
+    Navigation,
+    PartyCoordination,
+    PullPlanning,
+    Combat,
+    Encounter,
+    Recovery,
+    Infrastructure
+};
+
+enum class DungeonFailureReason : uint8
+{
+    None,
+    PathFailed,
+    ObjectiveTimeout,
+    BossEvade,
+    PartyWipe,
+    PlayerMissing,
+    UnsupportedEvent,
+    InternalInvariant
+};
+
+char const* ToString(DungeonRunOutcome v);
+char const* ToString(DungeonFailureDomain v);
+char const* ToString(DungeonFailureReason v);
 
 struct DungeonRoute
 {
@@ -40,6 +89,17 @@ struct DungeonRoute
     uint32 difficulty = 0;
     std::string name;
     std::vector<DungeonRouteStep> steps;
+};
+
+// A follower's formation/strategy set as it was right before "startdungeon" touched it, so
+// "stopdungeon" can restore it exactly instead of applying a generic default (chaos formation,
+// whatever strategies happen to be left over from dungeon-lead's own +/- deltas).
+struct DungeonLeadMemberSnapshot
+{
+    ObjectGuid guid;
+    std::string formation;
+    std::vector<std::string> nonCombatStrategies;
+    std::vector<std::string> combatStrategies;
 };
 
 // Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
@@ -69,13 +129,19 @@ struct DungeonLeadState
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
     std::vector<uint8> visited;
     std::vector<std::string> skippedSteps;  // bosses skipped (stuck/not-found) - reported at "route complete"
+    bool mandatorySkipped = false;  // true if any of the above was IsMandatory() - run outcome PARTIAL, not COMPLETE
+    DungeonRunOutcome outcome = DungeonRunOutcome::Running;
+    DungeonFailureDomain failureDomain = DungeonFailureDomain::None;
+    DungeonFailureReason failureReason = DungeonFailureReason::None;
 
     // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
+    uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
     uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
     ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)
     bool paused = false;    // "startdungeon pause" / "startdungeon continue"
     bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
+    std::vector<DungeonLeadMemberSnapshot> memberSnapshots;  // pre-"startdungeon" state, for exact restore
 
     void ResetRouteProgress()
     {
@@ -95,6 +161,10 @@ struct DungeonLeadState
         arrivedTs = 0;
         visited.clear();
         skippedSteps.clear();
+        mandatorySkipped = false;
+        outcome = DungeonRunOutcome::Running;
+        failureDomain = DungeonFailureDomain::None;
+        failureReason = DungeonFailureReason::None;
     }
 
     void Reset() { *this = DungeonLeadState(); }

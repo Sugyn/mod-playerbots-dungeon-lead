@@ -124,10 +124,10 @@ index 55792aa5..53690086 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..38ed5ae5
+index 00000000..74d7b124
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1021 @@
+@@ -0,0 +1,1152 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -157,6 +157,7 @@ index 00000000..38ed5ae5
 +#include "Timer.h"
 +
 +#include <algorithm>
++#include <atomic>
 +#include <cctype>
 +#include <list>
 +#include <mutex>
@@ -238,6 +239,14 @@ index 00000000..38ed5ae5
 +    // files (they're never on the hot path - one line per key event, not per tick).
 +    std::mutex g_dungeonLeadLogMutex;
 +
++    // Session correlation id: every telemetry row from one "startdungeon" run carries the same
++    // value, so a bug report's CSV rows (which interleave every dungeon-lead bot on the whole
++    // server) can be grouped back into one run without guessing from timestamps. Monotonic
++    // per-process counter - unique enough to tell runs apart within one worldserver's CSV/debug
++    // log, not meant to be globally unique across restarts or servers.
++    std::atomic<uint64> g_nextRunId{1};
++    uint64 NextRunId() { return g_nextRunId.fetch_add(1); }
++
 +    std::string FormatLogTimestamp()
 +    {
 +        time_t now = time(nullptr);
@@ -250,6 +259,56 @@ index 00000000..38ed5ae5
 +        char ts[32];
 +        strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmBuf);
 +        return ts;
++    }
++
++    // "startdungeon"/"stopdungeon" exact session restore: snapshot each follower's formation and
++    // active strategies before dungeon-lead touches them, so stopping the run can put them back
++    // exactly instead of to a generic default (chaos formation, whatever strategies happened to
++    // still be set after dungeon-lead's own +/- deltas).
++    DungeonLeadMemberSnapshot SnapshotMember(Player* member, PlayerbotAI* memberAI)
++    {
++        DungeonLeadMemberSnapshot snap;
++        snap.guid = member->GetGUID();
++        if (memberAI->GetAiObjectContext())
++            if (FormationValue* fv = dynamic_cast<FormationValue*>(
++                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
++                snap.formation = fv->Save();
++        snap.nonCombatStrategies = memberAI->GetStrategies(BOT_STATE_NON_COMBAT);
++        snap.combatStrategies = memberAI->GetStrategies(BOT_STATE_COMBAT);
++        return snap;
++    }
++
++    // Builds a ChangeStrategy delta ("+missing,-extra") that turns `current` into `target`, empty
++    // if they already match.
++    std::string StrategyDelta(std::vector<std::string> const& current, std::vector<std::string> const& target)
++    {
++        std::string delta;
++        for (std::string const& name : target)
++            if (std::find(current.begin(), current.end(), name) == current.end())
++                delta += "+" + name + ",";
++        for (std::string const& name : current)
++            if (std::find(target.begin(), target.end(), name) == target.end())
++                delta += "-" + name + ",";
++        if (!delta.empty())
++            delta.pop_back();  // trailing comma
++        return delta;
++    }
++
++    void RestoreMember(PlayerbotAI* memberAI, DungeonLeadMemberSnapshot const& snap)
++    {
++        std::string delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_NON_COMBAT), snap.nonCombatStrategies);
++        if (!delta.empty())
++            memberAI->ChangeStrategy(delta, BOT_STATE_NON_COMBAT);
++
++        delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_COMBAT), snap.combatStrategies);
++        if (!delta.empty())
++            memberAI->ChangeStrategy(delta, BOT_STATE_COMBAT);
++
++        if (!snap.formation.empty() && memberAI->GetAiObjectContext())
++            if (FormationValue* fv = dynamic_cast<FormationValue*>(
++                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
++                if (fv->Save() != snap.formation)
++                    fv->Load(snap.formation);
 +    }
 +}
 +
@@ -269,6 +328,10 @@ index 00000000..38ed5ae5
 +    std::string const eventEsc = CsvEscape(event);
 +    std::string const detailEsc = CsvEscape(detail);
 +    uint32 const lfgId = st.lfgId;
++    uint64 const runId = st.runId;
++    char const* outcome = ToString(st.outcome);
++    char const* failureDomain = ToString(st.failureDomain);
++    char const* failureReason = ToString(st.failureReason);
 +
 +    std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
 +    static bool headerWritten = false;
@@ -281,13 +344,14 @@ index 00000000..38ed5ae5
 +        // run of this same worldserver process already has it
 +        fseek(f, 0, SEEK_END);
 +        if (ftell(f) == 0)
-+            fprintf(f, "timestamp,player,lfg_id,dungeon,tank,group_members,event,detail\n");
++            fprintf(f, "timestamp,run_id,player,lfg_id,dungeon,tank,group_members,event,detail,outcome,"
++                       "failure_domain,failure_reason\n");
 +        headerWritten = true;
 +    }
 +
-+    fprintf(f, "%s,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts.c_str(),
-+            masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
-+            members.c_str(), eventEsc.c_str(), detailEsc.c_str());
++    fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts.c_str(),
++            static_cast<unsigned long long>(runId), masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
++            members.c_str(), eventEsc.c_str(), detailEsc.c_str(), outcome, failureDomain, failureReason);
 +    fflush(f);
 +    fclose(f);
 +}
@@ -359,6 +423,26 @@ index 00000000..38ed5ae5
 +    if (!healer)
 +        return false;
 +    return healer->GetPowerPct(POWER_MANA) < float(sPlayerbotAIConfig.dungeonLeadHealerManaPct);
++}
++
++// The real player is part of the run contract (see the architecture roadmap's L0 closeout): dead,
++// disconnected, or no longer in the group at all must block new pulls and route advancement, not
++// just "wait for them to catch up" the way a merely-far-away-but-fine player does. A dead player
++// still needs to release/res/run back before the dungeon should continue without them.
++bool DungeonLead::MasterUnavailable(PlayerbotAI* botAI)
++{
++    Player* bot = botAI->GetBot();
++    Player* master = botAI->GetMaster();
++    if (!master || master == bot)
++        return false;  // no real player assigned as master - nothing to block on
++    if (!master->IsInWorld() || !master->GetSession())
++        return true;  // logged off / disconnected mid-session
++    if (!master->IsAlive())
++        return true;
++    if (Group* group = bot->GetGroup())
++        if (!group->IsMember(master->GetGUID()))
++            return true;  // left the party entirely
++    return false;
 +}
 +
 +bool DungeonLead::MasterTooFar(PlayerbotAI* botAI)
@@ -473,15 +557,20 @@ index 00000000..38ed5ae5
 +{
 +    Player* bot = botAI->GetBot();
 +
-+    // capture what we own BEFORE the state disappears below - ResetState() erases ccGuid/skullGuid,
-+    // and without this a stop while a moon mark was active left that mark permanently excluding
-+    // its target from normal DPS priority with nothing left to ever release it
++    // capture what we own BEFORE the state disappears below - ResetState() erases ccGuid/skullGuid/
++    // memberSnapshots, and without this a stop while a moon mark was active left that mark
++    // permanently excluding its target from normal DPS priority with nothing left to ever release
++    // it, and followers had no way back to whatever they were doing before "startdungeon"
 +    DungeonLeadState const& st = sDungeonRouteMgr.State(bot->GetGUID());
 +    ObjectGuid const ownedCc = st.ccGuid;
 +    ObjectGuid const ownedSkull = st.skullGuid;
++    std::vector<DungeonLeadMemberSnapshot> const snapshots = st.memberSnapshots;
 +
-+    botAI->ChangeStrategy("-dungeon lead,-grind", BOT_STATE_NON_COMBAT);
-+    botAI->ChangeStrategy("-dungeon lead,-mark rti", BOT_STATE_COMBAT);
++    // Full Reset() rather than just stripping "-dungeon lead,-grind"/"-mark rti": "startdungeon"
++    // itself calls Reset() before adding its own strategies, so anything the leader had beyond
++    // dungeon-lead's own additions (e.g. "+cc"/"+mark rti", also added to the leader's own combat
++    // state at start) was never tracked and never got removed by the narrow -/- pair alone.
++    botAI->Reset();
 +
 +    if (Group* group = bot->GetGroup())
 +    {
@@ -493,9 +582,14 @@ index 00000000..38ed5ae5
 +            PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
 +            if (!memberAI || !memberAI->GetAiObjectContext())
 +                continue;
-+            if (FormationValue* fv = dynamic_cast<FormationValue*>(
++
++            auto snapIt = std::find_if(snapshots.begin(), snapshots.end(),
++                [&](DungeonLeadMemberSnapshot const& s) { return s.guid == member->GetGUID(); });
++            if (snapIt != snapshots.end())
++                RestoreMember(memberAI, *snapIt);
++            else if (FormationValue* fv = dynamic_cast<FormationValue*>(
 +                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
-+                fv->Load("chaos");
++                fv->Load("chaos");  // joined mid-run, no snapshot to restore to - fall back to the old default
 +        }
 +
 +        // only clear marks we actually placed - never touch one the player set/changed since
@@ -544,7 +638,9 @@ index 00000000..38ed5ae5
 +        st.farFromMasterTold = false;
 +
 +    char const* wait = nullptr;
-+    if (DungeonLead::GroupInCombat(botAI))
++    if (DungeonLead::MasterUnavailable(botAI))
++        wait = "master dead/disconnected/left the party";
++    else if (DungeonLead::GroupInCombat(botAI))
 +        wait = "group in combat";
 +    else if (DungeonLead::GroupResting(botAI))
 +        wait = "someone is eating/drinking";
@@ -574,7 +670,7 @@ index 00000000..38ed5ae5
 +            if (st.debugMode)
 +            {
 +                std::ostringstream dbg;
-+                dbg << bot->GetName() << " pos=(" << bot->GetPositionX() << ","
++                dbg << "run=" << st.runId << " " << bot->GetName() << " pos=(" << bot->GetPositionX() << ","
 +                    << bot->GetPositionY() << "," << bot->GetPositionZ() << ") step=" << st.stepIndex
 +                    << " moving=" << bot->isMoving() << " inCombat=" << bot->IsInCombat();
 +                if (Player* master = botAI->GetMaster())
@@ -723,19 +819,29 @@ index 00000000..38ed5ae5
 +        if (!st.doneTold)
 +        {
 +            st.doneTold = true;
++            // RunOutcome: a mandatory stop (IsMandatory()) that got skipped/stuck/not-found means
++            // this run is PARTIAL, not COMPLETE, no matter how many optional stops were also
++            // skipped - see the architecture roadmap's "mandatory objective failure must not
++            // become COMPLETE". st.outcome was already set to Partial at the skip site if this
++            // applies; this is only reached for Complete otherwise. The RecordEvent name itself
++            // carries the outcome for anyone parsing the CSV, not just the wording of the chat line.
++            if (!st.mandatorySkipped)
++                st.outcome = DungeonRunOutcome::Complete;
++            char const* outcome = st.mandatorySkipped ? "PARTIAL" : "complete";
 +            std::ostringstream out;
 +            if (st.skippedSteps.empty())
 +                out << "Dungeon lead: route complete";
 +            else
 +            {
-+                out << "Dungeon lead: route complete (" << st.skippedSteps.size() << " stop(s) skipped:";
++                out << "Dungeon lead: route " << outcome << " (" << st.skippedSteps.size() << " stop(s) skipped:";
 +                for (size_t i = 0; i < st.skippedSteps.size(); ++i)
 +                    out << (i ? ", " : " ") << st.skippedSteps[i];
 +                out << ")";
 +            }
 +            botAI->TellMasterNoFacing(out);
-+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route complete ({} skipped)", bot->GetName(), st.skippedSteps.size());
-+            DungeonLead::RecordEvent(botAI, "route_complete", std::to_string(st.skippedSteps.size()) + " skipped");
++            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route {} ({} skipped)", bot->GetName(), outcome, st.skippedSteps.size());
++            DungeonLead::RecordEvent(botAI, st.mandatorySkipped ? "route_partial" : "route_complete",
++                                      std::to_string(st.skippedSteps.size()) + " skipped");
 +        }
 +        return false;
 +    }
@@ -807,6 +913,13 @@ index 00000000..38ed5ae5
 +                     step.step, step.boss);
 +            DungeonLead::RecordEvent(botAI, "not_found", step.boss);
 +            st.skippedSteps.push_back(step.boss);
++            if (step.IsMandatory())
++            {
++                st.mandatorySkipped = true;
++                st.outcome = DungeonRunOutcome::Partial;
++                st.failureDomain = DungeonFailureDomain::Navigation;
++                st.failureReason = DungeonFailureReason::ObjectiveTimeout;
++            }
 +            MarkVisited(st);
 +        }
 +        return true;
@@ -855,6 +968,13 @@ index 00000000..38ed5ae5
 +            step.boss + " dist=" + std::to_string(disToDest) + " pos=(" + std::to_string(dest.GetPositionX()) + "," +
 +            std::to_string(dest.GetPositionY()) + "," + std::to_string(dest.GetPositionZ()) + ")");
 +        st.skippedSteps.push_back(step.boss);
++        if (step.IsMandatory())
++        {
++            st.mandatorySkipped = true;
++            st.outcome = DungeonRunOutcome::Partial;
++            st.failureDomain = DungeonFailureDomain::Navigation;
++            st.failureReason = DungeonFailureReason::PathFailed;
++        }
 +        MarkVisited(st);
 +        return true;
 +    }
@@ -1102,6 +1222,9 @@ index 00000000..38ed5ae5
 +        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
 +    }
 +
++    // snapshot every follower's current formation/strategies BEFORE touching anything, so
++    // "stopdungeon" can put them back exactly - see DungeonLead::Stop()
++    std::vector<DungeonLeadMemberSnapshot> snapshots;
 +    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
 +    {
 +        Player* member = ref->GetSource();
@@ -1110,6 +1233,9 @@ index 00000000..38ed5ae5
 +        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
 +        if (!memberAI || !memberAI->GetAiObjectContext())
 +            continue;
++
++        snapshots.push_back(SnapshotMember(member, memberAI));
++
 +        if (FormationValue* fv = dynamic_cast<FormationValue*>(
 +                memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
 +            fv->Load("leader");
@@ -1118,7 +1244,12 @@ index 00000000..38ed5ae5
 +    }
 +
 +    sDungeonRouteMgr.ResetState(bot->GetGUID());
-+    sDungeonRouteMgr.State(bot->GetGUID()).debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
++    {
++        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
++        st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
++        st.memberSnapshots = std::move(snapshots);
++        st.runId = NextRunId();
++    }
 +    botAI->Reset();
 +    ResetReturnPosition();
 +    ResetStayPosition();
@@ -1151,10 +1282,10 @@ index 00000000..38ed5ae5
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..488cb44d
+index 00000000..21f12d7a
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,112 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1187,6 +1318,7 @@ index 00000000..488cb44d
 +    bool HealerManaLow(PlayerbotAI* botAI);
 +    bool GroupTooSpread(PlayerbotAI* botAI);
 +    bool MasterTooFar(PlayerbotAI* botAI);
++    bool MasterUnavailable(PlayerbotAI* botAI);
 +    Creature* FindBossNear(PlayerbotAI* botAI, float range);
 +    void CheckCcMark(PlayerbotAI* botAI);
 +    void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
@@ -1268,10 +1400,10 @@ index 00000000..488cb44d
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
 new file mode 100644
-index 00000000..33586cc5
+index 00000000..7d4f6f03
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,59 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1317,6 +1449,8 @@ index 00000000..33586cc5
 +
 +    if (sDungeonRouteMgr.State(botAI->GetBot()->GetGUID()).paused)
 +        return 0.0f;  // "startdungeon pause": no new pulls either, not just no walking
++    if (DungeonLead::MasterUnavailable(botAI))
++        return 0.0f;  // dead/disconnected/left the party: no new pulls until the run has a player again
 +    if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
 +        return 0.0f;
 +    if (isWalk && DungeonLead::GroupInCombat(botAI))
@@ -1469,10 +1603,10 @@ index 00000000..4f0b4148
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
 new file mode 100644
-index 00000000..e4ad5090
+index 00000000..e73f6c39
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,157 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1584,12 +1718,58 @@ index 00000000..e4ad5090
 +    std::lock_guard<std::mutex> lock(mtx);
 +    killedByInstance[instanceId].insert(entry);
 +}
++
++char const* ToString(DungeonRunOutcome v)
++{
++    switch (v)
++    {
++        case DungeonRunOutcome::Running:  return "running";
++        case DungeonRunOutcome::Complete: return "complete";
++        case DungeonRunOutcome::Partial:  return "partial";
++        case DungeonRunOutcome::Blocked:  return "blocked";
++        case DungeonRunOutcome::Failed:   return "failed";
++        case DungeonRunOutcome::Aborted:  return "aborted";
++    }
++    return "unknown";
++}
++
++char const* ToString(DungeonFailureDomain v)
++{
++    switch (v)
++    {
++        case DungeonFailureDomain::None:            return "none";
++        case DungeonFailureDomain::Navigation:       return "navigation";
++        case DungeonFailureDomain::PartyCoordination: return "party_coordination";
++        case DungeonFailureDomain::PullPlanning:     return "pull_planning";
++        case DungeonFailureDomain::Combat:           return "combat";
++        case DungeonFailureDomain::Encounter:        return "encounter";
++        case DungeonFailureDomain::Recovery:         return "recovery";
++        case DungeonFailureDomain::Infrastructure:   return "infrastructure";
++    }
++    return "unknown";
++}
++
++char const* ToString(DungeonFailureReason v)
++{
++    switch (v)
++    {
++        case DungeonFailureReason::None:             return "none";
++        case DungeonFailureReason::PathFailed:        return "path_failed";
++        case DungeonFailureReason::ObjectiveTimeout:  return "objective_timeout";
++        case DungeonFailureReason::BossEvade:         return "boss_evade";
++        case DungeonFailureReason::PartyWipe:         return "party_wipe";
++        case DungeonFailureReason::PlayerMissing:     return "player_missing";
++        case DungeonFailureReason::UnsupportedEvent:  return "unsupported_event";
++        case DungeonFailureReason::InternalInvariant: return "internal_invariant";
++    }
++    return "unknown";
++}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..51cd95b7
+index 00000000..3ef960a1
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,221 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1623,7 +1803,56 @@ index 00000000..51cd95b7
 +
 +    bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
 +    bool IsWalkable() const { return HasPosition() && (kind == "boss" || kind == "optional" || kind == "heroic_only" || kind == "event"); }
++
++    // Policy boundary for "must this be satisfied for the run to count as Complete rather than
++    // Partial" - kept as one named function instead of repeating `kind == "boss"` at every call
++    // site, since a future mandatory kind (a required door/event, not just a boss) should only
++    // need this one line updated, not every place that currently checks it. See the architecture
++    // roadmap's L0 closeout notes.
++    bool IsMandatory() const { return kind == "boss"; }
 +};
++
++// Run-level outcome, shared vocabulary between the runtime and (eventually) an automated test
++// harness - see the architecture roadmap's L1 RunResult contract. Deliberately small for now:
++// only Running/Complete/Partial are actually produced by the current engine (Blocked/Failed/
++// Aborted are reserved for later recovery-manager/test-harness work, not populated yet).
++enum class DungeonRunOutcome : uint8
++{
++    Running,
++    Complete,
++    Partial,
++    Blocked,
++    Failed,
++    Aborted
++};
++
++enum class DungeonFailureDomain : uint8
++{
++    None,
++    Navigation,
++    PartyCoordination,
++    PullPlanning,
++    Combat,
++    Encounter,
++    Recovery,
++    Infrastructure
++};
++
++enum class DungeonFailureReason : uint8
++{
++    None,
++    PathFailed,
++    ObjectiveTimeout,
++    BossEvade,
++    PartyWipe,
++    PlayerMissing,
++    UnsupportedEvent,
++    InternalInvariant
++};
++
++char const* ToString(DungeonRunOutcome v);
++char const* ToString(DungeonFailureDomain v);
++char const* ToString(DungeonFailureReason v);
 +
 +struct DungeonRoute
 +{
@@ -1632,6 +1861,17 @@ index 00000000..51cd95b7
 +    uint32 difficulty = 0;
 +    std::string name;
 +    std::vector<DungeonRouteStep> steps;
++};
++
++// A follower's formation/strategy set as it was right before "startdungeon" touched it, so
++// "stopdungeon" can restore it exactly instead of applying a generic default (chaos formation,
++// whatever strategies happen to be left over from dungeon-lead's own +/- deltas).
++struct DungeonLeadMemberSnapshot
++{
++    ObjectGuid guid;
++    std::string formation;
++    std::vector<std::string> nonCombatStrategies;
++    std::vector<std::string> combatStrategies;
 +};
 +
 +// Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
@@ -1661,13 +1901,19 @@ index 00000000..51cd95b7
 +    uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
 +    std::vector<uint8> visited;
 +    std::vector<std::string> skippedSteps;  // bosses skipped (stuck/not-found) - reported at "route complete"
++    bool mandatorySkipped = false;  // true if any of the above was IsMandatory() - run outcome PARTIAL, not COMPLETE
++    DungeonRunOutcome outcome = DungeonRunOutcome::Running;
++    DungeonFailureDomain failureDomain = DungeonFailureDomain::None;
++    DungeonFailureReason failureReason = DungeonFailureReason::None;
 +
 +    // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
++    uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
 +    ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
 +    uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
 +    ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)
 +    bool paused = false;    // "startdungeon pause" / "startdungeon continue"
 +    bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
++    std::vector<DungeonLeadMemberSnapshot> memberSnapshots;  // pre-"startdungeon" state, for exact restore
 +
 +    void ResetRouteProgress()
 +    {
@@ -1687,6 +1933,10 @@ index 00000000..51cd95b7
 +        arrivedTs = 0;
 +        visited.clear();
 +        skippedSteps.clear();
++        mandatorySkipped = false;
++        outcome = DungeonRunOutcome::Running;
++        failureDomain = DungeonFailureDomain::None;
++        failureReason = DungeonFailureReason::None;
 +    }
 +
 +    void Reset() { *this = DungeonLeadState(); }

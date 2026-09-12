@@ -27,6 +27,7 @@
 #include "Timer.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <list>
 #include <mutex>
@@ -108,6 +109,14 @@ namespace
     // files (they're never on the hot path - one line per key event, not per tick).
     std::mutex g_dungeonLeadLogMutex;
 
+    // Session correlation id: every telemetry row from one "startdungeon" run carries the same
+    // value, so a bug report's CSV rows (which interleave every dungeon-lead bot on the whole
+    // server) can be grouped back into one run without guessing from timestamps. Monotonic
+    // per-process counter - unique enough to tell runs apart within one worldserver's CSV/debug
+    // log, not meant to be globally unique across restarts or servers.
+    std::atomic<uint64> g_nextRunId{1};
+    uint64 NextRunId() { return g_nextRunId.fetch_add(1); }
+
     std::string FormatLogTimestamp()
     {
         time_t now = time(nullptr);
@@ -120,6 +129,56 @@ namespace
         char ts[32];
         strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmBuf);
         return ts;
+    }
+
+    // "startdungeon"/"stopdungeon" exact session restore: snapshot each follower's formation and
+    // active strategies before dungeon-lead touches them, so stopping the run can put them back
+    // exactly instead of to a generic default (chaos formation, whatever strategies happened to
+    // still be set after dungeon-lead's own +/- deltas).
+    DungeonLeadMemberSnapshot SnapshotMember(Player* member, PlayerbotAI* memberAI)
+    {
+        DungeonLeadMemberSnapshot snap;
+        snap.guid = member->GetGUID();
+        if (memberAI->GetAiObjectContext())
+            if (FormationValue* fv = dynamic_cast<FormationValue*>(
+                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
+                snap.formation = fv->Save();
+        snap.nonCombatStrategies = memberAI->GetStrategies(BOT_STATE_NON_COMBAT);
+        snap.combatStrategies = memberAI->GetStrategies(BOT_STATE_COMBAT);
+        return snap;
+    }
+
+    // Builds a ChangeStrategy delta ("+missing,-extra") that turns `current` into `target`, empty
+    // if they already match.
+    std::string StrategyDelta(std::vector<std::string> const& current, std::vector<std::string> const& target)
+    {
+        std::string delta;
+        for (std::string const& name : target)
+            if (std::find(current.begin(), current.end(), name) == current.end())
+                delta += "+" + name + ",";
+        for (std::string const& name : current)
+            if (std::find(target.begin(), target.end(), name) == target.end())
+                delta += "-" + name + ",";
+        if (!delta.empty())
+            delta.pop_back();  // trailing comma
+        return delta;
+    }
+
+    void RestoreMember(PlayerbotAI* memberAI, DungeonLeadMemberSnapshot const& snap)
+    {
+        std::string delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_NON_COMBAT), snap.nonCombatStrategies);
+        if (!delta.empty())
+            memberAI->ChangeStrategy(delta, BOT_STATE_NON_COMBAT);
+
+        delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_COMBAT), snap.combatStrategies);
+        if (!delta.empty())
+            memberAI->ChangeStrategy(delta, BOT_STATE_COMBAT);
+
+        if (!snap.formation.empty() && memberAI->GetAiObjectContext())
+            if (FormationValue* fv = dynamic_cast<FormationValue*>(
+                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
+                if (fv->Save() != snap.formation)
+                    fv->Load(snap.formation);
     }
 }
 
@@ -139,6 +198,10 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
     std::string const eventEsc = CsvEscape(event);
     std::string const detailEsc = CsvEscape(detail);
     uint32 const lfgId = st.lfgId;
+    uint64 const runId = st.runId;
+    char const* outcome = ToString(st.outcome);
+    char const* failureDomain = ToString(st.failureDomain);
+    char const* failureReason = ToString(st.failureReason);
 
     std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
     static bool headerWritten = false;
@@ -151,13 +214,14 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
         // run of this same worldserver process already has it
         fseek(f, 0, SEEK_END);
         if (ftell(f) == 0)
-            fprintf(f, "timestamp,player,lfg_id,dungeon,tank,group_members,event,detail\n");
+            fprintf(f, "timestamp,run_id,player,lfg_id,dungeon,tank,group_members,event,detail,outcome,"
+                       "failure_domain,failure_reason\n");
         headerWritten = true;
     }
 
-    fprintf(f, "%s,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts.c_str(),
-            masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
-            members.c_str(), eventEsc.c_str(), detailEsc.c_str());
+    fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts.c_str(),
+            static_cast<unsigned long long>(runId), masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
+            members.c_str(), eventEsc.c_str(), detailEsc.c_str(), outcome, failureDomain, failureReason);
     fflush(f);
     fclose(f);
 }
@@ -229,6 +293,26 @@ bool DungeonLead::HealerManaLow(PlayerbotAI* botAI)
     if (!healer)
         return false;
     return healer->GetPowerPct(POWER_MANA) < float(sPlayerbotAIConfig.dungeonLeadHealerManaPct);
+}
+
+// The real player is part of the run contract (see the architecture roadmap's L0 closeout): dead,
+// disconnected, or no longer in the group at all must block new pulls and route advancement, not
+// just "wait for them to catch up" the way a merely-far-away-but-fine player does. A dead player
+// still needs to release/res/run back before the dungeon should continue without them.
+bool DungeonLead::MasterUnavailable(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    Player* master = botAI->GetMaster();
+    if (!master || master == bot)
+        return false;  // no real player assigned as master - nothing to block on
+    if (!master->IsInWorld() || !master->GetSession())
+        return true;  // logged off / disconnected mid-session
+    if (!master->IsAlive())
+        return true;
+    if (Group* group = bot->GetGroup())
+        if (!group->IsMember(master->GetGUID()))
+            return true;  // left the party entirely
+    return false;
 }
 
 bool DungeonLead::MasterTooFar(PlayerbotAI* botAI)
@@ -343,15 +427,20 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
 {
     Player* bot = botAI->GetBot();
 
-    // capture what we own BEFORE the state disappears below - ResetState() erases ccGuid/skullGuid,
-    // and without this a stop while a moon mark was active left that mark permanently excluding
-    // its target from normal DPS priority with nothing left to ever release it
+    // capture what we own BEFORE the state disappears below - ResetState() erases ccGuid/skullGuid/
+    // memberSnapshots, and without this a stop while a moon mark was active left that mark
+    // permanently excluding its target from normal DPS priority with nothing left to ever release
+    // it, and followers had no way back to whatever they were doing before "startdungeon"
     DungeonLeadState const& st = sDungeonRouteMgr.State(bot->GetGUID());
     ObjectGuid const ownedCc = st.ccGuid;
     ObjectGuid const ownedSkull = st.skullGuid;
+    std::vector<DungeonLeadMemberSnapshot> const snapshots = st.memberSnapshots;
 
-    botAI->ChangeStrategy("-dungeon lead,-grind", BOT_STATE_NON_COMBAT);
-    botAI->ChangeStrategy("-dungeon lead,-mark rti", BOT_STATE_COMBAT);
+    // Full Reset() rather than just stripping "-dungeon lead,-grind"/"-mark rti": "startdungeon"
+    // itself calls Reset() before adding its own strategies, so anything the leader had beyond
+    // dungeon-lead's own additions (e.g. "+cc"/"+mark rti", also added to the leader's own combat
+    // state at start) was never tracked and never got removed by the narrow -/- pair alone.
+    botAI->Reset();
 
     if (Group* group = bot->GetGroup())
     {
@@ -363,9 +452,14 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
             PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
             if (!memberAI || !memberAI->GetAiObjectContext())
                 continue;
-            if (FormationValue* fv = dynamic_cast<FormationValue*>(
+
+            auto snapIt = std::find_if(snapshots.begin(), snapshots.end(),
+                [&](DungeonLeadMemberSnapshot const& s) { return s.guid == member->GetGUID(); });
+            if (snapIt != snapshots.end())
+                RestoreMember(memberAI, *snapIt);
+            else if (FormationValue* fv = dynamic_cast<FormationValue*>(
                     memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
-                fv->Load("chaos");
+                fv->Load("chaos");  // joined mid-run, no snapshot to restore to - fall back to the old default
         }
 
         // only clear marks we actually placed - never touch one the player set/changed since
@@ -414,7 +508,9 @@ bool DungeonLeadNextAction::isUseful()
         st.farFromMasterTold = false;
 
     char const* wait = nullptr;
-    if (DungeonLead::GroupInCombat(botAI))
+    if (DungeonLead::MasterUnavailable(botAI))
+        wait = "master dead/disconnected/left the party";
+    else if (DungeonLead::GroupInCombat(botAI))
         wait = "group in combat";
     else if (DungeonLead::GroupResting(botAI))
         wait = "someone is eating/drinking";
@@ -444,7 +540,7 @@ bool DungeonLeadNextAction::isUseful()
             if (st.debugMode)
             {
                 std::ostringstream dbg;
-                dbg << bot->GetName() << " pos=(" << bot->GetPositionX() << ","
+                dbg << "run=" << st.runId << " " << bot->GetName() << " pos=(" << bot->GetPositionX() << ","
                     << bot->GetPositionY() << "," << bot->GetPositionZ() << ") step=" << st.stepIndex
                     << " moving=" << bot->isMoving() << " inCombat=" << bot->IsInCombat();
                 if (Player* master = botAI->GetMaster())
@@ -593,19 +689,29 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         if (!st.doneTold)
         {
             st.doneTold = true;
+            // RunOutcome: a mandatory stop (IsMandatory()) that got skipped/stuck/not-found means
+            // this run is PARTIAL, not COMPLETE, no matter how many optional stops were also
+            // skipped - see the architecture roadmap's "mandatory objective failure must not
+            // become COMPLETE". st.outcome was already set to Partial at the skip site if this
+            // applies; this is only reached for Complete otherwise. The RecordEvent name itself
+            // carries the outcome for anyone parsing the CSV, not just the wording of the chat line.
+            if (!st.mandatorySkipped)
+                st.outcome = DungeonRunOutcome::Complete;
+            char const* outcome = st.mandatorySkipped ? "PARTIAL" : "complete";
             std::ostringstream out;
             if (st.skippedSteps.empty())
                 out << "Dungeon lead: route complete";
             else
             {
-                out << "Dungeon lead: route complete (" << st.skippedSteps.size() << " stop(s) skipped:";
+                out << "Dungeon lead: route " << outcome << " (" << st.skippedSteps.size() << " stop(s) skipped:";
                 for (size_t i = 0; i < st.skippedSteps.size(); ++i)
                     out << (i ? ", " : " ") << st.skippedSteps[i];
                 out << ")";
             }
             botAI->TellMasterNoFacing(out);
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route complete ({} skipped)", bot->GetName(), st.skippedSteps.size());
-            DungeonLead::RecordEvent(botAI, "route_complete", std::to_string(st.skippedSteps.size()) + " skipped");
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route {} ({} skipped)", bot->GetName(), outcome, st.skippedSteps.size());
+            DungeonLead::RecordEvent(botAI, st.mandatorySkipped ? "route_partial" : "route_complete",
+                                      std::to_string(st.skippedSteps.size()) + " skipped");
         }
         return false;
     }
@@ -677,6 +783,13 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                      step.step, step.boss);
             DungeonLead::RecordEvent(botAI, "not_found", step.boss);
             st.skippedSteps.push_back(step.boss);
+            if (step.IsMandatory())
+            {
+                st.mandatorySkipped = true;
+                st.outcome = DungeonRunOutcome::Partial;
+                st.failureDomain = DungeonFailureDomain::Navigation;
+                st.failureReason = DungeonFailureReason::ObjectiveTimeout;
+            }
             MarkVisited(st);
         }
         return true;
@@ -725,6 +838,13 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             step.boss + " dist=" + std::to_string(disToDest) + " pos=(" + std::to_string(dest.GetPositionX()) + "," +
             std::to_string(dest.GetPositionY()) + "," + std::to_string(dest.GetPositionZ()) + ")");
         st.skippedSteps.push_back(step.boss);
+        if (step.IsMandatory())
+        {
+            st.mandatorySkipped = true;
+            st.outcome = DungeonRunOutcome::Partial;
+            st.failureDomain = DungeonFailureDomain::Navigation;
+            st.failureReason = DungeonFailureReason::PathFailed;
+        }
         MarkVisited(st);
         return true;
     }
@@ -972,6 +1092,9 @@ bool StartDungChatShortcutAction::Execute(Event event)
         PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
     }
 
+    // snapshot every follower's current formation/strategies BEFORE touching anything, so
+    // "stopdungeon" can put them back exactly - see DungeonLead::Stop()
+    std::vector<DungeonLeadMemberSnapshot> snapshots;
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
@@ -980,6 +1103,9 @@ bool StartDungChatShortcutAction::Execute(Event event)
         PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
         if (!memberAI || !memberAI->GetAiObjectContext())
             continue;
+
+        snapshots.push_back(SnapshotMember(member, memberAI));
+
         if (FormationValue* fv = dynamic_cast<FormationValue*>(
                 memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
             fv->Load("leader");
@@ -988,7 +1114,12 @@ bool StartDungChatShortcutAction::Execute(Event event)
     }
 
     sDungeonRouteMgr.ResetState(bot->GetGUID());
-    sDungeonRouteMgr.State(bot->GetGUID()).debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
+    {
+        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+        st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
+        st.memberSnapshots = std::move(snapshots);
+        st.runId = NextRunId();
+    }
     botAI->Reset();
     ResetReturnPosition();
     ResetStayPosition();

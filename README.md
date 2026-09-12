@@ -49,13 +49,17 @@ Whisper (or /w) the tank bot inside the dungeon:
 | `startdungeon continue` | resumes after a pause |
 | `startdungeon reset` | resets route progress back to the first stop, without redoing leadership/formations |
 | `startdungeon debug` | toggles verbose per-wait diagnostics to a dedicated log file, for bug reports (see "Debugging" below) |
-| `stopdungeon` | ends the run: leadership goes back to you, formations reset to `chaos`, star/marks cleared, route state cleared |
+| `stopdungeon` | ends the run: leadership goes back to you, every follower's formation/strategies are restored to what they were right before `startdungeon` (falls back to `chaos` for anyone who joined mid-run with no snapshot), star/marks Dungeon Lead placed are cleared, route state cleared |
 
 The bot reports what it does ("heading to Lady Anacondra", "reached Lady Anacondra", "can't reach X, skipping",
-"route complete", "We're waiting for you!" when you fall behind). Leaving the instance switches the mode off
-automatically.
+"We're waiting for you!" when you fall behind). At the end it reports "route complete" if every mandatory boss
+was actually killed, or "route PARTIAL (N stop(s) skipped: ...)" if a mandatory boss got stuck/skipped along the
+way — don't take "the bot said it's done" at face value without checking which one it said. Leaving the instance
+switches the mode off automatically.
 
 Rules the leader follows before walking on or pulling:
+- the real player is alive, still connected, and still in the party — dead, disconnected, or having
+  left the group blocks new pulls and route progress entirely, not just a "wait, catch up" pause,
 - nobody in the group is in combat,
 - no healer below `AiPlayerbot.DungeonLead.HealerManaPct` (default 20 %) and nobody sitting (eating/drinking),
 - the real player is within `AiPlayerbot.DungeonLead.Leash` yards (default 60) — the bot stops in place and sends
@@ -71,9 +75,14 @@ they work the same on every server without extra setup.
 
 **Always on — `DungeonLeadSessions.csv`.** One row per key event (run started/stopped, boss reached, boss already
 dead, skull/moon mark placed, CC mark released, stuck-and-skipped, waiting, ...), with columns
-`timestamp,player,lfg_id,dungeon,tank,group_members,event,detail`. This is lightweight structured data, safe to
-leave on for everyone — it's what lets an admin see, across many players' runs, which dungeons/steps actually cause
-trouble without asking anyone to write anything up.
+`timestamp,run_id,player,lfg_id,dungeon,tank,group_members,event,detail,outcome,failure_domain,failure_reason`.
+`run_id` groups every row from one `startdungeon` session (the file interleaves every dungeon-lead bot on the whole
+server, so this is how you pull out just one run); `outcome`/`failure_domain`/`failure_reason` reflect the run's
+status *as of that row* — `running` until something changes it, `complete` once every mandatory boss was actually
+killed, or `partial` (with a domain/reason, e.g. `navigation`/`path_failed`) the moment a mandatory boss gets
+stuck-skipped or never found. This is lightweight structured data, safe to leave on for everyone — it's what lets
+an admin see, across many players' runs, which dungeons/steps actually cause trouble without asking anyone to
+write anything up.
 
 **Opt-in — `DungeonLeadDebug.log`.** Whisper the leading bot `startdungeon debug` before reproducing a problem. It
 replies `Dungeon lead debug activated, file is being saved to DungeonLeadDebug.log (same folder as Playerbots.log)`
