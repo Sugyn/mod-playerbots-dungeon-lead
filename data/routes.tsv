@@ -1,0 +1,334 @@
+# lfg_id	wing	step	kind	boss_name	note
+# kind: boss | optional | heroic_only | event (scripted/summoned encounter) | door | skip (unsupported, route ends here)
+# ===================== VANILLA =====================
+# Ragefire Chasm (src: warcraft.wiki.gg/Ragefire_Chasm_(Classic))
+4	-	1	boss	Oggleflint
+4	-	2	boss	Taragaman the Hungerer
+4	-	3	boss	Jergosh the Invoker
+4	-	4	boss	Bazzalan	upper walkway
+# Wailing Caverns (src: warcraft.wiki.gg/Wailing_Caverns)
+1	-	1	boss	Lady Anacondra	Screaming Gully
+1	-	2	boss	Lord Cobrahn
+1	-	3	optional	Kresh	river turtle
+1	-	4	boss	Lord Pythas
+1	-	5	optional	Skum
+1	-	6	boss	Lord Serpentis
+1	-	7	optional	Verdan the Everliving
+1	-	8	event	Disciple of Naralex	escort from entrance after 4 Fanglords -> spawns Mutanus
+1	-	9	event	Mutanus the Devourer	script-spawned by escort
+# Deadmines (src: warcraft.wiki.gg/Deadmines_(Classic))
+6	-	1	boss	Rhahk'Zor
+6	-	2	boss	Sneed's Shredder	Sneed pops out after shredder dies (script)
+6	-	3	boss	Gilnid
+6	-	4	door	Iron door to Ironclad Cove	Defias Gunpowder on cannon / rogue lockpick
+6	-	5	boss	Mr. Smite	stealthed elites first
+6	-	6	boss	Captain Greenskin	on ship
+6	-	7	boss	Edwin VanCleef	cabin, adds
+6	-	8	optional	Cookie	after VanCleef
+# Shadowfang Keep (src: warcraft.wiki.gg/Shadowfang_Keep_(Classic))
+8	-	1	boss	Rethilgore
+8	-	2	door	Courtyard door	opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
+8	-	3	boss	Razorclaw the Butcher
+8	-	4	boss	Baron Silverlaine
+8	-	5	boss	Commander Springvale
+8	-	6	boss	Odo the Blindwatcher
+8	-	7	boss	Fenrus the Devourer
+8	-	8	boss	Wolf Master Nandos	kills opens Arugal's door
+8	-	9	boss	Archmage Arugal
+# Blackfathom Deeps (src: warcraft.wiki.gg/Blackfathom_Deeps_(Classic))
+10	-	1	boss	Ghamoo-ra
+10	-	2	optional	Lady Sarevess	side cavern
+10	-	3	boss	Gelihast
+10	-	4	boss	Lorgus Jett	3 possible spawns
+10	-	5	optional	Baron Aquanis	quest summon
+10	-	6	optional	Old Serra'kis	underwater
+10	-	7	boss	Twilight Lord Kelris
+10	-	8	event	Altar candles	light 4 braziers -> waves -> spawns Aku'mai
+10	-	9	event	Aku'mai	script-spawned
+# Stormwind Stockade (src: warcraft.wiki.gg/Stormwind_Stockade_(Classic); Targorr and Kam have variable spawn locations (several cells) and the dungeon branches into east/west wings, so encounter order may vary. Listed: west wing first.)
+12	-	1	boss	Targorr the Dread	variable cell
+12	-	2	boss	Kam Deepfury	variable cell
+12	-	3	boss	Dextren Ward	end of west/left wing
+12	-	4	boss	Hamhock	east/right wing
+12	-	5	boss	Bazil Thredd	beyond Hamhock, east wing
+12	-	6	optional	Bruegal Ironknuckle	rare
+# Gnomeregan (src: warcraft.wiki.gg/Gnomeregan_(instance))
+14	-	1	optional	Viscous Fallout	Hall of Gears
+14	-	2	event	Blastmaster Emi Shortfuse	Grubbis event (script-spawned Grubbis)
+14	-	3	event	Grubbis
+14	-	4	boss	Electrocutioner 6000
+14	-	5	boss	Crowd Pummeler 9-60
+14	-	6	optional	Dark Iron Ambassador	rare
+14	-	7	boss	Mekgineer Thermaplugg	buttons must be pressed during fight (scripted)
+# Razorfen Kraul (src: warcraft.wiki.gg/Razorfen_Kraul_(Classic))
+16	-	1	boss	Roogug
+16	-	2	boss	Aggem Thorncurse
+16	-	3	boss	Death Speaker Jargba
+16	-	4	boss	Overlord Ramtusk
+16	-	5	optional	Earthcaller Halmgar	rare
+16	-	6	boss	Agathelos the Raging
+16	-	7	optional	Blind Hunter	rare
+16	-	8	boss	Charlga Razorflank
+# Scarlet Monastery wings (src: warcraft.wiki.gg/Scarlet_Monastery_Graveyard|Library|Armory|Cathedral)
+18	Graveyard	1	boss	Interrogator Vishas
+18	Graveyard	2	optional	Ironspine	rare, Forlorn Cloister
+18	Graveyard	3	optional	Azshir the Sleepless	rare
+18	Graveyard	4	optional	Fallen Champion	rare
+18	Graveyard	5	boss	Bloodmage Thalnos
+165	Library	1	boss	Houndmaster Loksey
+165	Library	2	boss	Arcanist Doan	drops Scarlet Key
+163	Armory	1	boss	Herod	Scarlet Key door
+164	Cathedral	1	optional	High Inquisitor Fairbanks	hidden room
+164	Cathedral	2	boss	Scarlet Commander Mograine	clear whole cathedral first
+164	Cathedral	3	event	High Inquisitor Whitemane	enters + resurrects Mograine (scripted)
+# Razorfen Downs (src: warcraft.wiki.gg/Razorfen_Downs_(Classic))
+20	-	1	event	Tuten'kash	gong summons (script)
+20	-	2	boss	Mordresh Fire Eye	Bone Pile
+20	-	3	boss	Glutton
+20	-	4	optional	Ragglesnout	rare, 3 spots
+20	-	5	boss	Amnennar the Coldbringer
+20	-	6	optional	Plaguemaw the Rotting	quest event
+# Uldaman (src: icy-veins.com/wow-classic/uldaman-dungeon-guide)
+22	-	1	boss	Baelog	with Eric "The Swift" + Olaf
+22	-	2	boss	Revelosh
+22	-	3	optional	Ironaya	door needs Staff of Prehistoria
+22	-	4	boss	Ancient Stone Keeper
+22	-	5	boss	Galgann Firehammer
+22	-	6	boss	Grimlok
+22	-	7	event	Archaedas	altar click starts encounter
+# Zul'Farrak (src: warcraft.wiki.gg/Zul'Farrak)
+24	-	1	boss	Theka the Martyr
+24	-	2	boss	Antu'sul
+24	-	3	boss	Witch Doctor Zum'rah
+24	-	4	boss	Sandfury Executioner	pyramid top
+24	-	5	event	Sergeant Bly	stairs event (Divino-matic Rod), spawns Nekrum + Sezz'ziz
+24	-	6	event	Nekrum Gutchewer
+24	-	7	event	Shadowpriest Sezz'ziz
+24	-	8	boss	Chief Ukorz Sandscalp	with Ruuzlu
+24	-	9	optional	Hydromancer Velratha
+24	-	10	optional	Gahz'rilla	Mallet summon
+# Maraudon LFD wings (src: icy-veins hub + almarsguides; patch 4.0.3a notes: Tinkerer Gizlock "moved from Earth Song Falls to the Wicked Grotto" -> in 3.3.5a he is in Earth Song Falls. Celebras the Cursed was not part of any 3.3.5 LFD wing.)
+26	Foulspore Cavern	1	boss	Noxxion	Orange Crystals
+26	Foulspore Cavern	2	boss	Razorlash
+272	Wicked Grotto	1	boss	Lord Vyletongue	Purple Crystals
+273	Earth Song Falls	1	optional	Celebras the Cursed	optional/shared, not assigned to a specific 3.3.5 LFD wing (Poison Falls, between outer wings and inner)
+273	Earth Song Falls	2	boss	Tinkerer Gizlock	Earth Song Falls in 3.3.5a (moved to Wicked Grotto only in 4.0.3a)
+273	Earth Song Falls	3	boss	Landslide
+273	Earth Song Falls	4	optional	Rotgrip	lake
+273	Earth Song Falls	5	boss	Princess Theradras
+# Sunken Temple (src: warcraft.wiki.gg/Temple_of_Atal'Hakkar_(Classic))
+28	-	1	boss	Loro	Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route
+28	-	2	boss	Gasher	Atal'ai Defender 2/6
+28	-	3	boss	Mijan	Atal'ai Defender 3/6
+28	-	4	boss	Zolo	Atal'ai Defender 4/6
+28	-	5	boss	Zul'Lor	Atal'ai Defender 5/6
+28	-	6	boss	Hukku	Atal'ai Defender 6/6 -> Jammal'an shield drops
+28	-	7	boss	Jammal'an the Prophet	with Ogom the Wretched
+28	-	8	optional	Dreamscythe
+28	-	9	optional	Weaver
+28	-	10	optional	Morphaz
+28	-	11	optional	Hazzas
+28	-	12	boss	Shade of Eranikus
+28	-	13	optional	Atal'alarion	statue puzzle, basement
+28	-	14	optional	Avatar of Hakkar	quest event
+# Blackrock Depths Prison / Detention Block (src: icy-veins.com/wow-classic/blackrock-depths-detention-block-dungeon-guide; LFD level ranges 47-57 / 51-61 come from LFGDungeons.dbc. Lower BRD is non-linear; this is a progression/content list, LFD completion is tied to High Interrogator Gerstahn (Prison) and Emperor Dagran Thaurissan (Upper City).)
+30	Prison	1	boss	High Interrogator Gerstahn	LFD completion boss for Prison
+30	Prison	2	boss	Lord Roccor
+30	Prison	3	boss	Houndmaster Grebmar
+30	Prison	4	event	Ring of Law	arena, random boss (Anub'shiah/Eviscerator/Gorosh/Grizzle/Hedrum/Ok'thor)
+30	Prison	5	optional	Fineous Darkvire	Dark Iron Legacy / Shadowforge Key
+30	Prison	6	boss	Pyromancer Loregrain
+30	Prison	7	boss	Bael'Gar
+30	Prison	8	boss	Lord Incendius
+30	Prison	9	optional	Warder Stilgiss	with Verek
+30	Prison	10	optional	Watchman Doomgrip	event: spawns when relic coffers are opened (12 keys)
+# Blackrock Depths Upper City (src: icy-veins.com/wow-classic/blackrock-depths-upper-city-dungeon-guide)
+276	Upper	1	boss	General Angerforge
+276	Upper	2	boss	Golem Lord Argelmach
+276	Upper	3	optional	Phalanx	Grim Guzzler
+276	Upper	4	optional	Ribbly Screwspigot	Grim Guzzler
+276	Upper	5	optional	Hurley Blackbreath	Grim Guzzler
+276	Upper	6	door	Grim Guzzler back door	Plugger bar fight / Rocknot event
+276	Upper	7	boss	Ambassador Flamelash
+276	Upper	8	optional	Panzor the Invincible	rare
+276	Upper	9	event	Doom'rel	Chest of the Seven (7 dwarves sequential)
+276	Upper	10	boss	Magmus	Lyceum gauntlet before
+276	Upper	11	boss	Emperor Dagran Thaurissan	LFD completion boss for Upper City; with Princess Moira Bronzebeard; High Priestess of Thaurissan spawns
+# Lower Blackrock Spire (src: warcraft.wiki.gg/Lower_Blackrock_Spire)
+32	-	1	boss	Highlord Omokk
+32	-	2	boss	Shadow Hunter Vosh'gajin
+32	-	3	boss	War Master Voone
+32	-	4	boss	Mother Smolderweb
+32	-	5	boss	Quartermaster Zigris
+32	-	6	optional	Halycon
+32	-	7	optional	Gizrul the Slavener	spawns after Halycon
+32	-	8	boss	Overlord Wyrmthalak
+# Scholomance (src: warcraft.wiki.gg/Scholomance_(Classic))
+2	-	1	optional	Kirtonos the Herald	summon (Blood of Innocents)
+2	-	2	boss	Jandice Barov
+2	-	3	boss	Rattlegore	drops Viewing Room Key
+2	-	4	door	Viewing Room door	Rattlegore key
+2	-	5	boss	Marduk Blackpool
+2	-	6	boss	Vectus
+2	-	7	boss	Ras Frostwhisper
+2	-	8	boss	Instructor Malicia
+2	-	9	boss	Doctor Theolen Krastinov
+2	-	10	boss	Lorekeeper Polkelt
+2	-	11	boss	The Ravenian
+2	-	12	boss	Lord Alexei Barov
+2	-	13	boss	Lady Illucia Barov
+2	-	14	event	Darkmaster Gandling	spawns after all six
+# Stratholme Main Gate / Live (src: icy-veins.com/wow-classic/stratholme-live-dungeon-guide)
+40	Live	1	optional	Timmy the Cruel	script-spawned in Market Row
+40	Live	2	optional	The Unforgiven
+40	Live	3	optional	Postmaster Malown	summon via postboxes
+40	Live	4	door	Scarlet Bastion gate	Scarlet Key / Crusaders' Square
+40	Live	5	boss	Cannon Master Willey
+40	Live	6	optional	Crimson Hammersmith	summon
+40	Live	7	boss	Archivist Galford
+40	Live	8	boss	Grand Crusader Dathrohan	-> Balnazzar at 50%
+# Stratholme Service Entrance / Undead (src: icy-veins.com/wow-classic/stratholme-undead-dungeon-guide)
+274	Undead	1	event	Magistrate Barthilas	flees on first contact
+274	Undead	2	optional	Stonespine	rare
+274	Undead	3	boss	Baroness Anastari	ziggurat 1
+274	Undead	4	boss	Nerub'enkan	ziggurat 2
+274	Undead	5	boss	Maleki the Pallid	ziggurat 3 -> Slaughter Square gate opens
+274	Undead	6	boss	Magistrate Barthilas	rematch
+274	Undead	7	event	Ramstein the Gorger	after abominations
+274	Undead	8	boss	Baron Rivendare	45-min timer for quest only
+# Dire Maul wings (src: warcraft.wiki.gg/Dire_Maul)
+34	East	1	event	Pusillin	chase, Crescent Key
+34	East	2	optional	Lethtendris	with Pimgib
+34	East	3	optional	Hydrospawn
+34	East	4	optional	Zevrim Thornhoof
+34	East	5	door	Alzzin door	Old Ironbark opens after Zevrim
+34	East	6	boss	Alzzin the Wildshaper
+36	West	1	door	Crescent Key door
+36	West	2	optional	Tendris Warpwood
+36	West	3	optional	Tsu'zee	rare
+36	West	4	optional	Magister Kalendris
+36	West	5	optional	Illyanna Ravenoak	with Ferra
+36	West	6	optional	Immol'thar	5 pylons
+36	West	7	boss	Prince Tortheldrin
+38	North	1	door	Crescent Key door
+38	North	2	optional	Guard Mol'dar
+38	North	3	optional	Stomper Kreeg
+38	North	4	optional	Guard Fengus
+38	North	5	optional	Guard Slip'kik
+38	North	6	optional	Captain Kromcrush
+38	North	7	optional	Cho'Rush the Observer
+38	North	8	boss	King Gordok
+# Holiday bosses (type 1, level 78-82)
+285	-	1	event	Headless Horseman	Hallow's End only
+287	-	1	event	Coren Direbrew	Brewfest only
+286	-	1	event	Lord Ahune	Midsummer only
+288	-	1	event	Apothecary Hummel	Love is in the Air only
+# ===================== TBC (normal ids; heroics derived by map) =====================
+136	-	1	boss	Watchkeeper Gargolmar
+136	-	2	boss	Omor the Unscarred
+136	-	3	boss	Vazruden the Herald	Nazan lands after Vazruden dismounts (script)
+137	-	1	boss	The Maker
+137	-	2	event	Broggok	cell waves lever
+137	-	3	boss	Keli'dan the Breaker	channelers first
+138	-	1	boss	Grand Warlock Nethekurse
+138	-	2	event	Gauntlet of Flame	archers gauntlet
+138	-	3	heroic_only	Blood Guard Porung
+138	-	4	boss	Warbringer O'mrogg
+138	-	5	boss	Warchief Kargath Bladefist
+140	-	1	boss	Mennu the Betrayer
+140	-	2	boss	Rokmar the Crackler
+140	-	3	boss	Quagmirran
+146	-	1	boss	Hungarfen
+146	-	2	boss	Ghaz'an
+146	-	3	boss	Swamplord Musel'ek	with Claw
+146	-	4	boss	The Black Stalker
+147	-	1	boss	Hydromancer Thespia
+147	-	2	boss	Mekgineer Steamrigger
+147	-	3	door	Control panels	2 panels behind first two bosses
+147	-	4	boss	Warlord Kalithresh
+148	-	1	boss	Pandemonius
+148	-	2	boss	Tavarok
+148	-	3	heroic_only	Yor	summon, quest
+148	-	4	boss	Nexus-Prince Shaffar
+149	-	1	boss	Shirrak the Dead Watcher
+149	-	2	boss	Exarch Maladaar
+150	-	1	boss	Darkweaver Syth
+150	-	2	heroic_only	Anzu	summon, druid quest
+150	-	3	boss	Talon King Ikiss
+151	-	1	event	Ambassador Hellmaw	freed after banishers
+151	-	2	boss	Blackheart the Inciter
+151	-	3	boss	Grandmaster Vorpil
+151	-	4	boss	Murmur
+172	-	1	boss	Gatewatcher Gyro-Kill
+172	-	2	boss	Gatewatcher Iron-Hand
+172	-	3	optional	Mechano-Lord Capacitus
+172	-	4	optional	Nethermancer Sepethrea
+172	-	5	door	Elevator	after both gatewatchers
+172	-	6	boss	Pathaleon the Calculator
+173	-	1	optional	Commander Sarannis
+173	-	2	optional	High Botanist Freywinn
+173	-	3	optional	Thorngrin the Tender
+173	-	4	optional	Laj
+173	-	5	boss	Warp Splinter
+174	-	1	boss	Zereketh the Unbound
+174	-	2	boss	Dalliah the Doomsayer
+174	-	3	boss	Wrath-Scryer Soccothrates
+174	-	4	event	Warden Mellichar	cell event -> Harbinger Skyriss
+174	-	5	event	Harbinger Skyriss	script-spawned
+170	-	1	skip	Escape from Durnholde	event dungeon: barrels -> Lieutenant Drake -> Captain Skarloc -> Thrall escort -> Epoch Hunter
+171	-	1	skip	The Black Morass	event dungeon: 18 waves, Chrono Lord Deja(6) / Temporus(12) / Aeonus(18), protect Medivh
+198	-	1	boss	Selin Fireheart
+198	-	2	boss	Vexallus
+198	-	3	boss	Priestess Delrissa	council
+198	-	4	boss	Kael'thas Sunstrider
+# ===================== WOTLK (normal ids; heroics derived by map) =====================
+202	-	1	boss	Prince Keleseth
+202	-	2	boss	Skarvald the Constructor	with Dalronn the Controller
+202	-	3	boss	Ingvar the Plunderer
+203	-	1	event	Svala Sorrowgrave	ritual (script-spawned)
+203	-	2	event	Gortok Palehoof	animal gauntlet
+203	-	3	event	Skadi the Ruthless	gauntlet + harpoons
+203	-	4	boss	King Ymiron
+225	-	1	heroic_only	Commander Kolurg	Horde sees Kolurg / Alliance sees Commander Stoutbeard
+225	-	2	boss	Grand Magus Telestra
+225	-	3	boss	Anomalus
+225	-	4	boss	Ormorok the Tree-Shaper
+225	-	5	boss	Keristrasza	freed after previous three
+206	-	1	boss	Drakos the Interrogator
+206	-	2	skip	The Oculus	vehicle dungeon after Drakos: Varos Cloudstrider -> Mage-Lord Urom -> Ley-Guardian Eregos on drakes
+209	-	1	skip	The Culling of Stratholme	event dungeon: Arthas escort, Meathook -> Salramm -> Chrono-Lord Epoch -> (Infinite Corruptor H) -> Mal'Ganis
+208	-	1	boss	Krystallus
+208	-	2	boss	Maiden of Grief
+208	-	3	event	Brann Bronzebeard	Tribunal of Ages escort, opens Sjonnir door
+208	-	4	boss	Sjonnir The Ironshaper
+214	-	1	boss	Trollgore
+214	-	2	event	Novos the Summoner	waves
+214	-	3	boss	King Dred
+214	-	4	boss	The Prophet Tharon'ja
+204	-	1	boss	Krik'thir the Gatewatcher	watchers Gashra/Narjil/Silthik first
+204	-	2	optional	Hadronox	web climb
+204	-	3	boss	Anub'arak
+207	-	1	boss	General Bjarngrim	patrols
+207	-	2	boss	Volkhan
+207	-	3	boss	Ionar
+207	-	4	boss	Loken
+216	-	1	boss	Slad'ran
+216	-	2	boss	Moorabi
+216	-	3	boss	Drakkari Colossus
+216	-	4	door	Altar bridge	3 altars -> bridge to Gal'darah
+216	-	5	boss	Gal'darah
+216	-	6	heroic_only	Eck the Ferocious
+220	-	1	skip	The Violet Hold	event dungeon: 18 waves, 2 random of Erekem/Moragg/Ichoron/Xevozz/Lavanthor/Zuramat, Cyanigosa
+218	-	1	optional	Elder Nadox
+218	-	2	boss	Prince Taldaram	2 spheres open door
+218	-	3	optional	Jedoga Shadowseeker
+218	-	4	heroic_only	Amanitar
+218	-	5	boss	Herald Volazj
+251	-	1	boss	Bronjahm
+251	-	2	boss	Devourer of Souls
+245	-	1	skip	Trial of the Champion	event dungeon: jousting Grand Champions -> Eadric/Paletress -> The Black Knight
+253	-	1	boss	Forgemaster Garfrost
+253	-	2	boss	Ick	with Krick
+253	-	3	event	Tunnel gauntlet	cave-in, run through
+253	-	4	boss	Scourgelord Tyrannus	with Rimefang
+255	-	1	skip	Halls of Reflection	event dungeon: 10 waves, Falric(5) / Marwyn(10), Lich King escape

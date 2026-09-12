@@ -1,0 +1,1337 @@
+diff --git a/conf/playerbots.conf.dist b/conf/playerbots.conf.dist
+index bcf2600f..08879891 100644
+--- a/conf/playerbots.conf.dist
++++ b/conf/playerbots.conf.dist
+@@ -411,6 +411,21 @@ AiPlayerbot.ContactDistance = 0.45
+ AiPlayerbot.AoeRadius = 10
+ AiPlayerbot.RpgDistance = 200
+ AiPlayerbot.GrindDistance = 75.0
++
++# Dungeon lead ("startdung"/"stopdung" whispered to a bot inside a 5-man dungeon): the bot becomes
++# group leader, the other bots follow it (formation "leader"), and it walks the hand-authored route
++# from playerbots_dungeon_route, grinding on the way and marking bosses (skull) / CC targets (moon).
++# HealerManaPct: do not pull / walk on while a healer is below this mana %.
++# Leash: never walk further than this from the real player (yards); members may lag 1.5x this.
++# ArriveDistance: a route stop counts as reached within this distance (yards).
++# StuckSeconds: no progress towards a stop for this long -> skip it.
++# SkipOptional: 1 = skip optional bosses on the route.  MarkCc: 1 = also mark a moon CC target.
++AiPlayerbot.DungeonLead.HealerManaPct = 20
++AiPlayerbot.DungeonLead.Leash = 60
++AiPlayerbot.DungeonLead.ArriveDistance = 8
++AiPlayerbot.DungeonLead.StuckSeconds = 45
++AiPlayerbot.DungeonLead.SkipOptional = 0
++AiPlayerbot.DungeonLead.MarkCc = 1
+ AiPlayerbot.ReactDistance = 150.0
+ 
+ #
+diff --git a/src/Ai/Base/ActionContext.h b/src/Ai/Base/ActionContext.h
+index 6e41eb06..82194f8c 100644
+--- a/src/Ai/Base/ActionContext.h
++++ b/src/Ai/Base/ActionContext.h
+@@ -69,6 +69,7 @@
+ #include "WaitForAttackAction.h"
+ #include "WorldBuffAction.h"
+ #include "XpGainAction.h"
++#include "DungeonLeadActions.h"
+ 
+ class PlayerbotAI;
+ 
+@@ -138,6 +139,9 @@ public:
+         creators["sit"] = &ActionContext::sit;
+         creators["aggressive target"] = &ActionContext::aggressive_target;
+         creators["attack anything"] = &ActionContext::attack_anything;
++        creators["dungeon lead next"] = &ActionContext::dungeon_lead_next;
++        creators["dungeon lead mark"] = &ActionContext::dungeon_lead_mark;
++        creators["dungeon lead stop"] = &ActionContext::dungeon_lead_stop;
+         creators["attack least hp target"] = &ActionContext::attack_least_hp_target;
+         creators["attack enemy player"] = &ActionContext::attack_enemy_player;
+         creators["emote"] = &ActionContext::emote;
+@@ -341,6 +345,9 @@ private:
+     static Action* suggest_dungeon(PlayerbotAI* botAI) { return new SuggestDungeonAction(botAI); }
+     static Action* aggressive_target(PlayerbotAI* botAI) { return new AggressiveTargetAction(botAI); }
+     static Action* attack_anything(PlayerbotAI* botAI) { return new AttackAnythingAction(botAI); }
++    static Action* dungeon_lead_next(PlayerbotAI* botAI) { return new DungeonLeadNextAction(botAI); }
++    static Action* dungeon_lead_mark(PlayerbotAI* botAI) { return new DungeonLeadMarkAction(botAI); }
++    static Action* dungeon_lead_stop(PlayerbotAI* botAI) { return new DungeonLeadStopAction(botAI); }
+     static Action* attack_least_hp_target(PlayerbotAI* botAI) { return new AttackLeastHpTargetAction(botAI); }
+     static Action* attack_enemy_player(PlayerbotAI* botAI) { return new AttackEnemyPlayerAction(botAI); }
+     static Action* stay(PlayerbotAI* botAI) { return new StayAction(botAI); }
+diff --git a/src/Ai/Base/ChatActionContext.h b/src/Ai/Base/ChatActionContext.h
+index 67e6288b..ac0a73f9 100644
+--- a/src/Ai/Base/ChatActionContext.h
++++ b/src/Ai/Base/ChatActionContext.h
+@@ -89,6 +89,7 @@
+ #include "WhoAction.h"
+ #include "WipeAction.h"
+ #include "WtsAction.h"
++#include "DungeonLeadActions.h"
+ 
+ class ChatActionContext : public NamedObjectContext<Action>
+ {
+@@ -159,6 +160,8 @@ public:
+         creators["runaway chat shortcut"] = &ChatActionContext::runaway_chat_shortcut;
+         creators["move from group chat shortcut"] = &ChatActionContext::move_from_group_chat_shortcut;
+         creators["grind chat shortcut"] = &ChatActionContext::grind_chat_shortcut;
++        creators["startdung chat shortcut"] = &ChatActionContext::startdung_chat_shortcut;
++        creators["stopdung chat shortcut"] = &ChatActionContext::stopdung_chat_shortcut;
+         creators["tank attack chat shortcut"] = &ChatActionContext::tank_attack_chat_shortcut;
+         creators["gossip hello"] = &ChatActionContext::gossip_hello;
+         creators["cast custom spell"] = &ChatActionContext::cast_custom_spell;
+@@ -244,6 +247,8 @@ private:
+     static Action* cast_custom_nc_spell(PlayerbotAI* botAI) { return new CastCustomNcSpellAction(botAI); }
+     static Action* tank_attack_chat_shortcut(PlayerbotAI* botAI) { return new TankAttackChatShortcutAction(botAI); }
+     static Action* grind_chat_shortcut(PlayerbotAI* botAI) { return new GrindChatShortcutAction(botAI); }
++    static Action* startdung_chat_shortcut(PlayerbotAI* botAI) { return new StartDungChatShortcutAction(botAI); }
++    static Action* stopdung_chat_shortcut(PlayerbotAI* botAI) { return new StopDungChatShortcutAction(botAI); }
+     static Action* flee_chat_shortcut(PlayerbotAI* botAI) { return new FleeChatShortcutAction(botAI); }
+     static Action* runaway_chat_shortcut(PlayerbotAI* botAI) { return new GoawayChatShortcutAction(botAI); }
+     static Action* stay_chat_shortcut(PlayerbotAI* botAI) { return new StayChatShortcutAction(botAI); }
+diff --git a/src/Ai/Base/ChatTriggerContext.h b/src/Ai/Base/ChatTriggerContext.h
+index 55792aa5..97d1a0ff 100644
+--- a/src/Ai/Base/ChatTriggerContext.h
++++ b/src/Ai/Base/ChatTriggerContext.h
+@@ -88,6 +88,8 @@ public:
+         creators["stay"] = &ChatTriggerContext::stay;
+         creators["flee"] = &ChatTriggerContext::flee;
+         creators["grind"] = &ChatTriggerContext::grind;
++        creators["startdung"] = &ChatTriggerContext::startdung;
++        creators["stopdung"] = &ChatTriggerContext::stopdung;
+         creators["tank attack"] = &ChatTriggerContext::tank_attack;
+         creators["talk"] = &ChatTriggerContext::talk;
+         creators["enter vehicle"] = &ChatTriggerContext::enter_vehicle;
+@@ -202,6 +204,8 @@ private:
+     static Trigger* leave_vehicle(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "leave vehicle"); }
+     static Trigger* flee(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "flee"); }
+     static Trigger* grind(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "grind"); }
++    static Trigger* startdung(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "startdung"); }
++    static Trigger* stopdung(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "stopdung"); }
+     static Trigger* tank_attack(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "tank attack"); }
+     static Trigger* stay(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "stay"); }
+     static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
+diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
+new file mode 100644
+index 00000000..bf4c6e59
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
+@@ -0,0 +1,598 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#include "DungeonLeadActions.h"
++
++#include "Creature.h"
++#include "CreatureData.h"
++#include "Event.h"
++#include "Formations.h"
++#include "Group.h"
++#include "LFGMgr.h"
++#include "LastMovementValue.h"
++#include "Map.h"
++#include "ObjectAccessor.h"
++#include "PathGenerator.h"
++#include "PlayerbotAIConfig.h"
++#include "PlayerbotOperations.h"
++#include "PlayerbotWorldThreadProcessor.h"
++#include "Playerbots.h"
++#include "RtiTargetValue.h"
++#include "Timer.h"
++
++#include <list>
++#include <sstream>
++
++// ---------------------------------------------------------------------------------------------
++// helpers
++// ---------------------------------------------------------------------------------------------
++namespace
++{
++    constexpr float kPathFinderDis = 70.0f;     // below this, hand the destination straight to mmaps
++    constexpr float kBossSearchRange = 60.0f;
++    constexpr float kCcSearchRange = 40.0f;
++    constexpr float kCreatureProbeRange = 150.0f;
++
++    Unit* IconUnit(PlayerbotAI* botAI, Group* group, uint8 index)
++    {
++        ObjectGuid guid = group->GetTargetIcon(index);
++        return guid.IsEmpty() ? nullptr : botAI->GetUnit(guid);
++    }
++
++    bool RouteHasEntry(PlayerbotAI* botAI, uint32 entry)
++    {
++        DungeonLeadState& st = sDungeonRouteMgr.State(botAI->GetBot()->GetGUID());
++        DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
++        if (!route)
++            return false;
++        for (DungeonRouteStep const& s : route->steps)
++            if (s.entry == entry)
++                return true;
++        return false;
++    }
++}
++
++bool DungeonLead::InFiveMan(Player* bot)
++{
++    Map* map = bot ? bot->GetMap() : nullptr;
++    return map && map->IsNonRaidDungeon();
++}
++
++bool DungeonLead::IsOn(PlayerbotAI* botAI)
++{
++    return botAI && botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT);
++}
++
++bool DungeonLead::GroupInCombat(PlayerbotAI* botAI)
++{
++    Player* bot = botAI->GetBot();
++    Group* group = bot->GetGroup();
++    if (!group)
++        return bot->IsInCombat();
++
++    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++    {
++        Player* member = ref->GetSource();
++        if (!member || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
++            continue;
++        if (member->IsInCombat())
++            return true;
++    }
++    return false;
++}
++
++bool DungeonLead::GroupResting(PlayerbotAI* botAI)
++{
++    Player* bot = botAI->GetBot();
++    Group* group = bot->GetGroup();
++    if (!group)
++        return false;
++
++    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++    {
++        Player* member = ref->GetSource();
++        if (!member || member == bot || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
++            continue;
++        // bots sit down to eat/drink; a real player sitting is treated the same (AFK-ish)
++        if (member->IsSitState())
++            return true;
++    }
++    return false;
++}
++
++bool DungeonLead::HealerManaLow(PlayerbotAI* botAI)
++{
++    Unit* healer = botAI->GetAiObjectContext()->GetValue<Unit*>("healer low mana")->Get();
++    if (!healer)
++        return false;
++    return healer->GetPowerPct(POWER_MANA) < float(sPlayerbotAIConfig.dungeonLeadHealerManaPct);
++}
++
++bool DungeonLead::GroupTooSpread(PlayerbotAI* botAI)
++{
++    Player* bot = botAI->GetBot();
++    float leash = sPlayerbotAIConfig.dungeonLeadLeash;
++
++    // never run away from the real player
++    Player* master = botAI->GetMaster();
++    if (master && master != bot && master->IsAlive() && master->GetMapId() == bot->GetMapId() &&
++        bot->GetDistance(master) > leash)
++        return true;
++
++    Group* group = bot->GetGroup();
++    if (!group)
++        return false;
++
++    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++    {
++        Player* member = ref->GetSource();
++        if (!member || member == bot || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
++            continue;
++        if (bot->GetDistance(member) > leash * 1.5f)
++            return true;
++    }
++    return false;
++}
++
++Creature* DungeonLead::FindBossNear(PlayerbotAI* botAI, float range)
++{
++    Player* bot = botAI->GetBot();
++    GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
++
++    Creature* best = nullptr;
++    float bestDist = range;
++    for (ObjectGuid const& guid : targets)
++    {
++        Creature* c = botAI->GetCreature(guid);
++        if (!c || !c->IsAlive() || !c->IsInWorld())
++            continue;
++
++        CreatureTemplate const* ct = c->GetCreatureTemplate();
++        bool isBoss = c->IsDungeonBoss() || (ct && ct->rank == CREATURE_ELITE_WORLDBOSS) ||
++                      RouteHasEntry(botAI, c->GetEntry());
++        if (!isBoss)
++            continue;
++
++        float d = bot->GetDistance(c);
++        if (d < bestDist)
++        {
++            bestDist = d;
++            best = c;
++        }
++    }
++    return best;
++}
++
++void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
++{
++    Player* bot = botAI->GetBot();
++
++    botAI->ChangeStrategy("-dungeon lead,-grind", BOT_STATE_NON_COMBAT);
++    botAI->ChangeStrategy("-dungeon lead", BOT_STATE_COMBAT);
++    sDungeonRouteMgr.ResetState(bot->GetGUID());
++
++    if (Group* group = bot->GetGroup())
++    {
++        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++        {
++            Player* member = ref->GetSource();
++            if (!member || member == bot)
++                continue;
++            PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
++            if (!memberAI || !memberAI->GetAiObjectContext())
++                continue;
++            if (FormationValue* fv = dynamic_cast<FormationValue*>(
++                    memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
++                fv->Load("chaos");
++        }
++
++        Player* master = botAI->GetMaster();
++        if (giveLeaderBack && master && master != bot && group->IsMember(master->GetGUID()) &&
++            group->GetLeaderGUID() == bot->GetGUID())
++        {
++            auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), master->GetGUID());
++            PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
++        }
++    }
++}
++
++// ---------------------------------------------------------------------------------------------
++// dungeon lead next: walk to the next route step
++// ---------------------------------------------------------------------------------------------
++bool DungeonLeadNextAction::isUseful()
++{
++    if (!bot || !botAI || !bot->IsAlive() || bot->IsInCombat())
++        return false;
++    if (!DungeonLead::InFiveMan(bot))
++        return false;
++    if (DungeonLead::GroupInCombat(botAI))
++        return false;
++    if (DungeonLead::GroupResting(botAI))
++        return false;
++    if (DungeonLead::HealerManaLow(botAI))
++        return false;
++    if (DungeonLead::GroupTooSpread(botAI))
++        return false;
++    return true;
++}
++
++DungeonRoute const* DungeonLeadNextAction::ResolveRoute(DungeonLeadState& st)
++{
++    uint32 mapId = bot->GetMapId();
++    uint32 instanceId = bot->GetInstanceId();
++
++    if (st.mapId == mapId && st.instanceId == instanceId && st.lfgId)
++        return sDungeonRouteMgr.GetByLfgId(st.lfgId);
++    if (st.mapId == mapId && st.instanceId == instanceId && st.noRouteTold)
++        return nullptr;
++
++    st.Reset();
++    st.mapId = mapId;
++    st.instanceId = instanceId;
++
++    DungeonRoute const* route = nullptr;
++    if (Group* group = bot->GetGroup())
++    {
++        uint32 lfgId = sLFGMgr->GetDungeon(group->GetGUID(), true);
++        if (lfgId)
++        {
++            route = sDungeonRouteMgr.GetByLfgId(lfgId);
++            if (route && route->mapId != mapId)
++                route = nullptr;
++        }
++    }
++
++    if (!route)
++    {
++        // entered on foot (no LFD id): pick the route on this map/difficulty whose first walkable
++        // step is closest — for multi-wing dungeons that is the wing we are standing in
++        uint32 difficulty = bot->GetMap() ? uint32(bot->GetMap()->GetDifficulty()) : 0;
++        float best = 1e9f;
++        for (DungeonRoute const* cand : sDungeonRouteMgr.GetByMap(mapId, difficulty))
++        {
++            for (DungeonRouteStep const& s : cand->steps)
++            {
++                if (!s.IsWalkable())
++                    continue;
++                float d = bot->GetExactDist(s.x, s.y, s.z);
++                if (d < best)
++                {
++                    best = d;
++                    route = cand;
++                }
++                break;
++            }
++        }
++    }
++
++    if (!route)
++        return nullptr;
++
++    st.lfgId = route->lfgId;
++    st.visited.assign(route->steps.size(), 0);
++
++    uint32 walkable = 0;
++    for (DungeonRouteStep const& s : route->steps)
++        if (s.IsWalkable())
++            ++walkable;
++
++    std::ostringstream out;
++    out << "Dungeon lead: route '" << route->name << "', " << walkable << " stops";
++    botAI->TellMasterNoFacing(out);
++    return route;
++}
++
++void DungeonLeadNextAction::MarkVisited(DungeonLeadState& st)
++{
++    if (st.stepIndex < st.visited.size())
++        st.visited[st.stepIndex] = 1;
++    ++st.stepIndex;
++    st.bestDist = 0.f;
++    st.stuckAttempts = 0;
++    st.stuckTs = 0;
++}
++
++bool DungeonLeadNextAction::Execute(Event /*event*/)
++{
++    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
++    DungeonRoute const* route = ResolveRoute(st);
++    if (!route)
++    {
++        if (!st.noRouteTold)
++        {
++            st.noRouteTold = true;
++            botAI->TellMasterNoFacing(
++                "Dungeon lead: no route for this dungeon (event/vehicle dungeon?) - I'll just grind what I see");
++        }
++        return false;
++    }
++
++    // advance to the next step that is worth walking to
++    while (st.stepIndex < route->steps.size())
++    {
++        DungeonRouteStep const& s = route->steps[st.stepIndex];
++        bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
++                    (s.kind == "optional" && sPlayerbotAIConfig.dungeonLeadSkipOptional);
++        if (!skip)
++            break;
++        ++st.stepIndex;
++    }
++
++    if (st.stepIndex >= route->steps.size())
++    {
++        if (!st.doneTold)
++        {
++            st.doneTold = true;
++            botAI->TellMasterNoFacing("Dungeon lead: route complete");
++        }
++        return false;
++    }
++
++    DungeonRouteStep const& step = route->steps[st.stepIndex];
++    WorldPosition dest(bot->GetMapId(), step.x, step.y, step.z, 0.f);
++
++    // prefer the live creature position; a dead boss means this stop is done
++    std::list<Creature*> found;
++    bot->GetCreatureListWithEntryInGrid(found, step.entry, kCreatureProbeRange);
++    bool anyAlive = false;
++    for (Creature* c : found)
++    {
++        if (c->IsAlive())
++        {
++            anyAlive = true;
++            dest = WorldPosition(c);
++            break;
++        }
++    }
++    if (!found.empty() && !anyAlive)
++    {
++        std::ostringstream out;
++        out << "Dungeon lead: " << step.boss << " is down, moving on";
++        botAI->TellMasterNoFacing(out);
++        MarkVisited(st);
++        return true;
++    }
++
++    float dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
++    if (dist <= sPlayerbotAIConfig.dungeonLeadArriveDistance)
++    {
++        std::ostringstream out;
++        out << "Dungeon lead: reached " << step.boss;
++        botAI->TellMasterNoFacing(out);
++        MarkVisited(st);
++        return true;
++    }
++
++    return MoveRouteTo(st, dest, step);
++}
++
++// Same approach as NewRpgBaseAction::MoveFarTo (mmap route to the true destination, walk to the
++// furthest reachable waypoint, cone-sample when blocked) — but a bot that makes no progress skips
++// the stop instead of teleporting to it: teleporting the tank away from its group is worse than
++// missing an optional boss.
++bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
++{
++    if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
++        return false;
++
++    {
++        LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
++        if (bot->isMoving() && lastMove.lastMoveToMapId == bot->GetMapId())
++        {
++            float remaining = bot->GetExactDist(lastMove.lastMoveToX, lastMove.lastMoveToY, lastMove.lastMoveToZ);
++            if (remaining > 10.0f)
++                return true;
++        }
++    }
++
++    float disToDest = bot->GetDistance(dest);
++    uint32 now = getMSTime();
++    if (st.bestDist == 0.f || disToDest + 5.0f < st.bestDist)
++    {
++        st.bestDist = disToDest;
++        st.stuckTs = now;
++        st.stuckAttempts = 0;
++    }
++    else if (++st.stuckAttempts >= 5 && st.stuckTs &&
++             GetMSTimeDiffToNow(st.stuckTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
++    {
++        std::ostringstream out;
++        out << "Dungeon lead: can't reach " << step.boss << ", skipping";
++        botAI->TellMasterNoFacing(out);
++        MarkVisited(st);
++        return true;
++    }
++
++    float const dx = dest.GetPositionX(), dy = dest.GetPositionY(), dz = dest.GetPositionZ();
++    if (disToDest < kPathFinderDis)
++        return MoveTo(dest.GetMapId(), dx, dy, dz, false, false, false, true);
++
++    uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
++    {
++        PathGenerator path(bot);
++        path.CalculatePath(dx, dy, dz);
++        PathType type = path.GetPathType();
++        bool canReach = !(type & (~typeOk));
++        if (canReach)
++        {
++            G3D::Vector3 const& endPos = path.GetActualEndPosition();
++            float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
++            if (endDistToDest + 5.0f < disToDest)
++                return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
++        }
++    }
++
++    // blocked: sample the forward cone for a reachable stepping stone
++    float minDelta = M_PI;
++    float const x = bot->GetPositionX(), y = bot->GetPositionY(), z = bot->GetPositionZ();
++    float const baseAngle = bot->GetAngle(&dest);
++    float rx = 0.f, ry = 0.f, rz = 0.f;
++    bool found = false;
++    for (int attempt = 0; attempt < 2; ++attempt)
++    {
++        float delta = (rand_norm() - 0.5f) * static_cast<float>(M_PI);
++        float sampleDis = (0.5f + rand_norm() * 0.5f) * kPathFinderDis;
++        float angle = baseAngle + delta;
++        PathGenerator path(bot);
++        path.CalculatePath(x + cos(angle) * sampleDis, y + sin(angle) * sampleDis, z + 0.5f);
++        PathType type = path.GetPathType();
++        bool canReach = !(type & (~typeOk));
++        if (canReach && fabs(delta) <= minDelta)
++        {
++            found = true;
++            G3D::Vector3 const& endPos = path.GetActualEndPosition();
++            rx = endPos.x;
++            ry = endPos.y;
++            rz = endPos.z;
++            minDelta = fabs(delta);
++        }
++    }
++    if (found)
++        return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
++
++    return false;
++}
++
++// ---------------------------------------------------------------------------------------------
++// dungeon lead mark: skull on the boss, moon on a CC candidate
++// ---------------------------------------------------------------------------------------------
++bool DungeonLeadMarkAction::isUseful()
++{
++    return bot && bot->GetGroup() && DungeonLead::InFiveMan(bot);
++}
++
++Creature* DungeonLeadMarkAction::FindCcCandidate(Creature* boss)
++{
++    GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
++    Creature* best = nullptr;
++    float bestDist = kCcSearchRange;
++    for (ObjectGuid const& guid : targets)
++    {
++        Creature* c = botAI->GetCreature(guid);
++        if (!c || c == boss || !c->IsAlive() || !c->IsInWorld() || c->IsDungeonBoss())
++            continue;
++        CreatureTemplate const* ct = c->GetCreatureTemplate();
++        if (!ct || ct->rank != CREATURE_ELITE_ELITE)
++            continue;
++        float d = bot->GetDistance(c);
++        if (d < bestDist)
++        {
++            bestDist = d;
++            best = c;
++        }
++    }
++    return best;
++}
++
++bool DungeonLeadMarkAction::Execute(Event /*event*/)
++{
++    Group* group = bot->GetGroup();
++    if (!group)
++        return false;
++
++    Creature* boss = DungeonLead::FindBossNear(botAI, kBossSearchRange);
++    if (!boss)
++        return false;
++
++    bool changed = false;
++    Unit* skull = IconUnit(botAI, group, RtiTargetValue::skullIndex);
++    if (!skull || !skull->IsAlive())
++    {
++        group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), boss->GetGUID());
++        changed = true;
++    }
++
++    if (sPlayerbotAIConfig.dungeonLeadMarkCc)
++    {
++        Unit* moon = IconUnit(botAI, group, RtiTargetValue::moonIndex);
++        if (!moon || !moon->IsAlive())
++        {
++            if (Creature* cc = FindCcCandidate(boss))
++            {
++                group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), cc->GetGUID());
++                changed = true;
++            }
++        }
++    }
++    return changed;
++}
++
++// ---------------------------------------------------------------------------------------------
++// dungeon lead stop (automatic, e.g. after leaving the instance)
++// ---------------------------------------------------------------------------------------------
++bool DungeonLeadStopAction::Execute(Event /*event*/)
++{
++    DungeonLead::Stop(botAI, true);
++    botAI->TellMasterNoFacing("Dungeon lead: OFF (not in a 5-man dungeon anymore)");
++    return true;
++}
++
++// ---------------------------------------------------------------------------------------------
++// chat shortcuts: startdung / stopdung
++// ---------------------------------------------------------------------------------------------
++bool StartDungChatShortcutAction::Execute(Event /*event*/)
++{
++    Player* master = GetMaster();
++    if (!master)
++        return false;
++
++    Group* group = bot->GetGroup();
++    if (!group)
++    {
++        botAI->TellMaster("startdung: I'm not in a group");
++        return false;
++    }
++    if (!DungeonLead::InFiveMan(bot))
++    {
++        botAI->TellMaster("startdung: only works inside a 5-man dungeon");
++        return false;
++    }
++    if (!PlayerbotAI::IsTank(bot))
++        botAI->TellMaster("startdung: I'm not a tank, but fine - leading anyway");
++
++    if (group->GetLeaderGUID() != bot->GetGUID())
++    {
++        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
++        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
++    }
++
++    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++    {
++        Player* member = ref->GetSource();
++        if (!member || member == bot)
++            continue;
++        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
++        if (!memberAI || !memberAI->GetAiObjectContext())
++            continue;
++        if (FormationValue* fv = dynamic_cast<FormationValue*>(
++                memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
++            fv->Load("leader");
++        memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
++        memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
++    }
++
++    sDungeonRouteMgr.ResetState(bot->GetGUID());
++    botAI->Reset();
++    ResetReturnPosition();
++    ResetStayPosition();
++    botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
++    botAI->ChangeStrategy("+dungeon lead,+cc", BOT_STATE_COMBAT);
++
++    botAI->TellMaster("Dungeon lead: ON - taking the lead, the others will follow me");
++    return true;
++}
++
++bool StopDungChatShortcutAction::Execute(Event /*event*/)
++{
++    if (!GetMaster())
++        return false;
++
++    DungeonLead::Stop(botAI, true);
++    ResetReturnPosition();
++    ResetStayPosition();
++    botAI->TellMaster("Dungeon lead: OFF");
++    return true;
++}
+diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
+new file mode 100644
+index 00000000..8fa25107
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
+@@ -0,0 +1,84 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#ifndef PLAYERBOTS_DUNGEONLEADACTIONS_H
++#define PLAYERBOTS_DUNGEONLEADACTIONS_H
++
++#include "ChatShortcutActions.h"
++#include "DungeonRouteMgr.h"
++#include "NewRpgBaseAction.h"
++
++class Creature;
++class PlayerbotAI;
++class Player;
++
++// "Dungeon lead": a bot (normally the tank) in a group WITH a real player walks the hand-authored
++// route of the current 5-man dungeon (playerbots_dungeon_route), pulling with "grind" on the way,
++// marking bosses/CC targets and holding back when the healer is low on mana or the group is spread.
++// Everything lives in the non-combat engine; combat itself is handled by the existing class AI.
++namespace DungeonLead
++{
++    bool InFiveMan(Player* bot);
++    bool IsOn(PlayerbotAI* botAI);
++    bool GroupInCombat(PlayerbotAI* botAI);
++    bool GroupResting(PlayerbotAI* botAI);
++    bool HealerManaLow(PlayerbotAI* botAI);
++    bool GroupTooSpread(PlayerbotAI* botAI);
++    Creature* FindBossNear(PlayerbotAI* botAI, float range);
++    void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
++}
++
++class DungeonLeadNextAction : public NewRpgBaseAction
++{
++public:
++    DungeonLeadNextAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "dungeon lead next") {}
++
++    bool Execute(Event event) override;
++    bool isUseful() override;
++
++private:
++    DungeonRoute const* ResolveRoute(DungeonLeadState& st);
++    void MarkVisited(DungeonLeadState& st);
++    bool MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
++};
++
++class DungeonLeadMarkAction : public Action
++{
++public:
++    DungeonLeadMarkAction(PlayerbotAI* botAI) : Action(botAI, "dungeon lead mark") {}
++
++    bool Execute(Event event) override;
++    bool isUseful() override;
++
++private:
++    Creature* FindCcCandidate(Creature* boss);
++};
++
++class DungeonLeadStopAction : public Action
++{
++public:
++    DungeonLeadStopAction(PlayerbotAI* botAI) : Action(botAI, "dungeon lead stop") {}
++
++    bool Execute(Event event) override;
++};
++
++class StartDungChatShortcutAction : public PositionsResetAction
++{
++public:
++    StartDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "startdung chat shortcut") {}
++
++    bool Execute(Event event) override;
++};
++
++class StopDungChatShortcutAction : public PositionsResetAction
++{
++public:
++    StopDungChatShortcutAction(PlayerbotAI* botAI) : PositionsResetAction(botAI, "stopdung chat shortcut") {}
++
++    bool Execute(Event event) override;
++};
++
++#endif
+diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
+new file mode 100644
+index 00000000..8b216a52
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
+@@ -0,0 +1,43 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#include "DungeonLeadStrategy.h"
++
++#include "Action.h"
++#include "DungeonLeadActions.h"
++#include "Playerbots.h"
++
++void DungeonLeadStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
++{
++    // below "attack anything" (4.0, from grind) and food/drink (4.1/4.2): fight and eat first, walk on after
++    triggers.push_back(new TriggerNode("dungeon lead idle", { NextAction("dungeon lead next", 3.5f) }));
++    triggers.push_back(new TriggerNode("dungeon lead boss near", { NextAction("dungeon lead mark", 5.0f) }));
++    triggers.push_back(new TriggerNode("dungeon lead left instance", { NextAction("dungeon lead stop", 9.0f) }));
++}
++
++void DungeonLeadStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
++{
++    multipliers.push_back(new DungeonLeadMultiplier(botAI));
++}
++
++float DungeonLeadMultiplier::GetValue(Action* action)
++{
++    if (!action)
++        return 1.0f;
++
++    std::string const name = action->getName();
++    bool isPull = name == "attack anything" || name == "pull my target" || name == "pull rti target";
++    bool isWalk = name == "dungeon lead next";
++    if (!isPull && !isWalk)
++        return 1.0f;
++
++    if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
++        return 0.0f;
++    if (isWalk && DungeonLead::GroupInCombat(botAI))
++        return 0.0f;
++
++    return 1.0f;
++}
+diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h
+new file mode 100644
+index 00000000..48614178
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h
+@@ -0,0 +1,35 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#ifndef PLAYERBOTS_DUNGEONLEADSTRATEGY_H
++#define PLAYERBOTS_DUNGEONLEADSTRATEGY_H
++
++#include "Multiplier.h"
++#include "Strategy.h"
++
++class PlayerbotAI;
++
++// Added to BOTH engines by the "startdung" chat command (see DungeonLeadActions.cpp).
++class DungeonLeadStrategy : public Strategy
++{
++public:
++    DungeonLeadStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
++
++    std::string const getName() override { return "dungeon lead"; }
++    void InitTriggers(std::vector<TriggerNode*>& triggers) override;
++    void InitMultipliers(std::vector<Multiplier*>& multipliers) override;
++};
++
++// Holds the leader back (no new pulls, no walking on) while the healer is low on mana / someone is
++// drinking, and never walks on while anyone in the group is still fighting.
++class DungeonLeadMultiplier : public Multiplier
++{
++public:
++    DungeonLeadMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "dungeon lead") {}
++    float GetValue(Action* action) override;
++};
++
++#endif
+diff --git a/src/Ai/Base/DungeonLead/DungeonLeadTriggers.cpp b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.cpp
+new file mode 100644
+index 00000000..23b58218
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.cpp
+@@ -0,0 +1,44 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#include "DungeonLeadTriggers.h"
++
++#include "Creature.h"
++#include "DungeonLeadActions.h"
++#include "Group.h"
++#include "Playerbots.h"
++#include "RtiTargetValue.h"
++
++bool DungeonLeadIdleTrigger::IsActive()
++{
++    return DungeonLead::IsOn(botAI) && DungeonLead::InFiveMan(bot) && !bot->IsInCombat();
++}
++
++bool DungeonLeadBossNearTrigger::IsActive()
++{
++    if (!DungeonLead::IsOn(botAI) || !DungeonLead::InFiveMan(bot))
++        return false;
++
++    Group* group = bot->GetGroup();
++    if (!group)
++        return false;
++
++    Creature* boss = DungeonLead::FindBossNear(botAI, 60.0f);
++    if (!boss)
++        return false;
++
++    ObjectGuid skull = group->GetTargetIcon(RtiTargetValue::skullIndex);
++    if (skull.IsEmpty())
++        return true;
++
++    Unit* marked = botAI->GetUnit(skull);
++    return !marked || !marked->IsAlive();
++}
++
++bool DungeonLeadLeftInstanceTrigger::IsActive()
++{
++    return DungeonLead::IsOn(botAI) && !DungeonLead::InFiveMan(bot);
++}
+diff --git a/src/Ai/Base/DungeonLead/DungeonLeadTriggers.h b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.h
+new file mode 100644
+index 00000000..2c7b2fb0
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.h
+@@ -0,0 +1,35 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#ifndef PLAYERBOTS_DUNGEONLEADTRIGGERS_H
++#define PLAYERBOTS_DUNGEONLEADTRIGGERS_H
++
++#include "Trigger.h"
++
++class PlayerbotAI;
++
++class DungeonLeadIdleTrigger : public Trigger
++{
++public:
++    DungeonLeadIdleTrigger(PlayerbotAI* botAI) : Trigger(botAI, "dungeon lead idle") {}
++    bool IsActive() override;
++};
++
++class DungeonLeadBossNearTrigger : public Trigger
++{
++public:
++    DungeonLeadBossNearTrigger(PlayerbotAI* botAI) : Trigger(botAI, "dungeon lead boss near") {}
++    bool IsActive() override;
++};
++
++class DungeonLeadLeftInstanceTrigger : public Trigger
++{
++public:
++    DungeonLeadLeftInstanceTrigger(PlayerbotAI* botAI) : Trigger(botAI, "dungeon lead left instance") {}
++    bool IsActive() override;
++};
++
++#endif
+diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
+new file mode 100644
+index 00000000..7a205a50
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
+@@ -0,0 +1,90 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#include "DungeonRouteMgr.h"
++
++#include "Log.h"
++#include "DatabaseEnv.h"
++#include "QueryResult.h"  // Field/ResultSet are only forward-declared by DatabaseEnv.h
++
++#include <algorithm>
++
++void DungeonRouteMgr::Load()
++{
++    std::lock_guard<std::mutex> lock(mtx);
++    routes.clear();
++
++    QueryResult result = PlayerbotsDatabase.Query(
++        "SELECT lfg_id, map_id, difficulty, name, step, kind, boss, IFNULL(entry, 0), IFNULL(x, 0), IFNULL(y, 0), "
++        "IFNULL(z, 0), IFNULL(note, '') FROM playerbots_dungeon_route ORDER BY lfg_id, step");
++
++    uint32 count = 0;
++    if (result)
++    {
++        do
++        {
++            Field* f = result->Fetch();
++            uint32 lfgId = f[0].Get<uint32>();
++            DungeonRoute& route = routes[lfgId];
++            route.lfgId = lfgId;
++            route.mapId = f[1].Get<uint32>();
++            route.difficulty = f[2].Get<uint8>();
++            route.name = f[3].Get<std::string>();
++
++            DungeonRouteStep step;
++            step.step = f[4].Get<uint32>();
++            step.kind = f[5].Get<std::string>();
++            step.boss = f[6].Get<std::string>();
++            step.entry = f[7].Get<uint32>();
++            step.x = f[8].Get<float>();
++            step.y = f[9].Get<float>();
++            step.z = f[10].Get<float>();
++            step.note = f[11].Get<std::string>();
++            route.steps.push_back(step);
++            ++count;
++        } while (result->NextRow());
++    }
++
++    loaded = true;
++    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries", count, routes.size());
++}
++
++void DungeonRouteMgr::EnsureLoaded()
++{
++    if (!loaded)
++        Load();
++}
++
++DungeonRoute const* DungeonRouteMgr::GetByLfgId(uint32 lfgId)
++{
++    EnsureLoaded();
++    std::lock_guard<std::mutex> lock(mtx);
++    auto it = routes.find(lfgId);
++    return it == routes.end() ? nullptr : &it->second;
++}
++
++std::vector<DungeonRoute const*> DungeonRouteMgr::GetByMap(uint32 mapId, uint32 difficulty)
++{
++    EnsureLoaded();
++    std::lock_guard<std::mutex> lock(mtx);
++    std::vector<DungeonRoute const*> out;
++    for (auto const& kv : routes)
++        if (kv.second.mapId == mapId && kv.second.difficulty == difficulty)
++            out.push_back(&kv.second);
++    return out;
++}
++
++DungeonLeadState& DungeonRouteMgr::State(ObjectGuid guid)
++{
++    std::lock_guard<std::mutex> lock(mtx);
++    return states[guid];
++}
++
++void DungeonRouteMgr::ResetState(ObjectGuid guid)
++{
++    std::lock_guard<std::mutex> lock(mtx);
++    states.erase(guid);
++}
+diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
+new file mode 100644
+index 00000000..5481ff59
+--- /dev/null
++++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
+@@ -0,0 +1,85 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
++ * or (at your option) any later version.
++ */
++
++#ifndef PLAYERBOTS_DUNGEONROUTEMGR_H
++#define PLAYERBOTS_DUNGEONROUTEMGR_H
++
++#include "Common.h"
++#include "ObjectGuid.h"
++
++#include <mutex>
++#include <string>
++#include <unordered_map>
++#include <vector>
++
++// One step of a hand-authored dungeon route (table playerbots_dungeon_route).
++// kind: boss | optional | heroic_only | event | door | skip
++struct DungeonRouteStep
++{
++    uint32 step = 0;
++    std::string kind;
++    std::string boss;
++    uint32 entry = 0;
++    float x = 0.f, y = 0.f, z = 0.f;
++    std::string note;
++
++    bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
++    bool IsWalkable() const { return HasPosition() && (kind == "boss" || kind == "optional" || kind == "heroic_only" || kind == "event"); }
++};
++
++struct DungeonRoute
++{
++    uint32 lfgId = 0;
++    uint32 mapId = 0;
++    uint32 difficulty = 0;
++    std::string name;
++    std::vector<DungeonRouteStep> steps;
++};
++
++// Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
++struct DungeonLeadState
++{
++    uint32 lfgId = 0;
++    uint32 mapId = 0;
++    uint32 instanceId = 0;
++    uint32 stepIndex = 0;
++    uint32 stuckTs = 0;
++    uint32 stuckAttempts = 0;
++    float bestDist = 0.f;
++    bool noRouteTold = false;
++    bool doneTold = false;
++    std::vector<uint8> visited;
++
++    void Reset() { *this = DungeonLeadState(); }
++};
++
++class DungeonRouteMgr
++{
++public:
++    static DungeonRouteMgr& instance()
++    {
++        static DungeonRouteMgr mgr;
++        return mgr;
++    }
++
++    void Load();
++    DungeonRoute const* GetByLfgId(uint32 lfgId);
++    std::vector<DungeonRoute const*> GetByMap(uint32 mapId, uint32 difficulty);
++    DungeonLeadState& State(ObjectGuid guid);
++    void ResetState(ObjectGuid guid);
++
++private:
++    void EnsureLoaded();
++
++    bool loaded = false;
++    std::mutex mtx;
++    std::unordered_map<uint32, DungeonRoute> routes;
++    std::unordered_map<ObjectGuid, DungeonLeadState> states;
++};
++
++#define sDungeonRouteMgr DungeonRouteMgr::instance()
++
++#endif
+diff --git a/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp b/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp
+index 0f158fb8..7569e184 100644
+--- a/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp
++++ b/src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp
+@@ -54,6 +54,8 @@ void ChatCommandHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
+     triggers.push_back(new TriggerNode("flee", { NextAction("flee chat shortcut", relevance) }));
+     triggers.push_back(new TriggerNode("tank attack", { NextAction("tank attack chat shortcut", relevance) }));
+     triggers.push_back(new TriggerNode("grind", { NextAction("grind chat shortcut", relevance) }));
++    triggers.push_back(new TriggerNode("startdung", { NextAction("startdung chat shortcut", relevance) }));
++    triggers.push_back(new TriggerNode("stopdung", { NextAction("stopdung chat shortcut", relevance) }));
+     triggers.push_back(new TriggerNode("talk",
+         { NextAction("gossip hello", relevance),
+         NextAction("talk to quest giver", relevance) }));
+diff --git a/src/Ai/Base/StrategyContext.h b/src/Ai/Base/StrategyContext.h
+index d06b157e..a616c31f 100644
+--- a/src/Ai/Base/StrategyContext.h
++++ b/src/Ai/Base/StrategyContext.h
+@@ -56,6 +56,7 @@
+ #include "UsePotionsStrategy.h"
+ #include "WaitForAttackStrategy.h"
+ #include "WorldPacketHandlerStrategy.h"
++#include "DungeonLeadStrategy.h"
+ 
+ class StrategyContext : public NamedObjectContext<Strategy>
+ {
+@@ -123,6 +124,7 @@ public:
+         creators["group"] = &StrategyContext::group;
+         creators["guild"] = &StrategyContext::guild;
+         creators["grind"] = &StrategyContext::grind;
++        creators["dungeon lead"] = &StrategyContext::dungeon_lead;
+         creators["avoid aoe"] = &StrategyContext::avoid_aoe;
+         creators["tank face"] = &StrategyContext::tank_face;
+         creators["move random"] = &StrategyContext::move_random;
+@@ -198,6 +200,7 @@ private:
+     static Strategy* group(PlayerbotAI* botAI) { return new GroupStrategy(botAI); }
+     static Strategy* guild (PlayerbotAI* botAI) { return new GuildStrategy(botAI); }
+     static Strategy* grind(PlayerbotAI* botAI) { return new GrindingStrategy(botAI); }
++    static Strategy* dungeon_lead(PlayerbotAI* botAI) { return new DungeonLeadStrategy(botAI); }
+     static Strategy* avoid_aoe(PlayerbotAI* botAI) { return new AvoidAoeStrategy(botAI); }
+     static Strategy* tank_face(PlayerbotAI* botAI) { return new TankFaceStrategy(botAI); }
+     static Strategy* move_random(PlayerbotAI* botAI) { return new MoveRandomStrategy(botAI); }
+diff --git a/src/Ai/Base/Trigger/LfgTriggers.cpp b/src/Ai/Base/Trigger/LfgTriggers.cpp
+index 6ac86cfc..2d273978 100644
+--- a/src/Ai/Base/Trigger/LfgTriggers.cpp
++++ b/src/Ai/Base/Trigger/LfgTriggers.cpp
+@@ -11,6 +11,14 @@ bool LfgProposalActiveTrigger::IsActive() { return AI_VALUE(uint32, "lfg proposa
+ 
+ bool UnknownDungeonTrigger::IsActive()
+ {
++    // If the master already opted this bot into "grind" (autonomous pull/attack) mode, that's an
++    // explicit signal the player wants it to act on its own, including holding onto leadership
++    // instead of being auto-handed it back and reset to defaults. See ops HISTORY.md for context.
++    if (botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT))
++        return false;
++    if (botAI->HasStrategy("grind", BOT_STATE_NON_COMBAT))
++        return false;
++
+     return IsRealPlayer(botAI->GetMaster()) && botAI->GetMaster() && botAI->GetMaster()->IsInWorld() &&
+            botAI->GetMaster()->GetMap()->IsDungeon() && bot->GetMapId() == botAI->GetMaster()->GetMapId();
+ }
+diff --git a/src/Ai/Base/TriggerContext.h b/src/Ai/Base/TriggerContext.h
+index 5219992e..429f220c 100644
+--- a/src/Ai/Base/TriggerContext.h
++++ b/src/Ai/Base/TriggerContext.h
+@@ -25,6 +25,7 @@
+ #include "StuckTriggers.h"
+ #include "TravelTriggers.h"
+ #include "WaitForAttackTriggers.h"
++#include "DungeonLeadTriggers.h"
+ 
+ class PlayerbotAI;
+ 
+@@ -88,6 +89,9 @@ public:
+         creators["loot available"] = &TriggerContext::LootAvailable;
+         creators["no attackers"] = &TriggerContext::NoAttackers;
+         creators["no target"] = &TriggerContext::NoTarget;
++        creators["dungeon lead idle"] = &TriggerContext::dungeon_lead_idle;
++        creators["dungeon lead boss near"] = &TriggerContext::dungeon_lead_boss_near;
++        creators["dungeon lead left instance"] = &TriggerContext::dungeon_lead_left_instance;
+         creators["target in sight"] = &TriggerContext::TargetInSight;
+         creators["not dps target active"] = &TriggerContext::not_dps_target_active;
+         creators["not dps aoe target active"] = &TriggerContext::not_dps_aoe_target_active;
+@@ -339,6 +343,9 @@ private:
+     static Trigger* TimerBG(PlayerbotAI* botAI) { return new TimerBGTrigger(botAI); }
+     static Trigger* force_rebuff_pending(PlayerbotAI* botAI) { return new ForceRebuffPendingTrigger(botAI); }
+     static Trigger* NoTarget(PlayerbotAI* botAI) { return new NoTargetTrigger(botAI); }
++    static Trigger* dungeon_lead_idle(PlayerbotAI* botAI) { return new DungeonLeadIdleTrigger(botAI); }
++    static Trigger* dungeon_lead_boss_near(PlayerbotAI* botAI) { return new DungeonLeadBossNearTrigger(botAI); }
++    static Trigger* dungeon_lead_left_instance(PlayerbotAI* botAI) { return new DungeonLeadLeftInstanceTrigger(botAI); }
+     static Trigger* TargetInSight(PlayerbotAI* botAI) { return new TargetInSightTrigger(botAI); }
+     static Trigger* not_dps_target_active(PlayerbotAI* botAI) { return new NotDpsTargetActiveTrigger(botAI); }
+     static Trigger* not_dps_aoe_target_active(PlayerbotAI* botAI) { return new NotDpsAoeTargetActiveTrigger(botAI); }
+diff --git a/src/Ai/Base/Value/Formations.cpp b/src/Ai/Base/Value/Formations.cpp
+index ed34b7d1..c80a03a7 100644
+--- a/src/Ai/Base/Value/Formations.cpp
++++ b/src/Ai/Base/Value/Formations.cpp
+@@ -91,6 +91,14 @@ public:
+     std::string const GetTargetName() override { return "group leader"; }
+ };
+ 
++class LeaderFormation : public FollowFormation
++{
++public:
++    LeaderFormation(PlayerbotAI* botAI) : FollowFormation(botAI, "leader") {}
++
++    std::string const GetTargetName() override { return "group leader"; }
++};
++
+ class QueueFormation : public FollowFormation
+ {
+ public:
+@@ -528,6 +536,13 @@ bool FormationValue::Load(std::string const formation)
+ 
+         value = new MeleeFormation(botAI);
+     }
++    else if (formation == "leader")
++    {
++        if (value)
++            delete value;
++
++        value = new LeaderFormation(botAI);
++    }
+     else if (formation == "queue")
+     {
+         if (value)
+@@ -618,7 +633,7 @@ bool SetFormationAction::Execute(Event event)
+         str << "Invalid formation: |cffff0000" << formation;
+         botAI->TellMaster(str);
+         botAI->TellMaster(
+-            "Please set to any of:|cffffffff chaos (default), near, queue, circle, line, shield, arrow, melee, far");
++            "Please set to any of:|cffffffff chaos (default), near, queue, circle, line, shield, arrow, melee, leader, farchaos (default), near, queue, circle, line, shield, arrow, melee, far");
+         return false;
+     }
+ 
+diff --git a/src/PlayerbotAIConfig.cpp b/src/PlayerbotAIConfig.cpp
+index 509bec91..38b72964 100644
+--- a/src/PlayerbotAIConfig.cpp
++++ b/src/PlayerbotAIConfig.cpp
+@@ -121,6 +121,12 @@ bool PlayerbotAIConfig::Initialize()
+     aoeRadius = sConfigMgr->GetOption<float>("AiPlayerbot.AoeRadius", 10.0f);
+     rpgDistance = sConfigMgr->GetOption<float>("AiPlayerbot.RpgDistance", 200.0f);
+     grindDistance = sConfigMgr->GetOption<float>("AiPlayerbot.GrindDistance", 75.0f);
++    dungeonLeadHealerManaPct = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.HealerManaPct", 20);
++    dungeonLeadStuckSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.StuckSeconds", 45);
++    dungeonLeadLeash = sConfigMgr->GetOption<float>("AiPlayerbot.DungeonLead.Leash", 60.0f);
++    dungeonLeadArriveDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DungeonLead.ArriveDistance", 8.0f);
++    dungeonLeadSkipOptional = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.SkipOptional", false);
++    dungeonLeadMarkCc = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.MarkCc", true);
+     reactDistance = sConfigMgr->GetOption<float>("AiPlayerbot.ReactDistance", 150.0f);
+ 
+     criticalHealth = sConfigMgr->GetOption<int32>("AiPlayerbot.CriticalHealth", 25);
+diff --git a/src/PlayerbotAIConfig.h b/src/PlayerbotAIConfig.h
+index 769bfba8..6d78f6ca 100644
+--- a/src/PlayerbotAIConfig.h
++++ b/src/PlayerbotAIConfig.h
+@@ -115,6 +115,9 @@ public:
+         targetPosRecalcDistance, farDistance, healDistance, aggroDistance;
+     uint32 criticalHealth, lowHealth, mediumHealth, almostFullHealth;
+     uint32 lowMana, mediumMana, highMana;
++    uint32 dungeonLeadHealerManaPct, dungeonLeadStuckSeconds;
++    float dungeonLeadLeash, dungeonLeadArriveDistance;
++    bool dungeonLeadSkipOptional, dungeonLeadMarkCc;
+     bool autoSaveMana;
+     uint32 saveManaThreshold;
+     AutoPartyBuffMode autoGreaterBlessings;
