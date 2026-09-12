@@ -1083,7 +1083,7 @@ bool StartDungChatShortcutAction::Execute(Event event)
         return false;
 
     std::string const sub = TrimLower(event.getParam());
-    if (sub == "pause" || sub == "continue" || sub == "reset" || sub == "debug")
+    if (sub == "pause" || sub == "continue" || sub == "reset" || sub == "debug" || sub == "status")
     {
         if (!DungeonLead::IsOn(botAI))
         {
@@ -1091,8 +1091,28 @@ bool StartDungChatShortcutAction::Execute(Event event)
             return false;
         }
         DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
-        if (sub != "debug" && st.testMode)
+        if (sub != "debug" && sub != "status" && st.testMode)
             ++st.manualInterventions;  // pause/continue/reset mid-test: not a clean, hands-off smoke run
+        if (sub == "status")
+        {
+            // Read-only, no state change: current route/step/outcome on demand (L1.1/L1.3 - the
+            // roadmap's own "Current Objective, Party Readiness, Run Status" without needing a UI).
+            DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
+            std::string stepName = "?";
+            if (route && st.stepIndex < route->steps.size())
+                stepName = route->steps[st.stepIndex].boss;
+            else if (route)
+                stepName = "(route complete)";
+            std::ostringstream out;
+            out << "Dungeon lead status: run #" << st.runId << " " << (route ? route->name : "no route")
+                << " | step " << stepName << " | outcome " << ToString(st.outcome);
+            if (st.outcome == DungeonRunOutcome::Partial)
+                out << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";
+            out << " | " << (st.paused ? "PAUSED" : "running")
+                << (st.debugMode ? " | debug ON" : "") << (st.testMode ? " | TEST MODE" : "");
+            botAI->TellMaster(out);
+            return true;
+        }
         if (sub == "pause")
         {
             st.paused = true;

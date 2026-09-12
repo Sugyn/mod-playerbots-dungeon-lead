@@ -7,6 +7,10 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 ## [Unreleased]
 
 ### Added
+- `startdungeon status`: read-only, no effect on the run - reports current run id, dungeon, step,
+  outcome (with domain/reason if `Partial`), paused/debug/test-mode flags, on demand. Part of L1.1/
+  L1.3 ("Current Objective, Party Readiness, Run Status" from the roadmap's own eventual UI list -
+  useful as a plain chat command well before there's any UI to put it in).
 - `data/boss_positions.tsv` and `data/extra_bosses.tsv`: the previously-missing inputs
   `resolve_routes.py` needs, finally checked in - re-running the resolver from a clean checkout now
   reproduces `data/dungeon_routes.csv` byte-for-byte (verified). Deliberately derived FROM the

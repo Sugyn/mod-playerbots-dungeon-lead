@@ -50,6 +50,7 @@ Whisper (or /w) the tank bot inside the dungeon:
 | `startdungeon reset` | resets route progress back to the first stop, without redoing leadership/formations |
 | `startdungeon debug` | toggles verbose per-wait diagnostics to a dedicated log file, for bug reports (see "Debugging" below) |
 | `startdungeon test` | same as plain `startdungeon`, but reports one structured result line when the run ends: `DungeonLead Test #<run_id>: <dungeon> -> <outcome> [(domain/reason)] \| duration Xm Ys \| skipped N \| manual interventions N` (deaths/wipes aren't tracked yet - see "Known limitations") |
+| `startdungeon status` | read-only, no effect on the run: reports the current route/step/outcome on demand |
 | `stopdungeon` | ends the run: leadership goes back to you, every follower's formation/strategies are restored to what they were right before `startdungeon` (falls back to `chaos` for anyone who joined mid-run with no snapshot), star/marks Dungeon Lead placed are cleared, route state cleared |
 
 The bot reports what it does ("heading to Lady Anacondra", "reached Lady Anacondra", "can't reach X, skipping",
