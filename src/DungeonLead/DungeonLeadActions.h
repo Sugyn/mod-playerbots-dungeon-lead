@@ -29,6 +29,7 @@ namespace DungeonLead
     bool GroupResting(PlayerbotAI* botAI);
     bool HealerManaLow(PlayerbotAI* botAI);
     bool GroupTooSpread(PlayerbotAI* botAI);
+    Player* FindSpreadMember(PlayerbotAI* botAI);  // who's causing GroupTooSpread, for messaging
     bool MasterTooFar(PlayerbotAI* botAI);
     bool MasterUnavailable(PlayerbotAI* botAI);
     Creature* FindBossNear(PlayerbotAI* botAI, float range);

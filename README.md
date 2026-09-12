@@ -49,6 +49,7 @@ Whisper (or /w) the tank bot inside the dungeon:
 | `startdungeon continue` | resumes after a pause |
 | `startdungeon reset` | resets route progress back to the first stop, without redoing leadership/formations |
 | `startdungeon debug` | toggles verbose per-wait diagnostics to a dedicated log file, for bug reports (see "Debugging" below) |
+| `startdungeon test` | same as plain `startdungeon`, but reports one structured result line when the run ends: `DungeonLead Test #<run_id>: <dungeon> -> <outcome> [(domain/reason)] \| duration Xm Ys \| skipped N \| manual interventions N` (deaths/wipes aren't tracked yet - see "Known limitations") |
 | `stopdungeon` | ends the run: leadership goes back to you, every follower's formation/strategies are restored to what they were right before `startdungeon` (falls back to `chaos` for anyone who joined mid-run with no snapshot), star/marks Dungeon Lead placed are cleared, route state cleared |
 
 The bot reports what it does ("heading to Lady Anacondra", "reached Lady Anacondra", "can't reach X, skipping",
@@ -63,7 +64,10 @@ Rules the leader follows before walking on or pulling:
 - nobody in the group is in combat,
 - no healer below `AiPlayerbot.DungeonLead.HealerManaPct` (default 20 %) and nobody sitting (eating/drinking),
 - the real player is within `AiPlayerbot.DungeonLead.Leash` yards (default 60) — the bot stops in place and sends
-  one "We're waiting for you!" ping rather than wandering off; bots within 1.5× that.
+  one "We're waiting for you!" ping rather than wandering off; bots within 1.5× that, named by a
+  one-shot `We're waiting for <name> to catch up!` ping (re-sent if a *different* bot becomes
+  the farthest-behind one) — without this the leader could sit correctly waiting on one stuck bot
+  with nothing in chat saying who.
 - a moon-marked CC target that nobody actually manages to crowd-control within `AiPlayerbot.DungeonLead.CcTimeoutSeconds`
   (default 10s) is released back into normal kill priority instead of being ignored forever.
 

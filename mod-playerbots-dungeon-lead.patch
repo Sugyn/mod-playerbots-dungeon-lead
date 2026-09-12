@@ -124,10 +124,10 @@ index 55792aa5..53690086 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..74d7b124
+index 00000000..22406c05
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1152 @@
+@@ -0,0 +1,1218 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -459,28 +459,40 @@ index 00000000..74d7b124
 +    return bot->GetDistance(master) > sPlayerbotAIConfig.dungeonLeadLeash;
 +}
 +
-+bool DungeonLead::GroupTooSpread(PlayerbotAI* botAI)
++// The farthest-behind group member past the spread threshold, if any - named so isUseful() can
++// tell the player WHO it's waiting for, not just that the group is "too spread" (a silent block
++// with no obvious cause was reported during live testing: the tank was actually correctly waiting
++// on one specific bot the whole time, but nothing in chat said so).
++Player* DungeonLead::FindSpreadMember(PlayerbotAI* botAI)
 +{
 +    Player* bot = botAI->GetBot();
-+    float leash = sPlayerbotAIConfig.dungeonLeadLeash;
-+
-+    // never run away from the real player
-+    if (MasterTooFar(botAI))
-+        return true;
++    float const threshold = sPlayerbotAIConfig.dungeonLeadLeash * 1.5f;
 +
 +    Group* group = bot->GetGroup();
 +    if (!group)
-+        return false;
++        return nullptr;
 +
++    Player* worst = nullptr;
++    float worstDist = threshold;
 +    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
 +    {
 +        Player* member = ref->GetSource();
 +        if (!member || member == bot || !member->IsAlive() || member->GetMap() != bot->GetMap())
 +            continue;
-+        if (bot->GetDistance(member) > leash * 1.5f)
-+            return true;
++        float d = bot->GetDistance(member);
++        if (d > worstDist)
++        {
++            worstDist = d;
++            worst = member;
++        }
 +    }
-+    return false;
++    return worst;
++}
++
++bool DungeonLead::GroupTooSpread(PlayerbotAI* botAI)
++{
++    // never run away from the real player
++    return MasterTooFar(botAI) || FindSpreadMember(botAI) != nullptr;
 +}
 +
 +Creature* DungeonLead::FindBossNear(PlayerbotAI* botAI, float range)
@@ -637,7 +649,21 @@ index 00000000..74d7b124
 +    else if (!masterTooFar)
 +        st.farFromMasterTold = false;
 +
++    // Same one-shot idea for a specific bot falling behind: "group too spread" alone gave no way
++    // to tell WHO the group was actually waiting on (found during live testing - the tank was
++    // correctly waiting the whole time on one bot stuck on terrain, but nothing in chat said so).
++    Player* spreadMember = masterTooFar ? nullptr : DungeonLead::FindSpreadMember(botAI);
++    std::string const spreadName = spreadMember ? spreadMember->GetName() : std::string();
++    if (spreadMember && st.spreadOffenderTold != spreadName)
++    {
++        st.spreadOffenderTold = spreadName;
++        botAI->TellMaster("We're waiting for " + spreadName + " to catch up!");
++    }
++    else if (!spreadMember)
++        st.spreadOffenderTold.clear();
++
 +    char const* wait = nullptr;
++    std::string waitDetail;
 +    if (DungeonLead::MasterUnavailable(botAI))
 +        wait = "master dead/disconnected/left the party";
 +    else if (DungeonLead::GroupInCombat(botAI))
@@ -648,8 +674,11 @@ index 00000000..74d7b124
 +        wait = "healer low on mana";
 +    else if (masterTooFar)
 +        wait = "waiting for you, master too far";
-+    else if (DungeonLead::GroupTooSpread(botAI))
++    else if (spreadMember)
++    {
 +        wait = "group too spread";
++        waitDetail = spreadName;
++    }
 +
 +    if (wait)
 +    {
@@ -658,8 +687,9 @@ index 00000000..74d7b124
 +        if (!st.lastWaitLogTs || now - st.lastWaitLogTs > 10000)
 +        {
 +            st.lastWaitLogTs = now;
-+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} waiting: {}", bot->GetName(), wait);
-+            DungeonLead::RecordEvent(botAI, "waiting", wait);
++            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} waiting: {}{}{}", bot->GetName(), wait,
++                     waitDetail.empty() ? "" : " - ", waitDetail);
++            DungeonLead::RecordEvent(botAI, "waiting", waitDetail.empty() ? wait : std::string(wait) + " - " + waitDetail);
 +
 +            // "startdungeon debug": enough detail on every wait to reconstruct a run from a plain
 +            // file alone - positions, distances to the whole group, current step - without needing
@@ -842,6 +872,32 @@ index 00000000..74d7b124
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route {} ({} skipped)", bot->GetName(), outcome, st.skippedSteps.size());
 +            DungeonLead::RecordEvent(botAI, st.mandatorySkipped ? "route_partial" : "route_complete",
 +                                      std::to_string(st.skippedSteps.size()) + " skipped");
++
++            // "startdungeon test" (L1.3): report a structured RunResult at the terminal outcome,
++            // then clear test mode so any further play this session isn't mislabeled as a test.
++            // One line, not several - TellMasterNoFacing sends a single WoW chat packet, and this
++            // codebase has no existing convention for a whisper that reliably renders as multiple
++            // lines client-side.
++            if (st.testMode)
++            {
++                uint32 durationMs = GetMSTimeDiffToNow(st.testStartTs);
++                std::ostringstream report;
++                report << "DungeonLead Test #" << st.runId << ": " << (route ? route->name : "?")
++                       << " -> " << ToString(st.outcome);
++                if (st.outcome == DungeonRunOutcome::Partial)
++                    report << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";
++                report << " | duration " << (durationMs / 60000) << "m" << ((durationMs / 1000) % 60) << "s"
++                       << " | skipped " << st.skippedSteps.size()
++                       << " | manual interventions " << st.manualInterventions
++                       << " (deaths/wipes not tracked yet)";
++                botAI->TellMasterNoFacing(report);
++                DungeonLead::RecordEvent(botAI, "test_result",
++                    std::string(ToString(st.outcome)) + " duration_ms=" + std::to_string(durationMs) +
++                    " manual_interventions=" + std::to_string(st.manualInterventions));
++                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} TEST RESULT run={} outcome={} duration_ms={}",
++                         bot->GetName(), st.runId, ToString(st.outcome), durationMs);
++                st.testMode = false;
++            }
 +        }
 +        return false;
 +    }
@@ -1165,6 +1221,8 @@ index 00000000..74d7b124
 +            return false;
 +        }
 +        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
++        if (sub != "debug" && st.testMode)
++            ++st.manualInterventions;  // pause/continue/reset mid-test: not a clean, hands-off smoke run
 +        if (sub == "pause")
 +        {
 +            st.paused = true;
@@ -1249,6 +1307,14 @@ index 00000000..74d7b124
 +        st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
 +        st.memberSnapshots = std::move(snapshots);
 +        st.runId = NextRunId();
++        if (sub == "test")
++        {
++            // L1.3 first live smoke-test command: same start as plain "startdungeon", just report
++            // a structured result once the run reaches a terminal outcome (see the "route
++            // complete"/"route PARTIAL" block in Execute()) instead of only the normal chat lines.
++            st.testMode = true;
++            st.testStartTs = getMSTime();
++        }
 +    }
 +    botAI->Reset();
 +    ResetReturnPosition();
@@ -1282,10 +1348,10 @@ index 00000000..74d7b124
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..21f12d7a
+index 00000000..6e1cbe37
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,113 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1317,6 +1383,7 @@ index 00000000..21f12d7a
 +    bool GroupResting(PlayerbotAI* botAI);
 +    bool HealerManaLow(PlayerbotAI* botAI);
 +    bool GroupTooSpread(PlayerbotAI* botAI);
++    Player* FindSpreadMember(PlayerbotAI* botAI);  // who's causing GroupTooSpread, for messaging
 +    bool MasterTooFar(PlayerbotAI* botAI);
 +    bool MasterUnavailable(PlayerbotAI* botAI);
 +    Creature* FindBossNear(PlayerbotAI* botAI, float range);
@@ -1766,10 +1833,10 @@ index 00000000..e73f6c39
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..3ef960a1
+index 00000000..a99d0b2c
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,233 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1896,6 +1963,7 @@ index 00000000..3ef960a1
 +    bool doneTold = false;
 +    uint32 lastWaitLogTs = 0;
 +    bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
++    std::string spreadOffenderTold;  // name of the last bot we pinged about for GroupTooSpread, "" if none
 +    int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
 +    bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
 +    uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
@@ -1915,6 +1983,16 @@ index 00000000..3ef960a1
 +    bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
 +    std::vector<DungeonLeadMemberSnapshot> memberSnapshots;  // pre-"startdungeon" state, for exact restore
 +
++    // "startdungeon test" (L1.3 first live smoke-test command): reports a structured RunResult
++    // summary once the run reaches a terminal outcome, instead of just the normal chat lines.
++    // Deliberately does NOT track deaths/wipes yet - no death/wipe detection exists anywhere in
++    // dungeon-lead today, and inventing one just to fill in a report field would be exactly the
++    // kind of "new recovery behavior added only to support telemetry" the roadmap says not to do.
++    // What's reported is only what's already cheaply and honestly known.
++    bool testMode = false;
++    uint32 testStartTs = 0;
++    uint32 manualInterventions = 0;  // pause/continue/reset invoked mid-test - not a clean smoke run
++
 +    void ResetRouteProgress()
 +    {
 +        lfgId = 0;
@@ -1928,6 +2006,7 @@ index 00000000..3ef960a1
 +        doneTold = false;
 +        lastWaitLogTs = 0;
 +        farFromMasterTold = false;
++        spreadOffenderTold.clear();
 +        announcedStep = -1;
 +        arrivedTold = false;
 +        arrivedTs = 0;

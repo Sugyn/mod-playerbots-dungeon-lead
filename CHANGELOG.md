@@ -29,6 +29,24 @@ that don't need a running worldserver.
   the current mod-playerbots `master`, opening/closing a tracking issue (`upstream-compat` label)
   as an early-warning signal if upstream moves in a way that breaks this patch - it does not keep
   the patch in sync automatically, a failure just means someone needs to look.
+- **`startdungeon test` (L1.3, first live smoke-test command).** Same start as plain
+  `startdungeon` - no automatic party provisioning, a valid group is still prepared by hand, per
+  the roadmap's explicit "don't build that yet" - but reports one structured result line when the
+  run reaches a terminal outcome: `DungeonLead Test #<run_id>: <dungeon> -> <outcome>
+  [(domain/reason)] | duration Xm Ys | skipped N | manual interventions N`, and a matching
+  `test_result` CSV event. `manual interventions` counts `pause`/`continue`/`reset` invoked mid-run
+  (a hint that it wasn't a clean, hands-off pass). Deliberately does **not** report deaths/wipes -
+  no death/wipe detection exists anywhere in dungeon-lead yet, and inventing one just to fill in a
+  report field would be exactly the "new recovery behavior added only to support telemetry" the
+  roadmap says not to do; the report says so explicitly rather than implying a false "0".
+
+### Fixed
+- **`GroupTooSpread` gave no indication of *which* bot it was waiting on.** Found during live
+  testing: the leader correctly held position for several minutes because one bot was stuck on
+  terrain far behind, but "group too spread" in the log/CSV never said which one, and chat said
+  nothing at all (unlike `MasterTooFar`'s "We're waiting for you!"). Added `FindSpreadMember()` and
+  a matching one-shot `We're waiting for <name> to catch up!` ping (re-sent if a different bot
+  becomes the farthest-behind one), plus the name in the `waiting` CSV/log detail.
 
 ## [0.5.2] - 2026-09-12
 

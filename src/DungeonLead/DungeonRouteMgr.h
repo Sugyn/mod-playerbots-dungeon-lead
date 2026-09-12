@@ -124,6 +124,7 @@ struct DungeonLeadState
     bool doneTold = false;
     uint32 lastWaitLogTs = 0;
     bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
+    std::string spreadOffenderTold;  // name of the last bot we pinged about for GroupTooSpread, "" if none
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
@@ -143,6 +144,16 @@ struct DungeonLeadState
     bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
     std::vector<DungeonLeadMemberSnapshot> memberSnapshots;  // pre-"startdungeon" state, for exact restore
 
+    // "startdungeon test" (L1.3 first live smoke-test command): reports a structured RunResult
+    // summary once the run reaches a terminal outcome, instead of just the normal chat lines.
+    // Deliberately does NOT track deaths/wipes yet - no death/wipe detection exists anywhere in
+    // dungeon-lead today, and inventing one just to fill in a report field would be exactly the
+    // kind of "new recovery behavior added only to support telemetry" the roadmap says not to do.
+    // What's reported is only what's already cheaply and honestly known.
+    bool testMode = false;
+    uint32 testStartTs = 0;
+    uint32 manualInterventions = 0;  // pause/continue/reset invoked mid-test - not a clean smoke run
+
     void ResetRouteProgress()
     {
         lfgId = 0;
@@ -156,6 +167,7 @@ struct DungeonLeadState
         doneTold = false;
         lastWaitLogTs = 0;
         farFromMasterTold = false;
+        spreadOffenderTold.clear();
         announcedStep = -1;
         arrivedTold = false;
         arrivedTs = 0;
