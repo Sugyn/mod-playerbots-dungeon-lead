@@ -6,7 +6,34 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 
 ## [Unreleased]
 
+DungeonTestBotPool, Phase 1 of the targeted-unattended-testing plan (see
+[ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)) - deterministic, on-demand test bot
+identities, independent of the general bot population and of any human staying logged in.
+
+### Added
+- `.playerbots testbotpool acquire tank|healer [level]` / `status` / `release <name>` (SOAP-reachable
+  GM console commands): reserves an offline character from the existing upstream AddClass bot pool
+  (`account_type=2`, ~500 idle characters), logs it in via the masterless `AddPlayerBot(guid, 0)`
+  path (no live player session needed - the same path a fully autonomous random bot uses), applies
+  a deterministic Tank or Healer talent spec + matching gear, and verifies the role at runtime
+  (`PlayerbotAI::IsTank`/`IsHeal`) before ever reporting it `Ready` - a wrong spec-number guess
+  surfaces as `Failed`, never as a silently-wrong bot. Verified live end-to-end on the first attempt:
+  acquire tank, acquire healer, both `Ready`, release, re-acquire, `Ready` again.
+- Rejected two riskier designs first (documented in ADR-003 for anyone tempted to redo this work):
+  manually constructing a `WorldSession` to create brand-new characters (too easy to get the
+  13-argument constructor or its lifecycle ownership wrong and crash the whole worldserver), and
+  adopting AddClass bots under a live player's own account (ties the bot's uptime to that player
+  staying logged in - the opposite of "unattended").
+
 ### Fixed
+- **A masterless AddClass bot was silently misclassified as a real human player.**
+  `RandomPlayerbotMgr::OnPlayerLogin` (upstream `mod-playerbots`, not this patch's own code) ends
+  every login with `if (IsRandomBot(player)) {...} else { players.push_back(player); }` -
+  `IsRandomBot()` only recognizes `account_type=1` accounts, so an `account_type=2` AddClass bot
+  fell into the `else` branch, the same collection real human logins use elsewhere in that class
+  for population/LFG-queue observation. Found by inspection while building DungeonTestBotPool
+  (which depends on masterless AddClass logins being classified correctly), fixed with one
+  additional branch using the already-existing `IsAddclassBot()` check.
 - **CRITICAL: `startdungeon` silently did nothing whenever the tank wasn't already party leader.**
   Found live: taking leadership (needed on essentially every real-world `startdungeon`, since the
   tank usually isn't already leader) makes every bot in the group receive `SMSG_GROUP_LIST`, which

@@ -128,4 +128,16 @@ public:
     bool Execute(Event event) override;
 };
 
+// "canarytest <lfgId>" (Stage 2, see DungeonLeadCanary.h): GM-only, on-demand equivalent of
+// waiting for CanaryTick() to spot the right bots organically. Whichever bot is whispered is just
+// the entry point - it does not itself join anything, it dispatches DungeonLead::TriggerTargetedTest()
+// which acts on other, currently-idle bots server-wide.
+class CanaryTestChatShortcutAction : public Action
+{
+public:
+    CanaryTestChatShortcutAction(PlayerbotAI* botAI) : Action(botAI, "canarytest chat shortcut") {}
+
+    bool Execute(Event event) override;
+};
+
 #endif

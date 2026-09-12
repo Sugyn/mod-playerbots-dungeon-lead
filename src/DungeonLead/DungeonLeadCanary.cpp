@@ -10,17 +10,22 @@
 #include "DungeonLeadActions.h"
 #include "DungeonRouteMgr.h"
 
+#include "DBCStores.h"
 #include "Group.h"
 #include "LFGMgr.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
+#include "Opcodes.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "RandomPlayerbotMgr.h"
 #include "Timer.h"
+#include "WorldPacket.h"
 
+#include <algorithm>
 #include <sstream>
 #include <unordered_set>
+#include <vector>
 
 namespace
 {
@@ -186,4 +191,177 @@ void DungeonLead::CanaryTick()
              candidateTank->GetName(), candidateGroup->GetMembersCount());
     DungeonLead::StartSession(tankAI, candidateGroup, DungeonLeadSessionOrigin::AutoCanary,
                                /*master*/ nullptr, /*testMode*/ true);
+}
+
+namespace
+{
+    // Same three-way split LfgJoinAction::GetRoles() uses for a non-random-bot bot, minus the
+    // large per-class random-bot spec switch that function also has - good enough to bias
+    // selection toward a plausible group, not a guarantee (LFG's own matchmaking is the real
+    // arbiter of whether a composition can actually be teleported in).
+    uint32 RoleMaskFor(PlayerbotAI* botAI, Player* bot)
+    {
+        if (botAI->IsTank(bot))
+            return lfg::PLAYER_ROLE_TANK;
+        if (botAI->IsHeal(bot))
+            return lfg::PLAYER_ROLE_HEALER;
+        return lfg::PLAYER_ROLE_DAMAGE;
+    }
+
+    // Mirrors LfgJoinAction::Execute's own CMSG_LFG_JOIN construction (LfgActions.cpp) exactly,
+    // field for field, except the dungeon list is forced to `lfgId` alone instead of the bot's own
+    // computed acceptable-dungeon set - that one substitution is this whole function's purpose.
+    void SendTargetedLfgJoin(PlayerbotAI* botAI, Player* bot, uint32 lfgId, uint32 roleMask)
+    {
+        std::string const gearScore = std::to_string(botAI->GetEquipGearScore(bot));
+
+        WorldPacket* data = new WorldPacket(CMSG_LFG_JOIN);
+        *data << (uint32)roleMask;
+        *data << (bool)false;
+        *data << (bool)false;
+        // Slots
+        *data << (uint8)1;  // exactly one dungeon - the whole point of this function
+        *data << (uint32)lfgId;
+        // Needs
+        *data << (uint8)3 << (uint8)0 << (uint8)0 << (uint8)0;
+        *data << gearScore;
+        bot->GetSession()->QueuePacket(data);
+    }
+}
+
+namespace
+{
+    // Shared with CanaryTick()'s own pass-1 count: how many AutoCanary-origin sessions are active
+    // right now, regardless of who/what started them. Recomputed rather than cached anywhere -
+    // called at most once per TriggerTargetedTest() invocation, never per-tick.
+    uint32 ActiveCanaryCount()
+    {
+        uint32 n = 0;
+        for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
+        {
+            Player* bot = ObjectAccessor::FindPlayer(guid);
+            if (bot && bot->IsInWorld())
+                if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot); botAI)
+                    if (sDungeonRouteMgr.State(guid).origin == DungeonLeadSessionOrigin::AutoCanary)
+                        ++n;
+        }
+        return n;
+    }
+}
+
+std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint32 groups)
+{
+    if (!sPlayerbotAIConfig.dungeonLeadCanaryEnabled)
+        return "AutoBot Canary is disabled (AiPlayerbot.DungeonLead.CanaryEnabled = 0)";
+
+    std::unordered_set<uint32> const allowed = ParseAllowedLfgIds(sPlayerbotAIConfig.dungeonLeadCanaryAllowedLfgIds);
+    if (!allowed.count(lfgId))
+        return "lfg id " + std::to_string(lfgId) + " is not in AiPlayerbot.DungeonLead.CanaryAllowedLfgIds";
+
+    LFGDungeonEntry const* dungeon = sLFGDungeonStore.LookupEntry(lfgId);
+    if (!dungeon)
+        return "Unknown LFG dungeon id " + std::to_string(lfgId);
+
+    uint32 const activeNow = ActiveCanaryCount();
+    uint32 const cap = sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent;
+    if (activeNow >= cap)
+        return "AiPlayerbot.DungeonLead.CanaryMaxConcurrent (" + std::to_string(cap) +
+               ") already reached (" + std::to_string(activeNow) + " running) - nothing queued";
+    groups = std::min(groups, cap - activeNow);
+
+    struct Candidate { Player* bot; PlayerbotAI* botAI; uint32 role; };
+    std::vector<Candidate> tanks, heals, dps;
+
+    for (auto const& [guid, bot] : sRandomPlayerbotMgr.GetAllBots())
+    {
+        if (!bot || !bot->IsInWorld() || !bot->IsAlive() || bot->GetGroup())
+            continue;
+        if (DungeonLead::InFiveMan(bot))
+            continue;  // already inside some dungeon - not idle
+        if (sLFGMgr->GetState(bot->GetGUID()) != lfg::LFG_STATE_NONE)
+            continue;  // already mid-queue/mid-proposal from an earlier call or organic activity -
+                       // don't re-blast a join packet at a bot LFG is already processing
+        if (dungeon->MinLevel && (bot->GetLevel() < dungeon->MinLevel || bot->GetLevel() > dungeon->MaxLevel))
+            continue;
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+        if (!botAI)
+            continue;
+
+        uint32 role = RoleMaskFor(botAI, bot);
+        (role == lfg::PLAYER_ROLE_TANK ? tanks : role == lfg::PLAYER_ROLE_HEALER ? heals : dps)
+            .push_back({bot, botAI, role});
+    }
+
+    // Real LFG matchmaking needs exactly 1 tank + 1 healer per completed group (LFG_TANKS_NEEDED/
+    // LFG_HEALERS_NEEDED in LFG.h) - and since these are queued as individually-solo bots (not
+    // pre-grouped), AC pools ALL solo queuers for this dungeon together and matches from that
+    // shared pool, not just "this function's own 5 picks" against each other. A party missing
+    // either role can therefore NEVER complete, no matter how long it waits - so cap how many
+    // parties we even attempt at min(tanks available, heals available), rather than manufacturing
+    // structurally-incomplete parties that just sit in the queue forever wasting a canary slot.
+    // (Discovered live: an earlier version filled remaining parties with leftover dps once tanks/
+    // heals ran out, producing tank-less/healer-less parties that queued successfully - confirmed
+    // via the new "lfgstate" diagnostic - but could structurally never be matched.)
+    uint32 const feasible = std::min<uint32>({groups, uint32(tanks.size()), uint32(heals.size())});
+
+    auto pickOneParty = [&]() -> std::vector<Candidate>
+    {
+        std::vector<Candidate> picked;
+        auto takeFront = [&](std::vector<Candidate>& bucket)
+        {
+            if (bucket.empty())
+                return false;
+            picked.push_back(bucket.front());
+            bucket.erase(bucket.begin());
+            return true;
+        };
+        takeFront(tanks);
+        takeFront(heals);
+        while (picked.size() < 5 && takeFront(dps)) {}
+        return picked;
+    };
+
+    std::ostringstream summary;
+    uint32 startedGroups = 0;
+    for (uint32 g = 0; g < feasible; ++g)
+    {
+        std::vector<Candidate> picked = pickOneParty();
+        if (picked.size() < 2)
+            break;  // pool exhausted - report what we managed below, not an error
+
+        if (startedGroups)
+            summary << " | ";
+        summary << "party " << (startedGroups + 1) << ": ";
+        for (size_t i = 0; i < picked.size(); ++i)
+        {
+            if (i)
+                summary << ", ";
+            summary << picked[i].bot->GetName()
+                    << (picked[i].role == lfg::PLAYER_ROLE_TANK ? " (tank)"
+                        : picked[i].role == lfg::PLAYER_ROLE_HEALER ? " (heal)" : " (dps)");
+            SendTargetedLfgJoin(picked[i].botAI, picked[i].bot, lfgId, picked[i].role);
+        }
+        ++startedGroups;
+    }
+
+    if (!startedGroups)
+        return "No complete party possible right now for " + std::string(dungeon->Name[0]) +
+               " (level " + std::to_string(dungeon->MinLevel) + "-" + std::to_string(dungeon->MaxLevel) +
+               "): " + std::to_string(tanks.size()) + " idle tank(s), " + std::to_string(heals.size()) +
+               " idle healer(s) found - a real LFG group needs at least one of each, queuing a party "
+               "without one would just sit unmatched forever.";
+
+    std::string const scaledDownNote = feasible < groups
+        ? " (scaled down from " + std::to_string(groups) + " requested: only " + std::to_string(tanks.size()) +
+          " tank(s)/" + std::to_string(heals.size()) + " healer(s) idle right now)"
+        : "";
+
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead][Canary] targeted test requested by {} for {} ({}): {} part{} - {}",
+             master ? master->GetName() : "console", dungeon->Name[0], lfgId, startedGroups,
+             startedGroups == 1 ? "y" : "ies", summary.str());
+    return "Queued " + std::to_string(startedGroups) + "/" + std::to_string(groups) + " requested part" +
+           (groups == 1 ? "y" : "ies") + " for " + dungeon->Name[0] + scaledDownNote + " (" +
+           std::to_string(activeNow) + "/" + std::to_string(cap) + " canary slots already in use before this): " +
+           summary.str() + " - AutoBot Canary will take over each one automatically once LFG groups and "
+           "teleports it in.";
 }

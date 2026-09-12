@@ -260,6 +260,16 @@ To try it: set `AiPlayerbot.DungeonLead.CanaryEnabled = 1` and
 in the `start` CSV/log event; `startdungeon status` still works normally on whichever bot ends up
 leading.
 
+## DungeonTestBotPool (deterministic test bots, Phase 1)
+
+`.playerbots testbotpool acquire tank|healer [level]` / `status` / `release <name>` — reserves an
+idle character from the server's existing AddClass bot pool, logs it in independently of any real
+player session, forces a Tank or Healer spec + matching gear, and verifies the role at runtime
+before calling it `Ready`. Useful when the general bot population doesn't happen to have an idle
+tank/healer of the right level available (e.g. right after a restart). See
+[ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md) for the full design, what was
+rejected first, and an upstream classification bug this work found and fixed along the way.
+
 ## Known limits / next steps
 
 - Doors and gated bosses (e.g. Gnomeregan, Uldaman Ironaya, Nexus, Halls of Stone) are only annotated in the route
@@ -269,9 +279,10 @@ leading.
   order, BRD Prison order) are documented in `data/routes.tsv`.
 
 See `docs/architecture/` for design notes: [ADR-001](docs/architecture/adr-001-l1.4-capability-scenarios.md)
-(L1.4 capability-scenario testing framework - proposed, not yet built) and
+(L1.4 capability-scenario testing framework - proposed, not yet built),
 [ADR-002](docs/architecture/adr-002-autobot-canary.md) (AutoBot Canary - stage 0/1 implemented,
-later stages proposed).
+later stages proposed), and [ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)
+(DungeonTestBotPool - Phase 1 implemented and verified live, later phases proposed).
 
 ## License
 

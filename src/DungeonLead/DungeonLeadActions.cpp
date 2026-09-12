@@ -7,6 +7,7 @@
  */
 
 #include "DungeonLeadActions.h"
+#include "DungeonLeadCanary.h"
 
 #include "Creature.h"
 #include "CreatureData.h"
@@ -1404,5 +1405,42 @@ bool StopDungChatShortcutAction::Execute(Event /*event*/)
     ResetReturnPosition();
     ResetStayPosition();
     botAI->TellMaster("Dungeon lead: OFF");
+    return true;
+}
+
+bool CanaryTestChatShortcutAction::Execute(Event event)
+{
+    Player* master = GetMaster();
+    if (!master)
+        return false;
+
+    // Manipulates other bots server-wide, not just this whisper's own party - unlike every other
+    // command in this file, gated behind GM level rather than open to anyone (see README).
+    if (!master->GetSession() || master->GetSession()->GetSecurity() < SEC_GAMEMASTER)
+    {
+        botAI->TellMaster("canarytest: GM level required (this queues OTHER bots server-wide, not just yours)");
+        return false;
+    }
+
+    std::string const param = TrimLower(event.getParam());
+    uint32 lfgId = 0, groups = 1;
+    try
+    {
+        std::istringstream iss(param);
+        std::string lfgTok, groupsTok;
+        iss >> lfgTok;
+        lfgId = static_cast<uint32>(std::stoul(lfgTok));
+        if (iss >> groupsTok)
+            groups = std::max(1u, static_cast<uint32>(std::stoul(groupsTok)));
+    }
+    catch (std::exception const&)
+    {
+        botAI->TellMaster("canarytest: usage \"canarytest <lfgId> [groups]\" - e.g. \"canarytest 1 10\" for "
+                           "10 parallel Ragefire Chasm runs");
+        return false;
+    }
+
+    std::string const result = DungeonLead::TriggerTargetedTest(master, lfgId, groups);
+    botAI->TellMaster("canarytest: " + result);
     return true;
 }
