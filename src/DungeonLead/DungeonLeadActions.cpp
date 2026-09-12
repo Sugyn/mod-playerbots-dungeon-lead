@@ -21,6 +21,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
 #include "RtiTargetValue.h"
+#include "Log.h"
 #include "Timer.h"
 
 #include <list>
@@ -208,14 +209,29 @@ bool DungeonLeadNextAction::isUseful()
         return false;
     if (!DungeonLead::InFiveMan(bot))
         return false;
+
+    char const* wait = nullptr;
     if (DungeonLead::GroupInCombat(botAI))
+        wait = "group in combat";
+    else if (DungeonLead::GroupResting(botAI))
+        wait = "someone is eating/drinking";
+    else if (DungeonLead::HealerManaLow(botAI))
+        wait = "healer low on mana";
+    else if (DungeonLead::GroupTooSpread(botAI))
+        wait = "group too spread / master too far";
+
+    if (wait)
+    {
+        // throttled: one line per 10 s per bot
+        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+        uint32 now = getMSTime();
+        if (!st.lastWaitLogTs || now - st.lastWaitLogTs > 10000)
+        {
+            st.lastWaitLogTs = now;
+            LOG_INFO("playerbots", "[DungeonLead] {} waiting: {}", bot->GetName(), wait);
+        }
         return false;
-    if (DungeonLead::GroupResting(botAI))
-        return false;
-    if (DungeonLead::HealerManaLow(botAI))
-        return false;
-    if (DungeonLead::GroupTooSpread(botAI))
-        return false;
+    }
     return true;
 }
 
@@ -282,6 +298,8 @@ DungeonRoute const* DungeonLeadNextAction::ResolveRoute(DungeonLeadState& st)
     std::ostringstream out;
     out << "Dungeon lead: route '" << route->name << "', " << walkable << " stops";
     botAI->TellMasterNoFacing(out);
+    LOG_INFO("playerbots", "[DungeonLead] {} route lfg={} '{}' map={} steps={} walkable={}", bot->GetName(),
+             route->lfgId, route->name, route->mapId, route->steps.size(), walkable);
     return route;
 }
 
@@ -306,6 +324,8 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             st.noRouteTold = true;
             botAI->TellMasterNoFacing(
                 "Dungeon lead: no route for this dungeon (event/vehicle dungeon?) - I'll just grind what I see");
+            LOG_INFO("playerbots", "[DungeonLead] {} no route for map={} instance={}", bot->GetName(), bot->GetMapId(),
+                     bot->GetInstanceId());
         }
         return false;
     }
@@ -327,6 +347,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         {
             st.doneTold = true;
             botAI->TellMasterNoFacing("Dungeon lead: route complete");
+            LOG_INFO("playerbots", "[DungeonLead] {} route complete", bot->GetName());
         }
         return false;
     }
@@ -352,6 +373,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         std::ostringstream out;
         out << "Dungeon lead: " << step.boss << " is down, moving on";
         botAI->TellMasterNoFacing(out);
+        LOG_INFO("playerbots", "[DungeonLead] {} step {} '{}' already dead, next", bot->GetName(), step.step, step.boss);
         MarkVisited(st);
         return true;
     }
@@ -362,6 +384,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         std::ostringstream out;
         out << "Dungeon lead: reached " << step.boss;
         botAI->TellMasterNoFacing(out);
+        LOG_INFO("playerbots", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
         MarkVisited(st);
         return true;
     }
@@ -402,6 +425,9 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         std::ostringstream out;
         out << "Dungeon lead: can't reach " << step.boss << ", skipping";
         botAI->TellMasterNoFacing(out);
+        LOG_INFO("playerbots", "[DungeonLead] {} stuck {}s at dist {:.1f} to step {} '{}' ({:.1f},{:.1f},{:.1f}) -> skip",
+                 bot->GetName(), GetMSTimeDiffToNow(st.stuckTs) / 1000, disToDest, step.step, step.boss,
+                 dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
         MarkVisited(st);
         return true;
     }
@@ -502,6 +528,7 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
     if (!skull || !skull->IsAlive())
     {
         group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), boss->GetGUID());
+        LOG_INFO("playerbots", "[DungeonLead] {} skull -> {} ({})", bot->GetName(), boss->GetName(), boss->GetEntry());
         changed = true;
     }
 
@@ -513,6 +540,7 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
             if (Creature* cc = FindCcCandidate(boss))
             {
                 group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), cc->GetGUID());
+                LOG_INFO("playerbots", "[DungeonLead] {} moon -> {} ({})", bot->GetName(), cc->GetName(), cc->GetEntry());
                 changed = true;
             }
         }
@@ -582,6 +610,8 @@ bool StartDungChatShortcutAction::Execute(Event /*event*/)
     botAI->ChangeStrategy("+dungeon lead,+cc", BOT_STATE_COMBAT);
 
     botAI->TellMaster("Dungeon lead: ON - taking the lead, the others will follow me");
+    LOG_INFO("playerbots", "[DungeonLead] {} START by {} in map={} instance={} (tank={})", bot->GetName(),
+             master->GetName(), bot->GetMapId(), bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
     return true;
 }
 
@@ -594,5 +624,6 @@ bool StopDungChatShortcutAction::Execute(Event /*event*/)
     ResetReturnPosition();
     ResetStayPosition();
     botAI->TellMaster("Dungeon lead: OFF");
+    LOG_INFO("playerbots", "[DungeonLead] {} STOP by master", bot->GetName());
     return true;
 }

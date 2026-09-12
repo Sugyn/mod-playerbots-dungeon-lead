@@ -51,6 +51,7 @@ struct DungeonLeadState
     float bestDist = 0.f;
     bool noRouteTold = false;
     bool doneTold = false;
+    uint32 lastWaitLogTs = 0;
     std::vector<uint8> visited;
 
     void Reset() { *this = DungeonLeadState(); }

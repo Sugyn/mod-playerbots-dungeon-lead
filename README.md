@@ -1,9 +1,10 @@
 # mod-playerbots: Dungeon Lead
 
-Patch for [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots) (AzerothCore 3.3.5a) that lets a bot —
-normally the tank — **lead a 5-man dungeon while a real player is in the group**: it becomes group leader, the other
-bots follow *it* instead of the player, and it walks a hand-authored boss route, pulling on the way, marking the boss
-(skull) and a CC target (moon), and holding back while the healer is low on mana or the group is spread out.
+**Autonomous dungeon module for [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots)
+(AzerothCore 3.3.5a).** The tank bot takes the lead of a 5-man dungeon on its own: it becomes group leader, the
+other bots follow *it* instead of the player, it walks the boss route, decides what to pull next, marks the kill
+target (skull) and a CC target (moon), and paces the group by healer mana and group spread — while the real player
+in the group simply rides along (or fights, without having to give any orders).
 
 Works in every 5-man dungeon of Vanilla, The Burning Crusade (normal + heroic) and Wrath of the Lich King
 (normal + heroic). Raids are explicitly excluded. Event/vehicle dungeons (Violet Hold, Culling of Stratholme,

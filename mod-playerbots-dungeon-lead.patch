@@ -110,10 +110,10 @@ index 55792aa5..97d1a0ff 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..bf4c6e59
+index 00000000..7c82367b
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,598 @@
+@@ -0,0 +1,629 @@
 +/*
 + * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
 + * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
@@ -137,6 +137,7 @@ index 00000000..bf4c6e59
 +#include "PlayerbotWorldThreadProcessor.h"
 +#include "Playerbots.h"
 +#include "RtiTargetValue.h"
++#include "Log.h"
 +#include "Timer.h"
 +
 +#include <list>
@@ -324,14 +325,29 @@ index 00000000..bf4c6e59
 +        return false;
 +    if (!DungeonLead::InFiveMan(bot))
 +        return false;
++
++    char const* wait = nullptr;
 +    if (DungeonLead::GroupInCombat(botAI))
++        wait = "group in combat";
++    else if (DungeonLead::GroupResting(botAI))
++        wait = "someone is eating/drinking";
++    else if (DungeonLead::HealerManaLow(botAI))
++        wait = "healer low on mana";
++    else if (DungeonLead::GroupTooSpread(botAI))
++        wait = "group too spread / master too far";
++
++    if (wait)
++    {
++        // throttled: one line per 10 s per bot
++        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
++        uint32 now = getMSTime();
++        if (!st.lastWaitLogTs || now - st.lastWaitLogTs > 10000)
++        {
++            st.lastWaitLogTs = now;
++            LOG_INFO("playerbots", "[DungeonLead] {} waiting: {}", bot->GetName(), wait);
++        }
 +        return false;
-+    if (DungeonLead::GroupResting(botAI))
-+        return false;
-+    if (DungeonLead::HealerManaLow(botAI))
-+        return false;
-+    if (DungeonLead::GroupTooSpread(botAI))
-+        return false;
++    }
 +    return true;
 +}
 +
@@ -398,6 +414,8 @@ index 00000000..bf4c6e59
 +    std::ostringstream out;
 +    out << "Dungeon lead: route '" << route->name << "', " << walkable << " stops";
 +    botAI->TellMasterNoFacing(out);
++    LOG_INFO("playerbots", "[DungeonLead] {} route lfg={} '{}' map={} steps={} walkable={}", bot->GetName(),
++             route->lfgId, route->name, route->mapId, route->steps.size(), walkable);
 +    return route;
 +}
 +
@@ -422,6 +440,8 @@ index 00000000..bf4c6e59
 +            st.noRouteTold = true;
 +            botAI->TellMasterNoFacing(
 +                "Dungeon lead: no route for this dungeon (event/vehicle dungeon?) - I'll just grind what I see");
++            LOG_INFO("playerbots", "[DungeonLead] {} no route for map={} instance={}", bot->GetName(), bot->GetMapId(),
++                     bot->GetInstanceId());
 +        }
 +        return false;
 +    }
@@ -443,6 +463,7 @@ index 00000000..bf4c6e59
 +        {
 +            st.doneTold = true;
 +            botAI->TellMasterNoFacing("Dungeon lead: route complete");
++            LOG_INFO("playerbots", "[DungeonLead] {} route complete", bot->GetName());
 +        }
 +        return false;
 +    }
@@ -468,6 +489,7 @@ index 00000000..bf4c6e59
 +        std::ostringstream out;
 +        out << "Dungeon lead: " << step.boss << " is down, moving on";
 +        botAI->TellMasterNoFacing(out);
++        LOG_INFO("playerbots", "[DungeonLead] {} step {} '{}' already dead, next", bot->GetName(), step.step, step.boss);
 +        MarkVisited(st);
 +        return true;
 +    }
@@ -478,6 +500,7 @@ index 00000000..bf4c6e59
 +        std::ostringstream out;
 +        out << "Dungeon lead: reached " << step.boss;
 +        botAI->TellMasterNoFacing(out);
++        LOG_INFO("playerbots", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
 +        MarkVisited(st);
 +        return true;
 +    }
@@ -518,6 +541,9 @@ index 00000000..bf4c6e59
 +        std::ostringstream out;
 +        out << "Dungeon lead: can't reach " << step.boss << ", skipping";
 +        botAI->TellMasterNoFacing(out);
++        LOG_INFO("playerbots", "[DungeonLead] {} stuck {}s at dist {:.1f} to step {} '{}' ({:.1f},{:.1f},{:.1f}) -> skip",
++                 bot->GetName(), GetMSTimeDiffToNow(st.stuckTs) / 1000, disToDest, step.step, step.boss,
++                 dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
 +        MarkVisited(st);
 +        return true;
 +    }
@@ -618,6 +644,7 @@ index 00000000..bf4c6e59
 +    if (!skull || !skull->IsAlive())
 +    {
 +        group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), boss->GetGUID());
++        LOG_INFO("playerbots", "[DungeonLead] {} skull -> {} ({})", bot->GetName(), boss->GetName(), boss->GetEntry());
 +        changed = true;
 +    }
 +
@@ -629,6 +656,7 @@ index 00000000..bf4c6e59
 +            if (Creature* cc = FindCcCandidate(boss))
 +            {
 +                group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), cc->GetGUID());
++                LOG_INFO("playerbots", "[DungeonLead] {} moon -> {} ({})", bot->GetName(), cc->GetName(), cc->GetEntry());
 +                changed = true;
 +            }
 +        }
@@ -698,6 +726,8 @@ index 00000000..bf4c6e59
 +    botAI->ChangeStrategy("+dungeon lead,+cc", BOT_STATE_COMBAT);
 +
 +    botAI->TellMaster("Dungeon lead: ON - taking the lead, the others will follow me");
++    LOG_INFO("playerbots", "[DungeonLead] {} START by {} in map={} instance={} (tank={})", bot->GetName(),
++             master->GetName(), bot->GetMapId(), bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
 +    return true;
 +}
 +
@@ -710,6 +740,7 @@ index 00000000..bf4c6e59
 +    ResetReturnPosition();
 +    ResetStayPosition();
 +    botAI->TellMaster("Dungeon lead: OFF");
++    LOG_INFO("playerbots", "[DungeonLead] {} STOP by master", bot->GetName());
 +    return true;
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
@@ -1081,10 +1112,10 @@ index 00000000..7a205a50
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..5481ff59
+index 00000000..372fae0f
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,86 @@
 +/*
 + * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
 + * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
@@ -1138,6 +1169,7 @@ index 00000000..5481ff59
 +    float bestDist = 0.f;
 +    bool noRouteTold = false;
 +    bool doneTold = false;
++    uint32 lastWaitLogTs = 0;
 +    std::vector<uint8> visited;
 +
 +    void Reset() { *this = DungeonLeadState(); }
