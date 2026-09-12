@@ -16,6 +16,14 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
   has several) - caught by diffing against the committed file before it was ever pushed, reverted,
   and redone the safe way.
 
+### Changed
+- **`DungeonRouteStep::kind` is now a real `enum class DungeonRouteKind`, not a free-form
+  `std::string`.** The DB column itself is untouched (still `VARCHAR`, parsed once at `Load()`);
+  a typo there used to silently become a non-walkable, non-mandatory step with zero diagnostic -
+  now it's `Unknown`, which is never walkable/mandatory *and* logs a `LOG_ERROR` naming the exact
+  lfg_id/step/boss at load time. `tools/validate_routes.py` already catches this ahead of time in
+  CI; this is the runtime-side backstop for anything that slips through anyway.
+
 L1 (test & observability platform) work, per the architecture roadmap - starting with the parts
 that don't need a running worldserver.
 

@@ -707,7 +707,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     {
         DungeonRouteStep const& s = route->steps[st.stepIndex];
         bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
-                    (s.kind == "optional" && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
+                    (s.kind == DungeonRouteKind::Optional && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
                     (s.entry && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;

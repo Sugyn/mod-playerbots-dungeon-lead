@@ -18,26 +18,47 @@
 #include <unordered_set>
 #include <vector>
 
+// The DB column (playerbots_dungeon_route.kind) stays a plain VARCHAR - this is just the C++-side
+// representation, parsed once at Load() (see ParseRouteKind). A typo in the DB used to silently
+// become a non-walkable, non-mandatory step with no diagnostic at all; it's now Unknown, logged as
+// an error at load time (see DungeonRouteMgr::Load()) and validated ahead of time by
+// tools/validate_routes.py besides.
+enum class DungeonRouteKind : uint8
+{
+    Boss,
+    Optional,
+    HeroicOnly,
+    Event,
+    Door,
+    Skip,
+    Unknown,  // failed to parse - never IsWalkable()/IsMandatory(), always a load-time LOG_ERROR
+};
+
+DungeonRouteKind ParseRouteKind(std::string const& s);
+
 // One step of a hand-authored dungeon route (table playerbots_dungeon_route).
-// kind: boss | optional | heroic_only | event | door | skip
 struct DungeonRouteStep
 {
     uint32 step = 0;
-    std::string kind;
+    DungeonRouteKind kind = DungeonRouteKind::Unknown;
     std::string boss;
     uint32 entry = 0;
     float x = 0.f, y = 0.f, z = 0.f;
     std::string note;
 
     bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
-    bool IsWalkable() const { return HasPosition() && (kind == "boss" || kind == "optional" || kind == "heroic_only" || kind == "event"); }
+    bool IsWalkable() const
+    {
+        return HasPosition() && (kind == DungeonRouteKind::Boss || kind == DungeonRouteKind::Optional ||
+                                  kind == DungeonRouteKind::HeroicOnly || kind == DungeonRouteKind::Event);
+    }
 
     // Policy boundary for "must this be satisfied for the run to count as Complete rather than
-    // Partial" - kept as one named function instead of repeating `kind == "boss"` at every call
+    // Partial" - kept as one named function instead of repeating `kind == Boss` at every call
     // site, since a future mandatory kind (a required door/event, not just a boss) should only
     // need this one line updated, not every place that currently checks it. See the architecture
     // roadmap's L0 closeout notes.
-    bool IsMandatory() const { return kind == "boss"; }
+    bool IsMandatory() const { return kind == DungeonRouteKind::Boss; }
 };
 
 // Run-level outcome, shared vocabulary between the runtime and (eventually) an automated test

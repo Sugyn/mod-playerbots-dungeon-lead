@@ -14,6 +14,17 @@
 
 #include <algorithm>
 
+DungeonRouteKind ParseRouteKind(std::string const& s)
+{
+    if (s == "boss") return DungeonRouteKind::Boss;
+    if (s == "optional") return DungeonRouteKind::Optional;
+    if (s == "heroic_only") return DungeonRouteKind::HeroicOnly;
+    if (s == "event") return DungeonRouteKind::Event;
+    if (s == "door") return DungeonRouteKind::Door;
+    if (s == "skip") return DungeonRouteKind::Skip;
+    return DungeonRouteKind::Unknown;
+}
+
 void DungeonRouteMgr::Load()
 {
     std::lock_guard<std::mutex> lock(mtx);
@@ -24,6 +35,7 @@ void DungeonRouteMgr::Load()
         "IFNULL(z, 0), IFNULL(note, '') FROM playerbots_dungeon_route ORDER BY lfg_id, step");
 
     uint32 count = 0;
+    uint32 unknownKinds = 0;
     if (result)
     {
         do
@@ -38,19 +50,33 @@ void DungeonRouteMgr::Load()
 
             DungeonRouteStep step;
             step.step = f[4].Get<uint32>();
-            step.kind = f[5].Get<std::string>();
+            std::string kindStr = f[5].Get<std::string>();
+            step.kind = ParseRouteKind(kindStr);
             step.boss = f[6].Get<std::string>();
             step.entry = f[7].Get<uint32>();
             step.x = f[8].Get<float>();
             step.y = f[9].Get<float>();
             step.z = f[10].Get<float>();
             step.note = f[11].Get<std::string>();
+
+            // tools/validate_routes.py should already reject this before it ever reaches the live
+            // DB, but a typo that slips through anyway used to silently become a non-walkable,
+            // non-mandatory step with no diagnostic at all - never a visible failure, exactly the
+            // class of bug the roadmap's L0 closeout was about.
+            if (step.kind == DungeonRouteKind::Unknown)
+            {
+                ++unknownKinds;
+                LOG_ERROR("playerbots", "DungeonRouteMgr: unknown kind '{}' for lfg_id={} step={} '{}' - "
+                          "treated as unwalkable/non-mandatory", kindStr, lfgId, step.step, step.boss);
+            }
+
             route.steps.push_back(step);
             ++count;
         } while (result->NextRow());
     }
 
-    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries", count, routes.size());
+    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind)", count,
+             routes.size(), unknownKinds);
 }
 
 void DungeonRouteMgr::EnsureLoaded()

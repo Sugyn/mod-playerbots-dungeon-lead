@@ -124,7 +124,7 @@ index 55792aa5..53690086 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..22406c05
+index 00000000..d9c7e0d5
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 @@ -0,0 +1,1218 @@
@@ -837,7 +837,7 @@ index 00000000..22406c05
 +    {
 +        DungeonRouteStep const& s = route->steps[st.stepIndex];
 +        bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
-+                    (s.kind == "optional" && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
++                    (s.kind == DungeonRouteKind::Optional && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
 +                    (s.entry && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
 +        if (!skip)
 +            break;
@@ -1670,10 +1670,10 @@ index 00000000..4f0b4148
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
 new file mode 100644
-index 00000000..e73f6c39
+index 00000000..25b491de
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,183 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1690,6 +1690,17 @@ index 00000000..e73f6c39
 +
 +#include <algorithm>
 +
++DungeonRouteKind ParseRouteKind(std::string const& s)
++{
++    if (s == "boss") return DungeonRouteKind::Boss;
++    if (s == "optional") return DungeonRouteKind::Optional;
++    if (s == "heroic_only") return DungeonRouteKind::HeroicOnly;
++    if (s == "event") return DungeonRouteKind::Event;
++    if (s == "door") return DungeonRouteKind::Door;
++    if (s == "skip") return DungeonRouteKind::Skip;
++    return DungeonRouteKind::Unknown;
++}
++
 +void DungeonRouteMgr::Load()
 +{
 +    std::lock_guard<std::mutex> lock(mtx);
@@ -1700,6 +1711,7 @@ index 00000000..e73f6c39
 +        "IFNULL(z, 0), IFNULL(note, '') FROM playerbots_dungeon_route ORDER BY lfg_id, step");
 +
 +    uint32 count = 0;
++    uint32 unknownKinds = 0;
 +    if (result)
 +    {
 +        do
@@ -1714,19 +1726,33 @@ index 00000000..e73f6c39
 +
 +            DungeonRouteStep step;
 +            step.step = f[4].Get<uint32>();
-+            step.kind = f[5].Get<std::string>();
++            std::string kindStr = f[5].Get<std::string>();
++            step.kind = ParseRouteKind(kindStr);
 +            step.boss = f[6].Get<std::string>();
 +            step.entry = f[7].Get<uint32>();
 +            step.x = f[8].Get<float>();
 +            step.y = f[9].Get<float>();
 +            step.z = f[10].Get<float>();
 +            step.note = f[11].Get<std::string>();
++
++            // tools/validate_routes.py should already reject this before it ever reaches the live
++            // DB, but a typo that slips through anyway used to silently become a non-walkable,
++            // non-mandatory step with no diagnostic at all - never a visible failure, exactly the
++            // class of bug the roadmap's L0 closeout was about.
++            if (step.kind == DungeonRouteKind::Unknown)
++            {
++                ++unknownKinds;
++                LOG_ERROR("playerbots", "DungeonRouteMgr: unknown kind '{}' for lfg_id={} step={} '{}' - "
++                          "treated as unwalkable/non-mandatory", kindStr, lfgId, step.step, step.boss);
++            }
++
 +            route.steps.push_back(step);
 +            ++count;
 +        } while (result->NextRow());
 +    }
 +
-+    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries", count, routes.size());
++    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind)", count,
++             routes.size(), unknownKinds);
 +}
 +
 +void DungeonRouteMgr::EnsureLoaded()
@@ -1833,10 +1859,10 @@ index 00000000..e73f6c39
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..a99d0b2c
+index 00000000..57a0357b
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,254 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1857,26 +1883,47 @@ index 00000000..a99d0b2c
 +#include <unordered_set>
 +#include <vector>
 +
++// The DB column (playerbots_dungeon_route.kind) stays a plain VARCHAR - this is just the C++-side
++// representation, parsed once at Load() (see ParseRouteKind). A typo in the DB used to silently
++// become a non-walkable, non-mandatory step with no diagnostic at all; it's now Unknown, logged as
++// an error at load time (see DungeonRouteMgr::Load()) and validated ahead of time by
++// tools/validate_routes.py besides.
++enum class DungeonRouteKind : uint8
++{
++    Boss,
++    Optional,
++    HeroicOnly,
++    Event,
++    Door,
++    Skip,
++    Unknown,  // failed to parse - never IsWalkable()/IsMandatory(), always a load-time LOG_ERROR
++};
++
++DungeonRouteKind ParseRouteKind(std::string const& s);
++
 +// One step of a hand-authored dungeon route (table playerbots_dungeon_route).
-+// kind: boss | optional | heroic_only | event | door | skip
 +struct DungeonRouteStep
 +{
 +    uint32 step = 0;
-+    std::string kind;
++    DungeonRouteKind kind = DungeonRouteKind::Unknown;
 +    std::string boss;
 +    uint32 entry = 0;
 +    float x = 0.f, y = 0.f, z = 0.f;
 +    std::string note;
 +
 +    bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
-+    bool IsWalkable() const { return HasPosition() && (kind == "boss" || kind == "optional" || kind == "heroic_only" || kind == "event"); }
++    bool IsWalkable() const
++    {
++        return HasPosition() && (kind == DungeonRouteKind::Boss || kind == DungeonRouteKind::Optional ||
++                                  kind == DungeonRouteKind::HeroicOnly || kind == DungeonRouteKind::Event);
++    }
 +
 +    // Policy boundary for "must this be satisfied for the run to count as Complete rather than
-+    // Partial" - kept as one named function instead of repeating `kind == "boss"` at every call
++    // Partial" - kept as one named function instead of repeating `kind == Boss` at every call
 +    // site, since a future mandatory kind (a required door/event, not just a boss) should only
 +    // need this one line updated, not every place that currently checks it. See the architecture
 +    // roadmap's L0 closeout notes.
-+    bool IsMandatory() const { return kind == "boss"; }
++    bool IsMandatory() const { return kind == DungeonRouteKind::Boss; }
 +};
 +
 +// Run-level outcome, shared vocabulary between the runtime and (eventually) an automated test
