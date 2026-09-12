@@ -1,7 +1,9 @@
 /*
- * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
- * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
- * or (at your option) any later version.
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
  */
 
 #ifndef PLAYERBOTS_DUNGEONROUTEMGR_H
@@ -13,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // One step of a hand-authored dungeon route (table playerbots_dungeon_route).
@@ -78,6 +81,15 @@ public:
     DungeonLeadState& State(ObjectGuid guid);
     void ResetState(ObjectGuid guid);
 
+    // Per-instance "already killed" memory: survives a per-bot state reset (startdung reset, a
+    // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never
+    // walked back to just because its corpse/entity is no longer within probe range or a later
+    // bot session lost track of it. Keyed by the WoW instance id, not the bot - shared by every
+    // dungeon-lead bot in the same run. Does not survive a worldserver restart (that's fine: a
+    // restart also resets the instance's own creature respawns for a fresh instance anyway).
+    bool IsStepKilled(uint32 instanceId, uint32 entry);
+    void MarkStepKilled(uint32 instanceId, uint32 entry);
+
 private:
     void EnsureLoaded();
 
@@ -85,6 +97,7 @@ private:
     std::mutex mtx;
     std::unordered_map<uint32, DungeonRoute> routes;
     std::unordered_map<ObjectGuid, DungeonLeadState> states;
+    std::unordered_map<uint32, std::unordered_set<uint32>> killedByInstance;
 };
 
 #define sDungeonRouteMgr DungeonRouteMgr::instance()

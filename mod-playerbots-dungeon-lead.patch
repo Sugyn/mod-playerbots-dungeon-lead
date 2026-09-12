@@ -1,8 +1,8 @@
 diff --git a/conf/playerbots.conf.dist b/conf/playerbots.conf.dist
-index bcf2600f..2c28ab5d 100644
+index bcf2600f..0096ce23 100644
 --- a/conf/playerbots.conf.dist
 +++ b/conf/playerbots.conf.dist
-@@ -411,6 +411,30 @@ AiPlayerbot.ContactDistance = 0.45
+@@ -411,6 +411,33 @@ AiPlayerbot.ContactDistance = 0.45
  AiPlayerbot.AoeRadius = 10
  AiPlayerbot.RpgDistance = 200
  AiPlayerbot.GrindDistance = 75.0
@@ -23,18 +23,21 @@ index bcf2600f..2c28ab5d 100644
 +AiPlayerbot.DungeonLead.SkipOptional = 0
 +AiPlayerbot.DungeonLead.MarkCc = 1
 +
-+# Optional: give Dungeon Lead its own log file instead of drowning in the shared Playerbots.log.
-+# Add these two lines to worldserver.conf (not this file) next to the existing Appender.Playerbots
-+# / Logger.playerbots lines, then whisper "startdung debug" to a leading bot for a verbose,
-+# per-wait log of its position and distance to every group member - see README "Debugging".
-+#
-+# Appender.DungeonLeadDebug=2,5,0,DungeonLeadDebug.log,w
-+# Logger.playerbots.dungeonlead=5,Console DungeonLeadDebug
++# DebugDefault: 1 = every "startdung" starts with verbose debug logging already on (see
++# DungeonLeadDebug.log). Leave at 0 for a normal install - turn it on per-run with "startdung
++# debug" instead. A server that wants it always on for troubleshooting can set this to 1.
++AiPlayerbot.DungeonLead.DebugDefault = 0
++
++# Dungeon Lead always writes a structured DungeonLeadSessions.csv (one row per run event: player,
++# dungeon, tank, group, event, detail) next to Playerbots.log, no config needed. "startdung debug"
++# additionally writes a verbose per-wait DungeonLeadDebug.log (position, distance to every group
++# member). Both use plain file I/O, not the AC logger config, so they work the same on every
++# server. See README "Debugging" for what each file contains and where to send it.
  AiPlayerbot.ReactDistance = 150.0
  
  #
 diff --git a/src/Ai/Base/ActionContext.h b/src/Ai/Base/ActionContext.h
-index 6e41eb06..82194f8c 100644
+index 6e41eb06..c70ad24d 100644
 --- a/src/Ai/Base/ActionContext.h
 +++ b/src/Ai/Base/ActionContext.h
 @@ -69,6 +69,7 @@
@@ -45,22 +48,24 @@ index 6e41eb06..82194f8c 100644
  
  class PlayerbotAI;
  
-@@ -138,6 +139,9 @@ public:
+@@ -138,6 +139,10 @@ public:
          creators["sit"] = &ActionContext::sit;
          creators["aggressive target"] = &ActionContext::aggressive_target;
          creators["attack anything"] = &ActionContext::attack_anything;
 +        creators["dungeon lead next"] = &ActionContext::dungeon_lead_next;
 +        creators["dungeon lead mark"] = &ActionContext::dungeon_lead_mark;
++        creators["dungeon lead cc watch"] = &ActionContext::dungeon_lead_cc_watch;
 +        creators["dungeon lead stop"] = &ActionContext::dungeon_lead_stop;
          creators["attack least hp target"] = &ActionContext::attack_least_hp_target;
          creators["attack enemy player"] = &ActionContext::attack_enemy_player;
          creators["emote"] = &ActionContext::emote;
-@@ -341,6 +345,9 @@ private:
+@@ -341,6 +346,10 @@ private:
      static Action* suggest_dungeon(PlayerbotAI* botAI) { return new SuggestDungeonAction(botAI); }
      static Action* aggressive_target(PlayerbotAI* botAI) { return new AggressiveTargetAction(botAI); }
      static Action* attack_anything(PlayerbotAI* botAI) { return new AttackAnythingAction(botAI); }
 +    static Action* dungeon_lead_next(PlayerbotAI* botAI) { return new DungeonLeadNextAction(botAI); }
 +    static Action* dungeon_lead_mark(PlayerbotAI* botAI) { return new DungeonLeadMarkAction(botAI); }
++    static Action* dungeon_lead_cc_watch(PlayerbotAI* botAI) { return new DungeonLeadCcWatchAction(botAI); }
 +    static Action* dungeon_lead_stop(PlayerbotAI* botAI) { return new DungeonLeadStopAction(botAI); }
      static Action* attack_least_hp_target(PlayerbotAI* botAI) { return new AttackLeastHpTargetAction(botAI); }
      static Action* attack_enemy_player(PlayerbotAI* botAI) { return new AttackEnemyPlayerAction(botAI); }
@@ -119,14 +124,16 @@ index 55792aa5..97d1a0ff 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..38dec497
+index 00000000..40d85906
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,795 @@
+@@ -0,0 +1,912 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#include "DungeonLeadActions.h"
@@ -181,6 +188,84 @@ index 00000000..38dec497
 +                return true;
 +        return false;
 +    }
++
++    // Always-on structured data collection (no toggle, no dependency on worldserver.conf logger
++    // config being right) - one CSV row per event, plain fopen/fprintf so it works the same way
++    // for every server this patch runs on. Meant to be attached to a bug report as-is.
++    std::string CsvEscape(std::string s)
++    {
++        for (char& c : s)
++            if (c == ',' || c == '"' || c == '\n')
++                c = ';';
++        return s;
++    }
++
++    std::string GroupMemberList(Player* bot)
++    {
++        std::ostringstream out;
++        Group* group = bot->GetGroup();
++        if (!group)
++            return "";
++        bool first = true;
++        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++        {
++            Player* member = ref->GetSource();
++            if (!member)
++                continue;
++            if (!first)
++                out << "|";
++            first = false;
++            out << member->GetName();
++        }
++        return out.str();
++    }
++}
++
++void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail)
++{
++    Player* bot = botAI->GetBot();
++    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
++    Player* master = botAI->GetMaster();
++
++    static bool headerWritten = false;
++    FILE* f = fopen("DungeonLeadSessions.csv", "a");
++    if (!f)
++        return;
++    if (!headerWritten)
++    {
++        // cheap check: a fresh/empty file needs the header, a pre-existing one from an earlier
++        // run of this same worldserver process already has it
++        fseek(f, 0, SEEK_END);
++        if (ftell(f) == 0)
++            fprintf(f, "timestamp,player,lfg_id,dungeon,tank,group_members,event,detail\n");
++        headerWritten = true;
++    }
++
++    time_t now = time(nullptr);
++    char ts[32];
++    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(&now));
++
++    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
++    fprintf(f, "%s,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts,
++            CsvEscape(master ? master->GetName() : "?").c_str(), st.lfgId,
++            CsvEscape(route ? route->name : "?").c_str(), CsvEscape(bot->GetName()).c_str(),
++            CsvEscape(GroupMemberList(bot)).c_str(), CsvEscape(event).c_str(), CsvEscape(detail).c_str());
++    fflush(f);
++    fclose(f);
++}
++
++void DungeonLead::RecordDebug(PlayerbotAI* /*botAI*/, std::string const& line)
++{
++    time_t now = time(nullptr);
++    char ts[32];
++    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(&now));
++
++    FILE* f = fopen("DungeonLeadDebug.log", "a");
++    if (!f)
++        return;
++    fprintf(f, "%s %s\n", ts, line.c_str());
++    fflush(f);
++    fclose(f);
 +}
 +
 +bool DungeonLead::InFiveMan(Player* bot)
@@ -336,6 +421,7 @@ index 00000000..38dec497
 +    // nobody managed to land CC on it (no CC-capable class in the group, spell unusable on this
 +    // creature, on cooldown, ...): stop excluding it from normal DPS targeting
 +    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed, releasing mark", bot->GetName(), c->GetName());
++    DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
 +    if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
 +        group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
 +    st.ccGuid.Clear();
@@ -387,8 +473,6 @@ index 00000000..38dec497
 +    if (!DungeonLead::InFiveMan(bot))
 +        return false;
 +
-+    DungeonLead::CheckCcMark(botAI);
-+
 +    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
 +    if (st.paused)
 +        return false;  // "startdung pause": stand still until "startdung continue"
@@ -424,15 +508,18 @@ index 00000000..38dec497
 +        {
 +            st.lastWaitLogTs = now;
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} waiting: {}", bot->GetName(), wait);
++            DungeonLead::RecordEvent(botAI, "waiting", wait);
 +
-+            // "startdung debug": enough detail on every wait to reconstruct a run from the log
-+            // alone - positions, distances to the whole group, current step - without needing a
-+            // verbal bug report. Meant to be turned on for one troubleshooting run and attached
-+            // to a bug report (see README "Debugging" section), not left on permanently.
++            // "startdung debug": enough detail on every wait to reconstruct a run from a plain
++            // file alone - positions, distances to the whole group, current step - without needing
++            // a verbal bug report. Meant to be turned on for one troubleshooting run and attached
++            // to a bug report (see README "Debugging" section), not left on permanently. Written
++            // via plain file I/O (not the AC logger config) so it works the same on every server
++            // regardless of worldserver.conf logger setup.
 +            if (st.debugMode)
 +            {
 +                std::ostringstream dbg;
-+                dbg << "[DungeonLeadDEBUG] " << bot->GetName() << " pos=(" << bot->GetPositionX() << ","
++                dbg << bot->GetName() << " pos=(" << bot->GetPositionX() << ","
 +                    << bot->GetPositionY() << "," << bot->GetPositionZ() << ") step=" << st.stepIndex
 +                    << " moving=" << bot->isMoving() << " inCombat=" << bot->IsInCombat();
 +                if (Player* master = botAI->GetMaster())
@@ -450,7 +537,7 @@ index 00000000..38dec497
 +                            << (member->GetMapId() == bot->GetMapId() ? bot->GetDistance(member) : -1.0f);
 +                    }
 +                }
-+                LOG_INFO("playerbots.dungeonlead", "{}", dbg.str());
++                DungeonLead::RecordDebug(botAI, dbg.str());
 +            }
 +        }
 +        // don't just refuse a new move - a move already committed on a previous tick keeps
@@ -528,6 +615,7 @@ index 00000000..38dec497
 +    botAI->TellMasterNoFacing(out);
 +    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route lfg={} '{}' map={} steps={} walkable={}", bot->GetName(),
 +             route->lfgId, route->name, route->mapId, route->steps.size(), walkable);
++    DungeonLead::RecordEvent(botAI, "route_selected", std::to_string(walkable) + " stops");
 +    return route;
 +}
 +
@@ -554,6 +642,7 @@ index 00000000..38dec497
 +                "Dungeon lead: no route for this dungeon (event/vehicle dungeon?) - I'll just grind what I see");
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} no route for map={} instance={}", bot->GetName(), bot->GetMapId(),
 +                     bot->GetInstanceId());
++            DungeonLead::RecordEvent(botAI, "no_route", "map=" + std::to_string(bot->GetMapId()));
 +        }
 +        return false;
 +    }
@@ -563,7 +652,8 @@ index 00000000..38dec497
 +    {
 +        DungeonRouteStep const& s = route->steps[st.stepIndex];
 +        bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
-+                    (s.kind == "optional" && sPlayerbotAIConfig.dungeonLeadSkipOptional);
++                    (s.kind == "optional" && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
++                    (s.entry && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
 +        if (!skip)
 +            break;
 +        ++st.stepIndex;
@@ -576,6 +666,7 @@ index 00000000..38dec497
 +            st.doneTold = true;
 +            botAI->TellMasterNoFacing("Dungeon lead: route complete");
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route complete", bot->GetName());
++            DungeonLead::RecordEvent(botAI, "route_complete", "");
 +        }
 +        return false;
 +    }
@@ -610,6 +701,9 @@ index 00000000..38dec497
 +        out << "Dungeon lead: " << step.boss << " is down, moving on";
 +        botAI->TellMasterNoFacing(out);
 +        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}' already dead, next", bot->GetName(), step.step, step.boss);
++        DungeonLead::RecordEvent(botAI, "already_dead", step.boss);
++        if (step.entry)
++            sDungeonRouteMgr.MarkStepKilled(st.instanceId, step.entry);
 +        MarkVisited(st);
 +        return true;
 +    }
@@ -621,6 +715,7 @@ index 00000000..38dec497
 +        out << "Dungeon lead: reached " << step.boss;
 +        botAI->TellMasterNoFacing(out);
 +        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
++        DungeonLead::RecordEvent(botAI, "reached", step.boss);
 +        MarkVisited(st);
 +        return true;
 +    }
@@ -664,6 +759,9 @@ index 00000000..38dec497
 +        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} stuck {}s at dist {:.1f} to step {} '{}' ({:.1f},{:.1f},{:.1f}) -> skip",
 +                 bot->GetName(), GetMSTimeDiffToNow(st.stuckTs) / 1000, disToDest, step.step, step.boss,
 +                 dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
++        DungeonLead::RecordEvent(botAI, "skip_stuck",
++            step.boss + " dist=" + std::to_string(disToDest) + " pos=(" + std::to_string(dest.GetPositionX()) + "," +
++            std::to_string(dest.GetPositionY()) + "," + std::to_string(dest.GetPositionZ()) + ")");
 +        MarkVisited(st);
 +        return true;
 +    }
@@ -687,18 +785,21 @@ index 00000000..38dec497
 +        }
 +    }
 +
-+    // blocked: sample around the bot for a reachable stepping stone. Full circle, not just the
-+    // forward cone - a column or wall corner directly on the line to dest can box the bot in on
-+    // every forward-biased sample, and going briefly sideways/backwards around it is normal.
-+    float minDelta = 2.0f * static_cast<float>(M_PI);
++    // blocked: sample a wide-ish forward cone for a reachable stepping stone. More attempts than a
++    // plain forward-only search (so a column/wall corner right on the line to dest doesn't box the
++    // bot in), but still biased forward and close-range rather than a full 360 degree search -
++    // a real find far off to the side/behind tends to lead away from the corridor a player would
++    // actually walk, not around the obstacle and back onto it. See README "known limitations":
++    // this whole fallback is a stopgap for point-to-point mmap pathing, not a real fix.
++    float minDelta = static_cast<float>(M_PI);
 +    float const x = bot->GetPositionX(), y = bot->GetPositionY(), z = bot->GetPositionZ();
 +    float const baseAngle = bot->GetAngle(&dest);
 +    float rx = 0.f, ry = 0.f, rz = 0.f;
 +    bool found = false;
-+    for (int attempt = 0; attempt < 8; ++attempt)
++    for (int attempt = 0; attempt < 5; ++attempt)
 +    {
-+        float delta = (rand_norm() - 0.5f) * 2.0f * static_cast<float>(M_PI);
-+        float sampleDis = (0.3f + rand_norm() * 0.7f) * kPathFinderDis;
++        float delta = (rand_norm() - 0.5f) * static_cast<float>(M_PI);  // +-90 deg, forward-biased
++        float sampleDis = (0.2f + rand_norm() * 0.3f) * kPathFinderDis;  // short, cautious probes
 +        float angle = baseAngle + delta;
 +        PathGenerator path(bot);
 +        path.CalculatePath(x + cos(angle) * sampleDis, y + sin(angle) * sampleDis, z + 0.5f);
@@ -718,6 +819,22 @@ index 00000000..38dec497
 +        return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
 +
 +    return false;
++}
++
++// ---------------------------------------------------------------------------------------------
++// dungeon lead cc watch: release a stale CC mark - must run regardless of combat state
++// ---------------------------------------------------------------------------------------------
++bool DungeonLeadCcWatchAction::isUseful()
++{
++    if (!bot || !botAI || !DungeonLead::InFiveMan(bot))
++        return false;
++    return !sDungeonRouteMgr.State(bot->GetGUID()).ccGuid.IsEmpty();
++}
++
++bool DungeonLeadCcWatchAction::Execute(Event /*event*/)
++{
++    DungeonLead::CheckCcMark(botAI);
++    return true;
 +}
 +
 +// ---------------------------------------------------------------------------------------------
@@ -767,6 +884,7 @@ index 00000000..38dec497
 +    {
 +        group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), boss->GetGUID());
 +        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} skull -> {} ({})", bot->GetName(), boss->GetName(), boss->GetEntry());
++        DungeonLead::RecordEvent(botAI, "mark_skull", boss->GetName());
 +        changed = true;
 +    }
 +
@@ -779,6 +897,7 @@ index 00000000..38dec497
 +            {
 +                group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), cc->GetGUID());
 +                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} moon -> {} ({})", bot->GetName(), cc->GetName(), cc->GetEntry());
++                DungeonLead::RecordEvent(botAI, "mark_moon", cc->GetName());
 +                DungeonLeadState& ccSt = sDungeonRouteMgr.State(bot->GetGUID());
 +                ccSt.ccGuid = cc->GetGUID();
 +                ccSt.ccMarkedTs = getMSTime();
@@ -848,8 +967,8 @@ index 00000000..38dec497
 +        {
 +            st.debugMode = !st.debugMode;
 +            botAI->TellMaster(st.debugMode
-+                ? "Dungeon lead: DEBUG logging ON (see DungeonLeadDebug.log)"
-+                : "Dungeon lead: debug logging off");
++                ? "Dungeon lead debug activated, file is being saved to DungeonLeadDebug.log (same folder as Playerbots.log)"
++                : "Dungeon lead debug stopped, file is saved to DungeonLeadDebug.log (same folder as Playerbots.log)");
 +        }
 +        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} {}", bot->GetName(), sub);
 +        return true;
@@ -891,6 +1010,7 @@ index 00000000..38dec497
 +    }
 +
 +    sDungeonRouteMgr.ResetState(bot->GetGUID());
++    sDungeonRouteMgr.State(bot->GetGUID()).debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
 +    botAI->Reset();
 +    ResetReturnPosition();
 +    ResetStayPosition();
@@ -903,6 +1023,7 @@ index 00000000..38dec497
 +    botAI->TellMaster("Dungeon lead: ON - taking the lead, the others will follow me");
 +    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} START by {} in map={} instance={} (tank={})", bot->GetName(),
 +             master->GetName(), bot->GetMapId(), bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
++    DungeonLead::RecordEvent(botAI, "start", "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no"));
 +    return true;
 +}
 +
@@ -916,18 +1037,21 @@ index 00000000..38dec497
 +    ResetStayPosition();
 +    botAI->TellMaster("Dungeon lead: OFF");
 +    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STOP by master", bot->GetName());
++    DungeonLead::RecordEvent(botAI, "stop", "");
 +    return true;
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..dc318ef4
+index 00000000..a137bf85
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,111 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#ifndef PLAYERBOTS_DUNGEONLEADACTIONS_H
@@ -957,6 +1081,13 @@ index 00000000..dc318ef4
 +    Creature* FindBossNear(PlayerbotAI* botAI, float range);
 +    void CheckCcMark(PlayerbotAI* botAI);
 +    void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
++    // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
++    // event, detail) - see README "Debugging". Not gated behind "startdung debug".
++    void RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail);
++    // "startdung debug" verbose dump (position/distances every wait), plain file, no logger config
++    // dependency. Gated behind DungeonLeadState::debugMode, defaulting to
++    // AiPlayerbot.DungeonLead.DebugDefault (0 for a fresh checkout of this patch).
++    void RecordDebug(PlayerbotAI* botAI, std::string const& line);
 +}
 +
 +class DungeonLeadNextAction : public NewRpgBaseAction
@@ -971,6 +1102,22 @@ index 00000000..dc318ef4
 +    DungeonRoute const* ResolveRoute(DungeonLeadState& st);
 +    void MarkVisited(DungeonLeadState& st);
 +    bool MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
++};
++
++// Releases a moon (CC) mark nobody manages to actually crowd-control within CcTimeoutSeconds.
++// Its own trigger must fire regardless of combat state: while the marked target is alive and
++// fighting anyone in the group (even just a shaman's totem), the tank's own IsInCombat() stays
++// true via shared combat tagging, so this can NOT live inside DungeonLeadNextAction::isUseful()
++// (which bails out on IsInCombat()) - that left CC marks stuck forever whenever nobody in the
++// group could actually cast the crowd control, since the mob just sat there excluded from DPS
++// targeting until the game session ended.
++class DungeonLeadCcWatchAction : public Action
++{
++public:
++    DungeonLeadCcWatchAction(PlayerbotAI* botAI) : Action(botAI, "dungeon lead cc watch") {}
++
++    bool Execute(Event event) override;
++    bool isUseful() override;
 +};
 +
 +class DungeonLeadMarkAction : public Action
@@ -1012,14 +1159,16 @@ index 00000000..dc318ef4
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
 new file mode 100644
-index 00000000..0d6967bc
+index 00000000..eccc902d
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,52 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#include "DungeonLeadStrategy.h"
@@ -1034,6 +1183,11 @@ index 00000000..0d6967bc
 +    triggers.push_back(new TriggerNode("dungeon lead idle", { NextAction("dungeon lead next", 3.5f) }));
 +    triggers.push_back(new TriggerNode("dungeon lead boss near", { NextAction("dungeon lead mark", 15.0f) }));  // > ACTION_NORMAL (mark rti), boss keeps the skull over a low-HP add
 +    triggers.push_back(new TriggerNode("dungeon lead left instance", { NextAction("dungeon lead stop", 9.0f) }));
++    // "often" fires regardless of combat state - unlike "dungeon lead idle" above, which must not
++    // fire mid-fight. A stale CC mark needs releasing *during* combat (the marked target staying
++    // alive and fighting keeps everyone flagged in combat, so gating this on !IsInCombat() would
++    // mean it can never run in exactly the situation that created the problem).
++    triggers.push_back(new TriggerNode("often", { NextAction("dungeon lead cc watch", ACTION_NORMAL) }));
 +}
 +
 +void DungeonLeadStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
@@ -1063,14 +1217,16 @@ index 00000000..0d6967bc
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h
 new file mode 100644
-index 00000000..48614178
+index 00000000..6cabb503
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.h
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,37 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#ifndef PLAYERBOTS_DUNGEONLEADSTRATEGY_H
@@ -1104,14 +1260,16 @@ index 00000000..48614178
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadTriggers.cpp b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.cpp
 new file mode 100644
-index 00000000..23b58218
+index 00000000..fc05104b
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.cpp
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,46 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#include "DungeonLeadTriggers.h"
@@ -1154,14 +1312,16 @@ index 00000000..23b58218
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadTriggers.h b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.h
 new file mode 100644
-index 00000000..2c7b2fb0
+index 00000000..4f0b4148
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadTriggers.h
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,37 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#ifndef PLAYERBOTS_DUNGEONLEADTRIGGERS_H
@@ -1195,14 +1355,16 @@ index 00000000..2c7b2fb0
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
 new file mode 100644
-index 00000000..7a205a50
+index 00000000..dfc390b1
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.cpp
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,105 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#include "DungeonRouteMgr.h"
@@ -1289,16 +1451,31 @@ index 00000000..7a205a50
 +    std::lock_guard<std::mutex> lock(mtx);
 +    states.erase(guid);
 +}
++
++bool DungeonRouteMgr::IsStepKilled(uint32 instanceId, uint32 entry)
++{
++    std::lock_guard<std::mutex> lock(mtx);
++    auto it = killedByInstance.find(instanceId);
++    return it != killedByInstance.end() && it->second.count(entry) > 0;
++}
++
++void DungeonRouteMgr::MarkStepKilled(uint32 instanceId, uint32 entry)
++{
++    std::lock_guard<std::mutex> lock(mtx);
++    killedByInstance[instanceId].insert(entry);
++}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..545e4656
+index 00000000..19619b19
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,105 @@
 +/*
-+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
-+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
-+ * or (at your option) any later version.
++ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
++ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
++ *
++ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
++ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
 + */
 +
 +#ifndef PLAYERBOTS_DUNGEONROUTEMGR_H
@@ -1310,6 +1487,7 @@ index 00000000..545e4656
 +#include <mutex>
 +#include <string>
 +#include <unordered_map>
++#include <unordered_set>
 +#include <vector>
 +
 +// One step of a hand-authored dungeon route (table playerbots_dungeon_route).
@@ -1375,6 +1553,15 @@ index 00000000..545e4656
 +    DungeonLeadState& State(ObjectGuid guid);
 +    void ResetState(ObjectGuid guid);
 +
++    // Per-instance "already killed" memory: survives a per-bot state reset (startdung reset, a
++    // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never
++    // walked back to just because its corpse/entity is no longer within probe range or a later
++    // bot session lost track of it. Keyed by the WoW instance id, not the bot - shared by every
++    // dungeon-lead bot in the same run. Does not survive a worldserver restart (that's fine: a
++    // restart also resets the instance's own creature respawns for a fresh instance anyway).
++    bool IsStepKilled(uint32 instanceId, uint32 entry);
++    void MarkStepKilled(uint32 instanceId, uint32 entry);
++
 +private:
 +    void EnsureLoaded();
 +
@@ -1382,6 +1569,7 @@ index 00000000..545e4656
 +    std::mutex mtx;
 +    std::unordered_map<uint32, DungeonRoute> routes;
 +    std::unordered_map<ObjectGuid, DungeonLeadState> states;
++    std::unordered_map<uint32, std::unordered_set<uint32>> killedByInstance;
 +};
 +
 +#define sDungeonRouteMgr DungeonRouteMgr::instance()
@@ -1522,10 +1710,10 @@ index ed34b7d1..c80a03a7 100644
      }
  
 diff --git a/src/PlayerbotAIConfig.cpp b/src/PlayerbotAIConfig.cpp
-index 509bec91..b26e03f0 100644
+index 509bec91..579be9d7 100644
 --- a/src/PlayerbotAIConfig.cpp
 +++ b/src/PlayerbotAIConfig.cpp
-@@ -121,6 +121,13 @@ bool PlayerbotAIConfig::Initialize()
+@@ -121,6 +121,14 @@ bool PlayerbotAIConfig::Initialize()
      aoeRadius = sConfigMgr->GetOption<float>("AiPlayerbot.AoeRadius", 10.0f);
      rpgDistance = sConfigMgr->GetOption<float>("AiPlayerbot.RpgDistance", 200.0f);
      grindDistance = sConfigMgr->GetOption<float>("AiPlayerbot.GrindDistance", 75.0f);
@@ -1536,18 +1724,20 @@ index 509bec91..b26e03f0 100644
 +    dungeonLeadArriveDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DungeonLead.ArriveDistance", 8.0f);
 +    dungeonLeadSkipOptional = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.SkipOptional", false);
 +    dungeonLeadMarkCc = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.MarkCc", true);
++    dungeonLeadDebugDefault = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.DebugDefault", false);
      reactDistance = sConfigMgr->GetOption<float>("AiPlayerbot.ReactDistance", 150.0f);
  
      criticalHealth = sConfigMgr->GetOption<int32>("AiPlayerbot.CriticalHealth", 25);
 diff --git a/src/PlayerbotAIConfig.h b/src/PlayerbotAIConfig.h
-index 769bfba8..412c2ac3 100644
+index 769bfba8..2ed2d9d4 100644
 --- a/src/PlayerbotAIConfig.h
 +++ b/src/PlayerbotAIConfig.h
-@@ -115,6 +115,9 @@ public:
+@@ -115,6 +115,10 @@ public:
          targetPosRecalcDistance, farDistance, healDistance, aggroDistance;
      uint32 criticalHealth, lowHealth, mediumHealth, almostFullHealth;
      uint32 lowMana, mediumMana, highMana;
 +    uint32 dungeonLeadHealerManaPct, dungeonLeadStuckSeconds, dungeonLeadCcTimeoutSeconds;
++    bool dungeonLeadDebugDefault;
 +    float dungeonLeadLeash, dungeonLeadArriveDistance;
 +    bool dungeonLeadSkipOptional, dungeonLeadMarkCc;
      bool autoSaveMana;

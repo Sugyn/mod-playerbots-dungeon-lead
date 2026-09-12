@@ -1,7 +1,9 @@
 /*
- * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
- * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
- * or (at your option) any later version.
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
  */
 
 #ifndef PLAYERBOTS_DUNGEONLEADACTIONS_H
@@ -31,6 +33,13 @@ namespace DungeonLead
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
     void CheckCcMark(PlayerbotAI* botAI);
     void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
+    // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
+    // event, detail) - see README "Debugging". Not gated behind "startdung debug".
+    void RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail);
+    // "startdung debug" verbose dump (position/distances every wait), plain file, no logger config
+    // dependency. Gated behind DungeonLeadState::debugMode, defaulting to
+    // AiPlayerbot.DungeonLead.DebugDefault (0 for a fresh checkout of this patch).
+    void RecordDebug(PlayerbotAI* botAI, std::string const& line);
 }
 
 class DungeonLeadNextAction : public NewRpgBaseAction
@@ -45,6 +54,22 @@ private:
     DungeonRoute const* ResolveRoute(DungeonLeadState& st);
     void MarkVisited(DungeonLeadState& st);
     bool MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
+};
+
+// Releases a moon (CC) mark nobody manages to actually crowd-control within CcTimeoutSeconds.
+// Its own trigger must fire regardless of combat state: while the marked target is alive and
+// fighting anyone in the group (even just a shaman's totem), the tank's own IsInCombat() stays
+// true via shared combat tagging, so this can NOT live inside DungeonLeadNextAction::isUseful()
+// (which bails out on IsInCombat()) - that left CC marks stuck forever whenever nobody in the
+// group could actually cast the crowd control, since the mob just sat there excluded from DPS
+// targeting until the game session ended.
+class DungeonLeadCcWatchAction : public Action
+{
+public:
+    DungeonLeadCcWatchAction(PlayerbotAI* botAI) : Action(botAI, "dungeon lead cc watch") {}
+
+    bool Execute(Event event) override;
+    bool isUseful() override;
 };
 
 class DungeonLeadMarkAction : public Action

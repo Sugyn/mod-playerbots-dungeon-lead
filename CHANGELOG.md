@@ -24,7 +24,15 @@ Work in progress — see README "Testing status".
 - A one-shot "We're waiting for you!" ping (not repeated every tick) when the real player falls
   behind the leash distance; the bot stops in place instead of continuing on alone.
 - Config: `AiPlayerbot.DungeonLead.{HealerManaPct, Leash, ArriveDistance, StuckSeconds,
-  CcTimeoutSeconds, SkipOptional, MarkCc}`.
+  CcTimeoutSeconds, SkipOptional, MarkCc, DebugDefault}`.
+- Always-on structured event log, `DungeonLeadSessions.csv` (one row per run start/stop, boss
+  reached, boss already dead, mark placed/released, stuck-skip, waiting — keyed by player, date,
+  dungeon and which bots were in the group), so an admin can see across many players' runs which
+  dungeons/steps actually cause trouble without asking anyone to write anything up. Plain file I/O,
+  independent of `worldserver.conf` logger config — see README "Debugging".
+- Per-instance-ID kill memory: once a routed boss is confirmed dead, that instance never paths back
+  to it again (e.g. after `startdung reset`, or a route mismatch triggering re-resolution), even if
+  its corpse/entity later falls outside probe range.
 
 ### Fixed (found during live testing on Wailing Caverns)
 - **Route order didn't match the actual travelnode graph.** The first hand-authored order followed
@@ -48,9 +56,22 @@ Work in progress — see README "Testing status".
   rest of the room died around it, and the party moved on without killing it. The mark now expires
   after `CcTimeoutSeconds` if `Unit::HasBreakableByDamageCrowdControlAura()` never confirms an
   actual CC landed, releasing it back to normal DPS targeting.
-- **Unstick sampling was forward-cone-only and gave up after 2 tries.** A column or wall corner
-  directly on the line to a distant destination boxed the bot in on every forward-biased sample.
-  Now samples the full circle around the bot, 8 attempts instead of 2.
+- **A moon-marked CC target could stay ignored forever even with the timeout above.** The release
+  check (`DungeonLead::CheckCcMark`) was only ever called from `DungeonLeadNextAction::isUseful()`,
+  which bails out immediately if the bot is in combat — but a marked target that nobody can CC stays
+  in combat indefinitely (a shaman's autonomous Searing Totem alone is enough to keep the whole
+  party combat-tagged through the shared threat table), which is exactly the situation the timeout
+  exists for. The mob just sat there excluded from DPS targeting while everyone milled around it.
+  Moved the check to its own action (`DungeonLeadCcWatchAction`) wired to the base module's generic
+  `"often"` trigger, which fires regardless of combat state, instead of the combat-gated one.
+- **Unstick sampling was widened, then that made things worse.** Originally forward-cone-only,
+  2 attempts, 0.5-1.0x pathfinder distance (mirroring upstream `NewRpgBaseAction::MoveFarTo`) — a
+  column or wall corner directly on the line to a distant destination boxed the bot in on every
+  sample. Widened to a full 360° circle, 8 attempts, 0.3-1.0x distance to fix that, but this let the
+  bot find "technically pathable" routes in arbitrary directions with no bias toward the intended
+  corridor, worsening reports of bots wandering off-route/off-map/through walls. Dialed back to a
+  forward-biased ±90° arc, 5 attempts, a shorter 0.2-0.5x distance — more retries than upstream, but
+  each one a short, cautious probe instead of a long blind reach.
 - Trash packs never got a shared kill-priority mark unless a boss was nearby — `DpsTargetValue`
   only forces group-wide single-target focus when a skull mark exists, so ordinary trash was
   targeted independently per bot (fine most of the time, riskier in heroics). `startdung` now also

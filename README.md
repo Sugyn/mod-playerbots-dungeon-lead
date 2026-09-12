@@ -60,19 +60,27 @@ Rules the leader follows before walking on or pulling:
 
 ## Debugging (for bug reports)
 
-If something goes wrong on a run, whisper the leading bot `startdung debug` before reproducing it. This turns on a
-verbose, per-wait log line (bot position, current step, distance to every group member) written to its own file,
-`DungeonLeadDebug.log`, instead of drowning in the shared `Playerbots.log`. To enable the file (one-time, in
-`worldserver.conf` next to the existing `Appender.Playerbots`/`Logger.playerbots` lines):
+Both files below are written directly by the module with plain file I/O (`fopen`/`fprintf`), next to `Playerbots.log`
+in your server's log folder. They do **not** depend on any `Appender.*`/`Logger.*` line in `worldserver.conf`, so
+they work the same on every server without extra setup.
 
-```
-Appender.DungeonLeadDebug=2,5,0,DungeonLeadDebug.log,w
-Logger.playerbots.dungeonlead=5,Console DungeonLeadDebug
-```
+**Always on — `DungeonLeadSessions.csv`.** One row per key event (run started/stopped, boss reached, boss already
+dead, skull/moon mark placed, CC mark released, stuck-and-skipped, waiting, ...), with columns
+`timestamp,player,lfg_id,dungeon,tank,group_members,event,detail`. This is lightweight structured data, safe to
+leave on for everyone — it's what lets an admin see, across many players' runs, which dungeons/steps actually cause
+trouble without asking anyone to write anything up.
 
-Reproduce the issue, then whisper `startdung debug` again to turn it off, and attach `DungeonLeadDebug.log` (it's
-small and self-contained — every line is prefixed `[DungeonLead]`) to your GitHub issue. This is far more useful
-than a description of what it looked like on screen.
+**Opt-in — `DungeonLeadDebug.log`.** Whisper the leading bot `startdung debug` before reproducing a problem. It
+replies `Dungeon lead debug activated, file is being saved to DungeonLeadDebug.log (same folder as Playerbots.log)`
+and starts writing one verbose line per wait/decision (position, current step, whether it's moving, in combat,
+distance to master, distance to every group member). Reproduce the issue, then whisper `startdung debug` again — it
+replies `Dungeon lead debug stopped, file is saved to DungeonLeadDebug.log (same folder as Playerbots.log)`. This is
+off by default for a fresh checkout of this patch (`AiPlayerbot.DungeonLead.DebugDefault = 0` in
+`playerbots.conf.dist`), so nobody pays for the verbose logging unless they explicitly ask for it.
+
+To report a bug: reproduce it with `startdung debug` on, then attach both `DungeonLeadSessions.csv` (or just the
+relevant rows) and `DungeonLeadDebug.log` to a GitHub issue on this repo. That's far more useful than a description
+of what it looked like on screen.
 
 ## Testing status
 

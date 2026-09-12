@@ -1,7 +1,9 @@
 /*
- * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
- * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
- * or (at your option) any later version.
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
  */
 
 #include "DungeonRouteMgr.h"
@@ -87,4 +89,17 @@ void DungeonRouteMgr::ResetState(ObjectGuid guid)
 {
     std::lock_guard<std::mutex> lock(mtx);
     states.erase(guid);
+}
+
+bool DungeonRouteMgr::IsStepKilled(uint32 instanceId, uint32 entry)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = killedByInstance.find(instanceId);
+    return it != killedByInstance.end() && it->second.count(entry) > 0;
+}
+
+void DungeonRouteMgr::MarkStepKilled(uint32 instanceId, uint32 entry)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    killedByInstance[instanceId].insert(entry);
 }
