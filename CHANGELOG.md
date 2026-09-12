@@ -6,6 +6,16 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 
 ## [Unreleased]
 
+### Added
+- `data/boss_positions.tsv` and `data/extra_bosses.tsv`: the previously-missing inputs
+  `resolve_routes.py` needs, finally checked in - re-running the resolver from a clean checkout now
+  reproduces `data/dungeon_routes.csv` byte-for-byte (verified). Deliberately derived FROM the
+  already-shipped, already-live-tested `dungeon_routes.csv` rather than a fresh world DB query: an
+  early attempt at a fresh per-name DB query picked a *different* spawn than the one already
+  verified for names with more than one candidate in the world DB (Wailing Caverns' Lady Anacondra
+  has several) - caught by diffing against the committed file before it was ever pushed, reverted,
+  and redone the safe way.
+
 L1 (test & observability platform) work, per the architecture roadmap - starting with the parts
 that don't need a running worldserver.
 

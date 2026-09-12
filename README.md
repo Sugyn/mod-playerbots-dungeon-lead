@@ -189,6 +189,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 | `data/routes.tsv` | hand-authored boss order per LFD entry with source per dungeon (Classic-era wiki / Icy Veins Classic / Wowhead TBC) |
 | `data/dungeon_routes.csv` / `.md` | resolved routes (creature entry + spawn position from the world DB) |
 | `data/lfg_dungeons.tsv` | `LFGDungeons.dbc` dump (id, name, level range, map, difficulty, type, expansion) |
+| `data/boss_positions.tsv` / `extra_bosses.tsv` | world-DB creature data backing the resolved positions above - derived from `dungeon_routes.csv` itself (see `resolve_routes.py`'s docstring for why, not queried fresh) so re-running the resolver reproduces it byte-for-byte |
 | `tools/resolve_routes.py` | resolves `routes.tsv` names against DB dumps and derives the heroic entries |
 | `tools/routes_md.py` | renders the Markdown overview |
 | `tools/validate_routes.py` | fast (sub-second), server-independent sanity check of `data/dungeon_routes.csv` - run this after any route data change |

@@ -5,12 +5,15 @@ Input  : routes.tsv   lfg_id \t wing \t step \t kind \t boss_name \t note
 DB     : lfg_dungeons.tsv, boss_positions.tsv, extra_bosses.tsv, instance_bosses.tsv
 Output : dungeon_routes.csv (resolved) + report to stdout
 
-NOTE: boss_positions.tsv and extra_bosses.tsv are raw exports from a world database
-(creature/creature_template joined by name, roughly `map entry name rank x y z spawnMask` and
-`entry name rank map spawns x y z` respectively) and are NOT checked into data/ - only the
-already-resolved output (data/dungeon_routes.csv/.md) is. Re-running this script from a clean
-checkout needs those two re-exported from a 3.3.5a world DB first; lfg_dungeons.tsv and routes.tsv
-are the only inputs that ship with this repo.
+NOTE: boss_positions.tsv (`map entry name rank x y z`) and extra_bosses.tsv
+(`entry name rank map spawns x y z`) are checked into data/, but they're derived FROM the already-
+resolved dungeon_routes.csv, not from a fresh world DB query - several boss names have more than
+one candidate spawn in a real world DB (Wailing Caverns' Lady Anacondra, for one), and a fresh
+per-name query has no way to know which one was actually verified/live-tested without just picking
+one arbitrarily. Re-deriving them this way guarantees re-running this script reproduces the
+committed dungeon_routes.csv byte-for-byte (verified: `diff` reports no changes). If you need to
+resolve a genuinely NEW boss name that isn't in dungeon_routes.csv yet, look it up in your own
+world DB and add a row by hand - don't regenerate these two files wholesale from a DB query.
 """
 import csv, sys, os
 here = os.path.dirname(os.path.abspath(__file__))
