@@ -207,46 +207,46 @@ namespace
             return lfg::PLAYER_ROLE_HEALER;
         return lfg::PLAYER_ROLE_DAMAGE;
     }
-
-    // Mirrors LfgJoinAction::Execute's own CMSG_LFG_JOIN construction (LfgActions.cpp) exactly,
-    // field for field, except the dungeon list is forced to `lfgId` alone instead of the bot's own
-    // computed acceptable-dungeon set - that one substitution is this whole function's purpose.
-    void SendTargetedLfgJoin(PlayerbotAI* botAI, Player* bot, uint32 lfgId, uint32 roleMask)
-    {
-        std::string const gearScore = std::to_string(botAI->GetEquipGearScore(bot));
-
-        WorldPacket* data = new WorldPacket(CMSG_LFG_JOIN);
-        *data << (uint32)roleMask;
-        *data << (bool)false;
-        *data << (bool)false;
-        // Slots
-        *data << (uint8)1;  // exactly one dungeon - the whole point of this function
-        *data << (uint32)lfgId;
-        // Needs
-        *data << (uint8)3 << (uint8)0 << (uint8)0 << (uint8)0;
-        *data << gearScore;
-        bot->GetSession()->QueuePacket(data);
-    }
 }
 
-namespace
+// Mirrors LfgJoinAction::Execute's own CMSG_LFG_JOIN construction (LfgActions.cpp) exactly, field
+// for field, except the dungeon list is forced to `lfgId` alone instead of the bot's own computed
+// acceptable-dungeon set - that one substitution is this whole function's purpose. Public (see
+// DungeonLeadCanary.h) so DungeonTestBotPool can queue its own specific leased bots the same way.
+void DungeonLead::QueueBotForLfg(PlayerbotAI* botAI, Player* bot, uint32 lfgId, uint32 roleMask)
 {
-    // Shared with CanaryTick()'s own pass-1 count: how many AutoCanary-origin sessions are active
-    // right now, regardless of who/what started them. Recomputed rather than cached anywhere -
-    // called at most once per TriggerTargetedTest() invocation, never per-tick.
-    uint32 ActiveCanaryCount()
+    std::string const gearScore = std::to_string(botAI->GetEquipGearScore(bot));
+
+    WorldPacket* data = new WorldPacket(CMSG_LFG_JOIN);
+    *data << (uint32)roleMask;
+    *data << (bool)false;
+    *data << (bool)false;
+    // Slots
+    *data << (uint8)1;  // exactly one dungeon - the whole point of this function
+    *data << (uint32)lfgId;
+    // Needs
+    *data << (uint8)3 << (uint8)0 << (uint8)0 << (uint8)0;
+    *data << gearScore;
+    bot->GetSession()->QueuePacket(data);
+}
+
+// Shared with CanaryTick()'s own pass-1 count: how many AutoCanary-origin sessions are active
+// right now, regardless of who/what started them. Recomputed rather than cached anywhere - cheap
+// enough to call once per TriggerTargetedTest()/RunTestParty() invocation, never per-tick. Exposed
+// (not file-local) so DungeonTestBotPool's RunTestParty() can respect the same
+// CanaryMaxConcurrent budget instead of keeping a second, divergent count.
+uint32 DungeonLead::ActiveCanaryCount()
+{
+    uint32 n = 0;
+    for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
     {
-        uint32 n = 0;
-        for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
-        {
-            Player* bot = ObjectAccessor::FindPlayer(guid);
-            if (bot && bot->IsInWorld())
-                if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot); botAI)
-                    if (sDungeonRouteMgr.State(guid).origin == DungeonLeadSessionOrigin::AutoCanary)
-                        ++n;
-        }
-        return n;
+        Player* bot = ObjectAccessor::FindPlayer(guid);
+        if (bot && bot->IsInWorld())
+            if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot); botAI)
+                if (sDungeonRouteMgr.State(guid).origin == DungeonLeadSessionOrigin::AutoCanary)
+                    ++n;
     }
+    return n;
 }
 
 std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint32 groups)
@@ -262,7 +262,7 @@ std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint3
     if (!dungeon)
         return "Unknown LFG dungeon id " + std::to_string(lfgId);
 
-    uint32 const activeNow = ActiveCanaryCount();
+    uint32 const activeNow = DungeonLead::ActiveCanaryCount();
     uint32 const cap = sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent;
     if (activeNow >= cap)
         return "AiPlayerbot.DungeonLead.CanaryMaxConcurrent (" + std::to_string(cap) +
@@ -339,7 +339,7 @@ std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint3
             summary << picked[i].bot->GetName()
                     << (picked[i].role == lfg::PLAYER_ROLE_TANK ? " (tank)"
                         : picked[i].role == lfg::PLAYER_ROLE_HEALER ? " (heal)" : " (dps)");
-            SendTargetedLfgJoin(picked[i].botAI, picked[i].bot, lfgId, picked[i].role);
+            QueueBotForLfg(picked[i].botAI, picked[i].bot, lfgId, picked[i].role);
         }
         ++startedGroups;
     }

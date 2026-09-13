@@ -145,10 +145,10 @@ index 55792aa5..efec9184 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..686b1afd
+index 00000000..7cf52111
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1446 @@
+@@ -0,0 +1,1496 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -182,6 +182,7 @@ index 00000000..686b1afd
 +#include <algorithm>
 +#include <atomic>
 +#include <cctype>
++#include <cmath>
 +#include <list>
 +#include <mutex>
 +#include <sstream>
@@ -648,6 +649,55 @@ index 00000000..686b1afd
 +    if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
 +        group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
 +    st.ccGuid.Clear();
++}
++
++std::string DungeonLead::DiagnosePath(Player* bot, float dx, float dy, float dz)
++{
++    std::ostringstream out;
++    out << bot->GetName() << " at (" << bot->GetPositionX() << "," << bot->GetPositionY() << ","
++        << bot->GetPositionZ() << ") -> (" << dx << "," << dy << "," << dz << "): ";
++
++    float const disToDest = bot->GetExactDist(dx, dy, dz);
++    out << "straight-line dist=" << disToDest << ". ";
++
++    PathGenerator path(bot);
++    path.CalculatePath(dx, dy, dz);
++    PathType const type = path.GetPathType();
++
++    std::ostringstream typeStr;
++    if (type & PATHFIND_NORMAL) typeStr << "NORMAL ";
++    if (type & PATHFIND_SHORTCUT) typeStr << "SHORTCUT ";
++    if (type & PATHFIND_INCOMPLETE) typeStr << "INCOMPLETE ";
++    if (type & PATHFIND_NOPATH) typeStr << "NOPATH ";
++    if (type & PATHFIND_NOT_USING_PATH) typeStr << "NOT_USING_PATH ";
++    if (type & PATHFIND_SHORT) typeStr << "SHORT ";
++    if (type & PATHFIND_FARFROMPOLY_START) typeStr << "FARFROMPOLY_START ";
++    if (type & PATHFIND_FARFROMPOLY_END) typeStr << "FARFROMPOLY_END ";
++    if (typeStr.str().empty()) typeStr << "BLANK ";
++    out << "type=" << typeStr.str();
++
++    uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
++    bool const canReach = !(type & (~typeOk));
++    out << "canReach=" << canReach << ". ";
++
++    G3D::Vector3 const& endPos = path.GetActualEndPosition();
++    float const actualToDest = std::sqrt((endPos.x - dx) * (endPos.x - dx) + (endPos.y - dy) * (endPos.y - dy) +
++                                          (endPos.z - dz) * (endPos.z - dz));
++    out << "actualEnd=(" << endPos.x << "," << endPos.y << "," << endPos.z << ") "
++        << "actualEndToDest=" << actualToDest << " "
++        << "wouldImprove=" << (actualToDest + 5.0f < disToDest) << ". ";
++
++    Movement::PointsArray const& pts = path.GetPath();
++    out << "waypoints=" << pts.size();
++    if (!pts.empty())
++    {
++        out << " [";
++        size_t const step = pts.size() > 8 ? pts.size() / 8 : 1;
++        for (size_t i = 0; i < pts.size(); i += step)
++            out << "(" << pts[i].x << "," << pts[i].y << "," << pts[i].z << ") ";
++        out << "]";
++    }
++    return out.str();
 +}
 +
 +void DungeonLead::GuardActiveSessions()
@@ -1597,10 +1647,10 @@ index 00000000..686b1afd
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..3183f71e
+index 00000000..d9dedec9
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,152 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1637,6 +1687,15 @@ index 00000000..3183f71e
 +    bool MasterUnavailable(PlayerbotAI* botAI);
 +    Creature* FindBossNear(PlayerbotAI* botAI, float range);
 +    void CheckCcMark(PlayerbotAI* botAI);
++
++    // One-shot diagnostic (2026-09-12 night's 49-party scale test): runs the EXACT same
++    // PathGenerator call MoveRouteTo() uses in production, from `bot`'s current position to
++    // (dx, dy, dz), and dumps path type + actual end position + a sample of waypoints - to see
++    // directly why a bot stuck near the Lady Anacondra/Kresh floor never made progress toward
++    // Verdan the Everliving/Lord Serpentis's platform (~50-90 units higher in Z), instead of
++    // guessing at a fix from telemetry alone. Not wired into any automatic path - console/SOAP
++    // only, via ".playerbots pathcheck".
++    std::string DiagnosePath(Player* bot, float dx, float dy, float dz);
 +
 +    // Reconciliation loop (see the big comment at its call site in Playerbots.cpp / its definition
 +    // in DungeonLeadActions.cpp): continuously re-asserts the desired strategy state for every
@@ -1746,7 +1805,7 @@ index 00000000..3183f71e
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadCanary.cpp b/src/Ai/Base/DungeonLead/DungeonLeadCanary.cpp
 new file mode 100644
-index 00000000..174c5214
+index 00000000..eb2b9bae
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadCanary.cpp
 @@ -0,0 +1,367 @@
@@ -1959,46 +2018,46 @@ index 00000000..174c5214
 +            return lfg::PLAYER_ROLE_HEALER;
 +        return lfg::PLAYER_ROLE_DAMAGE;
 +    }
-+
-+    // Mirrors LfgJoinAction::Execute's own CMSG_LFG_JOIN construction (LfgActions.cpp) exactly,
-+    // field for field, except the dungeon list is forced to `lfgId` alone instead of the bot's own
-+    // computed acceptable-dungeon set - that one substitution is this whole function's purpose.
-+    void SendTargetedLfgJoin(PlayerbotAI* botAI, Player* bot, uint32 lfgId, uint32 roleMask)
-+    {
-+        std::string const gearScore = std::to_string(botAI->GetEquipGearScore(bot));
-+
-+        WorldPacket* data = new WorldPacket(CMSG_LFG_JOIN);
-+        *data << (uint32)roleMask;
-+        *data << (bool)false;
-+        *data << (bool)false;
-+        // Slots
-+        *data << (uint8)1;  // exactly one dungeon - the whole point of this function
-+        *data << (uint32)lfgId;
-+        // Needs
-+        *data << (uint8)3 << (uint8)0 << (uint8)0 << (uint8)0;
-+        *data << gearScore;
-+        bot->GetSession()->QueuePacket(data);
-+    }
 +}
 +
-+namespace
++// Mirrors LfgJoinAction::Execute's own CMSG_LFG_JOIN construction (LfgActions.cpp) exactly, field
++// for field, except the dungeon list is forced to `lfgId` alone instead of the bot's own computed
++// acceptable-dungeon set - that one substitution is this whole function's purpose. Public (see
++// DungeonLeadCanary.h) so DungeonTestBotPool can queue its own specific leased bots the same way.
++void DungeonLead::QueueBotForLfg(PlayerbotAI* botAI, Player* bot, uint32 lfgId, uint32 roleMask)
 +{
-+    // Shared with CanaryTick()'s own pass-1 count: how many AutoCanary-origin sessions are active
-+    // right now, regardless of who/what started them. Recomputed rather than cached anywhere -
-+    // called at most once per TriggerTargetedTest() invocation, never per-tick.
-+    uint32 ActiveCanaryCount()
++    std::string const gearScore = std::to_string(botAI->GetEquipGearScore(bot));
++
++    WorldPacket* data = new WorldPacket(CMSG_LFG_JOIN);
++    *data << (uint32)roleMask;
++    *data << (bool)false;
++    *data << (bool)false;
++    // Slots
++    *data << (uint8)1;  // exactly one dungeon - the whole point of this function
++    *data << (uint32)lfgId;
++    // Needs
++    *data << (uint8)3 << (uint8)0 << (uint8)0 << (uint8)0;
++    *data << gearScore;
++    bot->GetSession()->QueuePacket(data);
++}
++
++// Shared with CanaryTick()'s own pass-1 count: how many AutoCanary-origin sessions are active
++// right now, regardless of who/what started them. Recomputed rather than cached anywhere - cheap
++// enough to call once per TriggerTargetedTest()/RunTestParty() invocation, never per-tick. Exposed
++// (not file-local) so DungeonTestBotPool's RunTestParty() can respect the same
++// CanaryMaxConcurrent budget instead of keeping a second, divergent count.
++uint32 DungeonLead::ActiveCanaryCount()
++{
++    uint32 n = 0;
++    for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
 +    {
-+        uint32 n = 0;
-+        for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
-+        {
-+            Player* bot = ObjectAccessor::FindPlayer(guid);
-+            if (bot && bot->IsInWorld())
-+                if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot); botAI)
-+                    if (sDungeonRouteMgr.State(guid).origin == DungeonLeadSessionOrigin::AutoCanary)
-+                        ++n;
-+        }
-+        return n;
++        Player* bot = ObjectAccessor::FindPlayer(guid);
++        if (bot && bot->IsInWorld())
++            if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot); botAI)
++                if (sDungeonRouteMgr.State(guid).origin == DungeonLeadSessionOrigin::AutoCanary)
++                    ++n;
 +    }
++    return n;
 +}
 +
 +std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint32 groups)
@@ -2014,7 +2073,7 @@ index 00000000..174c5214
 +    if (!dungeon)
 +        return "Unknown LFG dungeon id " + std::to_string(lfgId);
 +
-+    uint32 const activeNow = ActiveCanaryCount();
++    uint32 const activeNow = DungeonLead::ActiveCanaryCount();
 +    uint32 const cap = sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent;
 +    if (activeNow >= cap)
 +        return "AiPlayerbot.DungeonLead.CanaryMaxConcurrent (" + std::to_string(cap) +
@@ -2091,7 +2150,7 @@ index 00000000..174c5214
 +            summary << picked[i].bot->GetName()
 +                    << (picked[i].role == lfg::PLAYER_ROLE_TANK ? " (tank)"
 +                        : picked[i].role == lfg::PLAYER_ROLE_HEALER ? " (heal)" : " (dps)");
-+            SendTargetedLfgJoin(picked[i].botAI, picked[i].bot, lfgId, picked[i].role);
++            QueueBotForLfg(picked[i].botAI, picked[i].bot, lfgId, picked[i].role);
 +        }
 +        ++startedGroups;
 +    }
@@ -2119,10 +2178,10 @@ index 00000000..174c5214
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadCanary.h b/src/Ai/Base/DungeonLead/DungeonLeadCanary.h
 new file mode 100644
-index 00000000..0c357c13
+index 00000000..92c5305d
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadCanary.h
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,90 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2163,6 +2222,7 @@ index 00000000..0c357c13
 +//     and TriggerTargetedTest() count against the same shared cap - and CanaryTimeoutMinutes
 +//     force-stops one that never reaches a terminal outcome.
 +class Player;
++class PlayerbotAI;
 +
 +namespace DungeonLead
 +{
@@ -2193,6 +2253,22 @@ index 00000000..0c357c13
 +    // matchmaking actually runs, same as it could for any organically-queued groups.
 +    // Returns a human-readable result string (what was queued, or the specific reason nothing was).
 +    std::string TriggerTargetedTest(Player* master, uint32 lfgId, uint32 groups = 1);
++
++    // How many AutoCanary-origin sessions (CanaryTick()-spotted or TriggerTargetedTest()/
++    // RunTestParty()-started, no matter which) are active right now - the live count
++    // CanaryMaxConcurrent is checked against. Exposed so every caller that needs to respect that
++    // one shared budget (DungeonTestBotPool::RunTestParty() included) reads the same number
++    // instead of keeping its own possibly-divergent count.
++    uint32 ActiveCanaryCount();
++
++    // The single-bot primitive TriggerTargetedTest() builds its parties out of - exposed
++    // separately for DungeonTestBotPool (ADR-003), which already knows exactly which bots it
++    // wants grouped (its own leased Tank/Healer/Dps identities) and just needs them queued for the
++    // same dungeon so real LFG matchmaking puts them together. `roleMask` is a PLAYER_ROLE_* value
++    // (lfg::PLAYER_ROLE_TANK/HEALER/DAMAGE). Same CMSG_LFG_JOIN path, same safety properties (does
++    // not bypass CanaryEnabled/CanaryAllowedLfgIds - the resulting group still needs CanaryTick()
++    // to pick it up and start a session, same as any other targeted-test party).
++    void QueueBotForLfg(PlayerbotAI* botAI, Player* bot, uint32 lfgId, uint32 roleMask);
 +}
 +
 +#endif
@@ -2892,10 +2968,10 @@ index 00000000..6ee585cd
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
 new file mode 100644
-index 00000000..9e1bcfba
+index 00000000..514422cd
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,419 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2906,10 +2982,14 @@ index 00000000..9e1bcfba
 +
 +#include "DungeonTestBotPool.h"
 +#include "DungeonLeadActions.h"
++#include "DungeonLeadCanary.h"
 +
 +#include "DatabaseEnv.h"
++#include "Group.h"
++#include "GroupMgr.h"
 +#include "Log.h"
 +#include "ObjectAccessor.h"
++#include "PlayerbotAIConfig.h"
 +#include "PlayerbotFactory.h"
 +#include "PlayerbotRepository.h"
 +#include "Playerbots.h"
@@ -3151,6 +3231,133 @@ index 00000000..9e1bcfba
 +    return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage);
 +}
 +
++// Phase 3, take 2. The first implementation queued every Ready lease through the real LFG tool
++// (DungeonLead::QueueBotForLfg(), the same primitive AutoBot Canary's TriggerTargetedTest() uses)
++// and relied on CanaryTick() to notice the resulting pure-bot group once LFG matched and teleported
++// it in. Built, deployed, tested live (2026-09-12): 15 leases queued, confirmed QUEUED via
++// ".playerbots lfgstate", and matchmaking never progressed to PROPOSAL after 5+ minutes despite the
++// queue holding exactly 3 role-complete parties. Independently, a real player-initiated LFG run on
++// this same server left several bots stranded outside the instance requiring a GM ".summon" - LFG's
++// own accept/teleport step can apparently be blocked by things as ordinary as a bot mid-combat.
++// Conclusion: LFG matchmaking is not a reliable on-ramp for this server, queue-side or teleport-side.
++//
++// This version bypasses LFG entirely. It already knows exactly which bots it wants together (the
++// leases themselves), so it forms the Group object directly (Group::Create() + GroupMgr::AddGroup(),
++// the exact sequence GroupHandler.cpp uses for a real party invite) and teleports every member
++// straight to the dungeon's own entrance coordinates (the first walkable step of the hand-authored
++// route - see DungeonRouteMgr), then calls DungeonLead::StartSession() itself instead of waiting for
++// CanaryTick() to spot an LFG-formed group. Same role-scarcity discipline as TriggerTargetedTest():
++// never forms a tank-less or healer-less party.
++std::string DungeonLead::RunTestParty(uint32 lfgId)
++{
++    DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(lfgId);
++    if (!route)
++        return "No route data for lfgId " + std::to_string(lfgId) + " - can't determine entrance coordinates.";
++
++    DungeonRouteStep const* entrance = nullptr;
++    for (DungeonRouteStep const& step : route->steps)
++    {
++        if (step.IsWalkable())
++        {
++            entrance = &step;
++            break;
++        }
++    }
++    if (!entrance)
++        return "Route for lfgId " + std::to_string(lfgId) + " has no walkable step to use as an entrance.";
++
++    struct Candidate { size_t leaseIdx; Player* bot; PlayerbotAI* botAI; };
++    std::vector<Candidate> tanks, heals, dps;
++    for (size_t i = 0; i < g_leases.size(); ++i)
++    {
++        TestBotLease const& lease = g_leases[i];
++        // Ready: never touched yet. Leased: survivor of the abandoned LFG-queue attempt above -
++        // still a perfectly good idle character, just mis-flagged by that dead-end code path. Either
++        // way, the group check below is the real source of truth, not our own bookkeeping: a bot
++        // already sitting in a group (real player, some other test party) is left alone.
++        if (lease.state != TestBotLeaseState::Ready && lease.state != TestBotLeaseState::Leased)
++            continue;
++
++        Player* bot = ObjectAccessor::FindPlayer(lease.guid);
++        PlayerbotAI* botAI = bot ? GET_PLAYERBOT_AI(bot) : nullptr;
++        if (!bot || !botAI || bot->GetGroup())
++            continue;
++
++        Candidate c{i, bot, botAI};
++        if (lease.role == TestBotRole::Tank)
++            tanks.push_back(c);
++        else if (lease.role == TestBotRole::Healer)
++            heals.push_back(c);
++        else
++            dps.push_back(c);
++    }
++
++    size_t parties = std::min(tanks.size(), heals.size());
++    if (!parties)
++    {
++        return "Not enough idle tank+healer leases to form even one party (tanks=" +
++               std::to_string(tanks.size()) + ", healers=" + std::to_string(heals.size()) +
++               "). Acquire more first.";
++    }
++
++    // Same shared budget CanaryTick()/TriggerTargetedTest() respect (AiPlayerbot.DungeonLead.
++    // CanaryMaxConcurrent) - StartSession() itself doesn't enforce it (by design: it assumes the
++    // caller already decided "yes, start here" - see its own doc comment), so every path that can
++    // start an AutoCanary session has to check it. Forms as many parties as fit, never more.
++    uint32 const activeNow = DungeonLead::ActiveCanaryCount();
++    uint32 const cap = sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent;
++    if (activeNow >= cap)
++    {
++        return "AiPlayerbot.DungeonLead.CanaryMaxConcurrent (" + std::to_string(cap) +
++               ") already reached (" + std::to_string(activeNow) + " running) - nothing started";
++    }
++    parties = std::min<size_t>(parties, cap - activeNow);
++
++    size_t dpsCursor = 0;
++    uint32 started = 0;
++    std::ostringstream out;
++    for (size_t p = 0; p < parties; ++p)
++    {
++        if (p)
++            out << " | ";
++
++        Candidate& tank = tanks[p];
++        Candidate& heal = heals[p];
++
++        std::vector<Candidate*> members{&tank, &heal};
++        for (uint32 d = 0; d < 3 && dpsCursor < dps.size(); ++d, ++dpsCursor)
++            members.push_back(&dps[dpsCursor]);
++
++        Group* group = new Group();
++        group->Create(tank.bot);
++        sGroupMgr->AddGroup(group);
++        for (size_t m = 1; m < members.size(); ++m)
++            group->AddMember(members[m]->bot);
++
++        for (Candidate* c : members)
++        {
++            c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, 0.0f);
++            g_leases[c->leaseIdx].state = TestBotLeaseState::Leased;
++            g_leases[c->leaseIdx].stateTs = getMSTime();
++        }
++
++        bool const ok = DungeonLead::StartSession(tank.botAI, group, DungeonLeadSessionOrigin::AutoCanary,
++                                                    /*master*/ nullptr, /*testMode*/ true);
++        if (ok)
++            ++started;
++
++        out << "Party " << (p + 1) << " (tank " << tank.bot->GetName() << ", " << members.size()
++            << " members): " << (ok ? "started" : "StartSession refused");
++
++        LOG_INFO("playerbots.dungeonlead",
++                 "[DungeonLead][TestBotPool] direct-formed party {} for lfg {} at map {} ({}, {}, {}), tank={}, StartSession={}",
++                 p + 1, lfgId, route->mapId, entrance->x, entrance->y, entrance->z, tank.bot->GetName(), ok);
++    }
++
++    return "Formed " + std::to_string(parties) + " part" + (parties == 1 ? "y" : "ies") +
++           ", started " + std::to_string(started) + ": " + out.str();
++}
++
 +std::string DungeonLead::TestBotPoolStatus()
 +{
 +    if (g_leases.empty())
@@ -3186,10 +3393,10 @@ index 00000000..9e1bcfba
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.h b/src/Ai/Base/DungeonLead/DungeonTestBotPool.h
 new file mode 100644
-index 00000000..64f09891
+index 00000000..4afb4a0f
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,104 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -3264,6 +3471,25 @@ index 00000000..64f09891
 +    // one CC capability check implemented so far; other classes' CC is not yet independently
 +    // verified (see ADR-003's Phase 2 notes).
 +    bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage);
++
++    // Phase 3: forms complete 5-bot parties directly out of every currently idle (`Ready` or
++    // `Leased`, not already in a group) lease and sends them straight into `lfgId`'s dungeon.
++    // Deliberately bypasses the real LFG queue/matchmaking pipeline (a first version went through
++    // it via DungeonLead::QueueBotForLfg() - see DungeonLeadCanary.h - and was abandoned after live
++    // testing found it unreliable: queued bots never matched past QUEUED, and separately, a real
++    // player-initiated LFG run on this server left several bots stranded outside the instance).
++    // Instead builds the Group object itself (Group::Create()+GroupMgr::AddGroup(), one tank + one
++    // healer + up to three dps per party, never a tank-less/healer-less one), teleports every member
++    // to the dungeon route's own entrance coordinates (DungeonRouteMgr), and calls
++    // DungeonLead::StartSession() directly - no dependency on CanaryTick() spotting anything for
++    // this path. Independent of CanaryEnabled/CanaryAllowedLfgIds (those gate the passive/
++    // LFG-triggered paths only; this is its own explicit on-demand entrypoint) but still respects
++    // the shared AiPlayerbot.DungeonLead.CanaryMaxConcurrent budget (via
++    // DungeonLead::ActiveCanaryCount(), the same accounting TriggerTargetedTest() uses) - forms as
++    // many parties as fit under that cap, never more, even if more idle leases exist. Transitions
++    // every bot used into a party to `Leased`. Returns a summary of how many parties were formed and
++    // started, or an explanation if there weren't enough idle tank+healer leases to form even one.
++    std::string RunTestParty(uint32 lfgId);
 +
 +    // Human-readable dump of every currently-tracked lease and its state.
 +    std::string TestBotPoolStatus();
@@ -3476,13 +3702,14 @@ index 769bfba8..4f001e2e 100644
      uint32 saveManaThreshold;
      AutoPartyBuffMode autoGreaterBlessings;
 diff --git a/src/Script/PlayerbotCommandScript.cpp b/src/Script/PlayerbotCommandScript.cpp
-index 3e73fda9..75070d81 100644
+index 3e73fda9..d7acdf50 100644
 --- a/src/Script/PlayerbotCommandScript.cpp
 +++ b/src/Script/PlayerbotCommandScript.cpp
-@@ -6,12 +6,21 @@
+@@ -6,12 +6,22 @@
  
  #include "BattleGroundTactics.h"
  #include "Chat.h"
++#include "DungeonLeadActions.h"
 +#include "DungeonLeadCanary.h"
 +#include "DungeonTestBotPool.h"
  #include "GuildTaskMgr.h"
@@ -3501,7 +3728,7 @@ index 3e73fda9..75070d81 100644
  using namespace Acore::ChatCommands;
  
  class playerbots_commandscript : public CommandScript
-@@ -32,11 +41,20 @@ public:
+@@ -32,11 +42,22 @@ public:
              {"unlink", HandleUnlinkAccountCommand, SEC_PLAYER, Console::No},
          };
  
@@ -3509,6 +3736,7 @@ index 3e73fda9..75070d81 100644
 +            {"acquire", HandleTestBotPoolAcquireCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"status", HandleTestBotPoolStatusCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"release", HandleTestBotPoolReleaseCommand, SEC_GAMEMASTER, Console::Yes},
++            {"run", HandleTestBotPoolRunCommand, SEC_GAMEMASTER, Console::Yes},
 +        };
 +
          static ChatCommandTable playerbotsCommandTable = {
@@ -3518,11 +3746,12 @@ index 3e73fda9..75070d81 100644
              {"rndbot", HandleRandomPlayerbotCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"canarytest", HandleCanaryTestCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"lfgstate", HandleLfgStateCommand, SEC_GAMEMASTER, Console::Yes},
++            {"pathcheck", HandlePathCheckCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"testbotpool", playerbotsTestBotPoolCommandTable},
              {"debug", playerbotsDebugCommandTable},
              {"account", playerbotsAccountCommandTable},
          };
-@@ -58,6 +76,166 @@ public:
+@@ -58,6 +79,222 @@ public:
          return RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(handler, args);
      }
  
@@ -3589,6 +3818,38 @@ index 3e73fda9..75070d81 100644
 +        std::string const groupInfo = group ? std::to_string(group->GetMembersCount()) + " members" : "none";
 +        handler->PSendSysMessage("{}: lfg state = {} ({}), group = {}, map = {}", args, name, int(state),
 +                                  groupInfo, bot->GetMapId());
++        return true;
++    }
++
++    // ".playerbots pathcheck <botName> <x> <y> <z>" - one-off diagnostic (2026-09-12 night's
++    // 49-party scale test surfaced a cluster of Verdan the Everliving/Lord Serpentis skip_stuck
++    // events, all with the bot's real Z far below the route's target Z - those two bosses sit on
++    // a platform ~50-90 units higher than the rest of the dungeon). Runs the exact same
++    // PathGenerator call MoveRouteTo() uses in production and dumps what it actually returns,
++    // instead of guessing at a route/waypoint fix from telemetry distance numbers alone.
++    static bool HandlePathCheckCommand(ChatHandler* handler, char const* args)
++    {
++        if (!args || !*args)
++        {
++            handler->PSendSysMessage("Usage: .playerbots pathcheck <botName> <x> <y> <z>");
++            return true;
++        }
++        std::istringstream iss(args);
++        std::string botName;
++        float x = 0.f, y = 0.f, z = 0.f;
++        if (!(iss >> botName >> x >> y >> z))
++        {
++            handler->PSendSysMessage("Usage: .playerbots pathcheck <botName> <x> <y> <z>");
++            return true;
++        }
++        Player* bot = ObjectAccessor::FindPlayerByName(botName);
++        if (!bot)
++        {
++            handler->PSendSysMessage("No online player/bot named '{}'", botName);
++            return true;
++        }
++        std::string const result = DungeonLead::DiagnosePath(bot, x, y, z);
++        handler->PSendSysMessage(result);
 +        return true;
 +    }
 +
@@ -3683,6 +3944,30 @@ index 3e73fda9..75070d81 100644
 +            return true;
 +        }
 +        handler->PSendSysMessage(DungeonLead::ReleaseTestBot(args));
++        return true;
++    }
++
++    // ".playerbots testbotpool run <lfgId>" - queues every currently-Ready lease into LFG for
++    // that dungeon; AutoBot Canary (must be enabled, with lfgId allowlisted) picks up the resulting
++    // group once matchmaking teleports it in. See DungeonTestBotPool.h.
++    static bool HandleTestBotPoolRunCommand(ChatHandler* handler, char const* args)
++    {
++        uint32 lfgId = 0;
++        try
++        {
++            if (args && *args)
++                lfgId = static_cast<uint32>(std::stoul(args));
++        }
++        catch (std::exception const&)
++        {
++            lfgId = 0;
++        }
++        if (!lfgId)
++        {
++            handler->PSendSysMessage("Usage: .playerbots testbotpool run <lfgId>");
++            return true;
++        }
++        handler->PSendSysMessage(DungeonLead::RunTestParty(lfgId));
 +        return true;
 +    }
 +

@@ -73,6 +73,25 @@ namespace DungeonLead
     // verified (see ADR-003's Phase 2 notes).
     bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage);
 
+    // Phase 3: forms complete 5-bot parties directly out of every currently idle (`Ready` or
+    // `Leased`, not already in a group) lease and sends them straight into `lfgId`'s dungeon.
+    // Deliberately bypasses the real LFG queue/matchmaking pipeline (a first version went through
+    // it via DungeonLead::QueueBotForLfg() - see DungeonLeadCanary.h - and was abandoned after live
+    // testing found it unreliable: queued bots never matched past QUEUED, and separately, a real
+    // player-initiated LFG run on this server left several bots stranded outside the instance).
+    // Instead builds the Group object itself (Group::Create()+GroupMgr::AddGroup(), one tank + one
+    // healer + up to three dps per party, never a tank-less/healer-less one), teleports every member
+    // to the dungeon route's own entrance coordinates (DungeonRouteMgr), and calls
+    // DungeonLead::StartSession() directly - no dependency on CanaryTick() spotting anything for
+    // this path. Independent of CanaryEnabled/CanaryAllowedLfgIds (those gate the passive/
+    // LFG-triggered paths only; this is its own explicit on-demand entrypoint) but still respects
+    // the shared AiPlayerbot.DungeonLead.CanaryMaxConcurrent budget (via
+    // DungeonLead::ActiveCanaryCount(), the same accounting TriggerTargetedTest() uses) - forms as
+    // many parties as fit under that cap, never more, even if more idle leases exist. Transitions
+    // every bot used into a party to `Leased`. Returns a summary of how many parties were formed and
+    // started, or an explanation if there weren't enough idle tank+healer leases to form even one.
+    std::string RunTestParty(uint32 lfgId);
+
     // Human-readable dump of every currently-tracked lease and its state.
     std::string TestBotPoolStatus();
 

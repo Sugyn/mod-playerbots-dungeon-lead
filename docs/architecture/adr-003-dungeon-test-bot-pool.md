@@ -178,15 +178,74 @@ Hunter) → all five logged in, prepared, and reported `Ready` (Mage additionall
 Polymorph) → confirmed in the character DB (correct level 18, correct class per slot). Zero
 `Failed` results across all five in this run.
 
+## Phase 3: `RunTestParty` - LFG abandoned in favor of direct group + teleport
+
+The plan up to here still assumed the leased bots would enter their dungeon through the real LFG
+tool, the same way AutoBot Canary's `TriggerTargetedTest()` (ADR-002) already worked: queue each
+bot with `QueueBotForLfg()`, let the server's own matchmaking form the group and teleport it in,
+and let the already-running `CanaryTick()` notice the resulting pure-bot group and start a session.
+Built and tested live first, not assumed correct: 15 `Ready` leases queued for Wailing Caverns
+(3 role-complete parties' worth), confirmed `QUEUED` via a direct `sLFGMgr->GetState()` read (the
+`lfg`/`network` loggers this server would normally use fall back to `Logger.root`'s Error-only
+level, so a log-based check would have shown nothing regardless of outcome - this is why
+`.playerbots lfgstate` exists), and left there. After 5+ minutes with zero progress to `PROPOSAL`,
+this was abandoned: LFG matchmaking on this server doesn't reliably resolve a queue that's entirely
+bots, no matter how mathematically complete the parties in it are.
+
+Since `RunTestParty` already knows exactly which bots it wants together - unlike organic LFG
+traffic, there's no matching problem to solve - it now builds the `Group` itself
+(`Group::Create(tank)` + `GroupMgr::AddGroup(group)` + `AddMember()` per the rest, the exact
+sequence a real party invite goes through per `GroupHandler.cpp`), teleports every member straight
+to the dungeon route's own first walkable step (`Player::TeleportTo()`), and calls
+`DungeonLead::StartSession()` directly. No LFG packet, no queue, no dependency on `CanaryTick()`
+noticing anything for this path - `CanaryTick()`'s own passive detection (ADR-002) is untouched and
+still runs for organically-formed groups. Still gated by the shared `CanaryMaxConcurrent` budget
+(via the newly-exposed `DungeonLead::ActiveCanaryCount()` - `StartSession()` itself doesn't enforce
+that cap by design, so every caller that can start a session has to check it itself).
+
+### Scale test: 3 → 49 parallel parties, same night
+
+Verified at three points, each a bigger claim than the last:
+1. 3 parties (15 bots): formed, teleported, sessions started, routes resolved, bosses engaged.
+2. 15 bots re-run after a restart, confirming the lease pool survives a clean worldserver restart
+   (leases are in-memory and don't survive it, but the underlying AddClass characters and the
+   acquire/verify pipeline do - a fresh `acquire` cycle works the same as the first time).
+3. **49 parties (~240 test bots)** in one `RunTestParty` call, after deliberately lowering
+   `AiPlayerbot.MinRandomBots`/`MaxRandomBots` from 1000 to 100 (freeing world-thread headroom) and
+   raising `CanaryMaxConcurrent` from 10 to 50. All 49 formed and started in the same tick; confirmed
+   via the `instance` table (77 distinct rows on that map, not a collision) to be running in
+   genuinely separate map instances rather than sharing one; all 49 later stopped cleanly on the
+   `CanaryTimeoutMinutes` safety net with zero crashes and no DB corruption (a handful of
+   `pet_spell` deadlock-retry log lines under the simultaneous-login load, nothing worse).
+
+This is the first real evidence the "run N dungeons in parallel to gather data N times as fast"
+premise from the original guidance doc actually holds at the scale it was proposed for, not just
+in principle.
+
+### What the 49-party batch found (Wailing Caverns)
+
+Aggregated from `DungeonLeadSessions.csv` across all 49 runs - see CHANGELOG for the numbers.
+Headline: CC ("moon mark") failing to land is the dominant reason runs stall (49 `cc_released`
+events, concentrated on entrance-area trash, well before the first named boss - 56% of runs never
+killed even that first boss inside the 45-minute window), not the navigation issue found second
+(Verdan the Everliving/Lord Serpentis sit on a platform 50-90 Z-units above the rest of the
+dungeon - confirmed against real `creature` spawn data, not guessed - and every `skip_stuck` on
+those two bosses shows the bot still down at the lower Z). `.playerbots pathcheck` was added to
+investigate the second finding by running the production `PathGenerator` call directly rather than
+inferring a fix from telemetry distance numbers; neither finding is fixed yet as of this writing.
+
 ## Explicitly deferred (later phases, not implemented)
 
 - CC verification for classes beyond Mage (Warlock/Druid/Rogue/Hunter - each is talent- or
-  ability-gated differently and needs its own investigation, not a guessed spell id).
-- Fresh dungeon instance provisioning per run.
-- `DungeonRunResult`/campaign aggregation contract.
+  ability-gated differently and needs its own investigation, not a guessed spell id) - and, per
+  the 49-party batch above, CC landing reliably at all now looks like a bigger open question than
+  which classes it's verified for.
+- Fresh dungeon instance provisioning per run (not needed in practice yet - AC hands out a distinct
+  instance per group automatically, confirmed at 49-way scale above).
+- `DungeonRunResult`/campaign aggregation contract (the CHANGELOG-style manual aggregation done for
+  the 49-party batch is a preview of what this should eventually automate).
 - `DungeonTestOrchestrator` and the BotPool/ProfileManager/PartyBuilder/InstanceProvisioner/
   ScenarioRunner/ResultCollector/CampaignManager split.
-- 10-parallel-instance scaling (50 leased bots at once).
 - Lease ownership/concurrency hardening beyond "one in-memory list, single-threaded access on the
-  world thread" (fine for Phase 1's manual, one-at-a-time usage; not yet a real concurrency-safe
-  reservation system).
+  world thread" (fine for the current one-operator, one-command-at-a-time usage; not yet a real
+  concurrency-safe reservation system).

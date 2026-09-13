@@ -38,6 +38,7 @@
 //     and TriggerTargetedTest() count against the same shared cap - and CanaryTimeoutMinutes
 //     force-stops one that never reaches a terminal outcome.
 class Player;
+class PlayerbotAI;
 
 namespace DungeonLead
 {
@@ -68,6 +69,22 @@ namespace DungeonLead
     // matchmaking actually runs, same as it could for any organically-queued groups.
     // Returns a human-readable result string (what was queued, or the specific reason nothing was).
     std::string TriggerTargetedTest(Player* master, uint32 lfgId, uint32 groups = 1);
+
+    // How many AutoCanary-origin sessions (CanaryTick()-spotted or TriggerTargetedTest()/
+    // RunTestParty()-started, no matter which) are active right now - the live count
+    // CanaryMaxConcurrent is checked against. Exposed so every caller that needs to respect that
+    // one shared budget (DungeonTestBotPool::RunTestParty() included) reads the same number
+    // instead of keeping its own possibly-divergent count.
+    uint32 ActiveCanaryCount();
+
+    // The single-bot primitive TriggerTargetedTest() builds its parties out of - exposed
+    // separately for DungeonTestBotPool (ADR-003), which already knows exactly which bots it
+    // wants grouped (its own leased Tank/Healer/Dps identities) and just needs them queued for the
+    // same dungeon so real LFG matchmaking puts them together. `roleMask` is a PLAYER_ROLE_* value
+    // (lfg::PLAYER_ROLE_TANK/HEALER/DAMAGE). Same CMSG_LFG_JOIN path, same safety properties (does
+    // not bypass CanaryEnabled/CanaryAllowedLfgIds - the resulting group still needs CanaryTick()
+    // to pick it up and start a session, same as any other targeted-test party).
+    void QueueBotForLfg(PlayerbotAI* botAI, Player* bot, uint32 lfgId, uint32 roleMask);
 }
 
 #endif

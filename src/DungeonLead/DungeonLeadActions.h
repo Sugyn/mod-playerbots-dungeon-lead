@@ -35,6 +35,15 @@ namespace DungeonLead
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
     void CheckCcMark(PlayerbotAI* botAI);
 
+    // One-shot diagnostic (2026-09-12 night's 49-party scale test): runs the EXACT same
+    // PathGenerator call MoveRouteTo() uses in production, from `bot`'s current position to
+    // (dx, dy, dz), and dumps path type + actual end position + a sample of waypoints - to see
+    // directly why a bot stuck near the Lady Anacondra/Kresh floor never made progress toward
+    // Verdan the Everliving/Lord Serpentis's platform (~50-90 units higher in Z), instead of
+    // guessing at a fix from telemetry alone. Not wired into any automatic path - console/SOAP
+    // only, via ".playerbots pathcheck".
+    std::string DiagnosePath(Player* bot, float dx, float dy, float dz);
+
     // Reconciliation loop (see the big comment at its call site in Playerbots.cpp / its definition
     // in DungeonLeadActions.cpp): continuously re-asserts the desired strategy state for every
     // active session, for as long as it stays active, to heal an external AI reset regardless of

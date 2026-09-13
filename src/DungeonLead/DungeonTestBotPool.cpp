@@ -8,10 +8,14 @@
 
 #include "DungeonTestBotPool.h"
 #include "DungeonLeadActions.h"
+#include "DungeonLeadCanary.h"
 
 #include "DatabaseEnv.h"
+#include "Group.h"
+#include "GroupMgr.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
+#include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "PlayerbotRepository.h"
 #include "Playerbots.h"
@@ -251,6 +255,133 @@ bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::stri
 bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage)
 {
     return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage);
+}
+
+// Phase 3, take 2. The first implementation queued every Ready lease through the real LFG tool
+// (DungeonLead::QueueBotForLfg(), the same primitive AutoBot Canary's TriggerTargetedTest() uses)
+// and relied on CanaryTick() to notice the resulting pure-bot group once LFG matched and teleported
+// it in. Built, deployed, tested live (2026-09-12): 15 leases queued, confirmed QUEUED via
+// ".playerbots lfgstate", and matchmaking never progressed to PROPOSAL after 5+ minutes despite the
+// queue holding exactly 3 role-complete parties. Independently, a real player-initiated LFG run on
+// this same server left several bots stranded outside the instance requiring a GM ".summon" - LFG's
+// own accept/teleport step can apparently be blocked by things as ordinary as a bot mid-combat.
+// Conclusion: LFG matchmaking is not a reliable on-ramp for this server, queue-side or teleport-side.
+//
+// This version bypasses LFG entirely. It already knows exactly which bots it wants together (the
+// leases themselves), so it forms the Group object directly (Group::Create() + GroupMgr::AddGroup(),
+// the exact sequence GroupHandler.cpp uses for a real party invite) and teleports every member
+// straight to the dungeon's own entrance coordinates (the first walkable step of the hand-authored
+// route - see DungeonRouteMgr), then calls DungeonLead::StartSession() itself instead of waiting for
+// CanaryTick() to spot an LFG-formed group. Same role-scarcity discipline as TriggerTargetedTest():
+// never forms a tank-less or healer-less party.
+std::string DungeonLead::RunTestParty(uint32 lfgId)
+{
+    DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(lfgId);
+    if (!route)
+        return "No route data for lfgId " + std::to_string(lfgId) + " - can't determine entrance coordinates.";
+
+    DungeonRouteStep const* entrance = nullptr;
+    for (DungeonRouteStep const& step : route->steps)
+    {
+        if (step.IsWalkable())
+        {
+            entrance = &step;
+            break;
+        }
+    }
+    if (!entrance)
+        return "Route for lfgId " + std::to_string(lfgId) + " has no walkable step to use as an entrance.";
+
+    struct Candidate { size_t leaseIdx; Player* bot; PlayerbotAI* botAI; };
+    std::vector<Candidate> tanks, heals, dps;
+    for (size_t i = 0; i < g_leases.size(); ++i)
+    {
+        TestBotLease const& lease = g_leases[i];
+        // Ready: never touched yet. Leased: survivor of the abandoned LFG-queue attempt above -
+        // still a perfectly good idle character, just mis-flagged by that dead-end code path. Either
+        // way, the group check below is the real source of truth, not our own bookkeeping: a bot
+        // already sitting in a group (real player, some other test party) is left alone.
+        if (lease.state != TestBotLeaseState::Ready && lease.state != TestBotLeaseState::Leased)
+            continue;
+
+        Player* bot = ObjectAccessor::FindPlayer(lease.guid);
+        PlayerbotAI* botAI = bot ? GET_PLAYERBOT_AI(bot) : nullptr;
+        if (!bot || !botAI || bot->GetGroup())
+            continue;
+
+        Candidate c{i, bot, botAI};
+        if (lease.role == TestBotRole::Tank)
+            tanks.push_back(c);
+        else if (lease.role == TestBotRole::Healer)
+            heals.push_back(c);
+        else
+            dps.push_back(c);
+    }
+
+    size_t parties = std::min(tanks.size(), heals.size());
+    if (!parties)
+    {
+        return "Not enough idle tank+healer leases to form even one party (tanks=" +
+               std::to_string(tanks.size()) + ", healers=" + std::to_string(heals.size()) +
+               "). Acquire more first.";
+    }
+
+    // Same shared budget CanaryTick()/TriggerTargetedTest() respect (AiPlayerbot.DungeonLead.
+    // CanaryMaxConcurrent) - StartSession() itself doesn't enforce it (by design: it assumes the
+    // caller already decided "yes, start here" - see its own doc comment), so every path that can
+    // start an AutoCanary session has to check it. Forms as many parties as fit, never more.
+    uint32 const activeNow = DungeonLead::ActiveCanaryCount();
+    uint32 const cap = sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent;
+    if (activeNow >= cap)
+    {
+        return "AiPlayerbot.DungeonLead.CanaryMaxConcurrent (" + std::to_string(cap) +
+               ") already reached (" + std::to_string(activeNow) + " running) - nothing started";
+    }
+    parties = std::min<size_t>(parties, cap - activeNow);
+
+    size_t dpsCursor = 0;
+    uint32 started = 0;
+    std::ostringstream out;
+    for (size_t p = 0; p < parties; ++p)
+    {
+        if (p)
+            out << " | ";
+
+        Candidate& tank = tanks[p];
+        Candidate& heal = heals[p];
+
+        std::vector<Candidate*> members{&tank, &heal};
+        for (uint32 d = 0; d < 3 && dpsCursor < dps.size(); ++d, ++dpsCursor)
+            members.push_back(&dps[dpsCursor]);
+
+        Group* group = new Group();
+        group->Create(tank.bot);
+        sGroupMgr->AddGroup(group);
+        for (size_t m = 1; m < members.size(); ++m)
+            group->AddMember(members[m]->bot);
+
+        for (Candidate* c : members)
+        {
+            c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, 0.0f);
+            g_leases[c->leaseIdx].state = TestBotLeaseState::Leased;
+            g_leases[c->leaseIdx].stateTs = getMSTime();
+        }
+
+        bool const ok = DungeonLead::StartSession(tank.botAI, group, DungeonLeadSessionOrigin::AutoCanary,
+                                                    /*master*/ nullptr, /*testMode*/ true);
+        if (ok)
+            ++started;
+
+        out << "Party " << (p + 1) << " (tank " << tank.bot->GetName() << ", " << members.size()
+            << " members): " << (ok ? "started" : "StartSession refused");
+
+        LOG_INFO("playerbots.dungeonlead",
+                 "[DungeonLead][TestBotPool] direct-formed party {} for lfg {} at map {} ({}, {}, {}), tank={}, StartSession={}",
+                 p + 1, lfgId, route->mapId, entrance->x, entrance->y, entrance->z, tank.bot->GetName(), ok);
+    }
+
+    return "Formed " + std::to_string(parties) + " part" + (parties == 1 ? "y" : "ies") +
+           ", started " + std::to_string(started) + ": " + out.str();
 }
 
 std::string DungeonLead::TestBotPoolStatus()

@@ -6,6 +6,59 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 
 ## [Unreleased]
 
+**Phase 3 (same effort, later that night): `RunTestParty` - direct group formation + teleport,
+bypassing LFG entirely.** The first Phase 3 attempt queued every `Ready` lease through the real LFG
+tool (the same `QueueBotForLfg()` primitive AutoBot Canary's `TriggerTargetedTest()` uses) and relied
+on the existing passive `CanaryTick()` to notice the resulting pure-bot group once LFG matched and
+teleported it in. Built, deployed, tested live: 15 leases queued and confirmed `QUEUED` via a direct
+`sLFGMgr->GetState()` read, and matchmaking never progressed to `PROPOSAL` after 5+ minutes despite
+the queue holding exactly 3 role-complete parties - LFG on this server just doesn't reliably resolve
+a pure-bot queue. Abandoned in favor of doing the group formation ourselves: `RunTestParty` now
+partitions every idle (`Ready`, or a `Leased` survivor of the abandoned LFG attempt) lease into
+complete 1-tank/1-healer/up-to-3-dps parties, builds each `Group` directly
+(`Group::Create()`+`GroupMgr::AddGroup()`, the same sequence a real party invite uses),
+`Player::TeleportTo()`s every member straight to the route's own first walkable step, and calls
+`DungeonLead::StartSession()` itself - no waiting on LFG or on `CanaryTick()` for this path. Still
+respects the shared `AiPlayerbot.DungeonLead.CanaryMaxConcurrent` budget (exposed as
+`DungeonLead::ActiveCanaryCount()`, the same accounting `TriggerTargetedTest()` already used, so both
+entrypoints share one real cap instead of each keeping a possibly-divergent count) - `StartSession()`
+itself doesn't enforce that cap, so every caller that can start an AutoCanary session has to.
+
+Verified live at increasing scale the same night: 3 parties (15 bots), then 49 parties (~240 bots,
+after lowering `AiPlayerbot.MinRandomBots`/`MaxRandomBots` from 1000 to 100 for headroom and raising
+`CanaryMaxConcurrent` from 10 to 50) - all 49 formed and started successfully in one call, confirmed
+via `instance` table row count to be running in genuinely separate map instances (77 distinct, not a
+collision), and all 49 later stopped cleanly on the `CanaryTimeoutMinutes` safety net with zero
+crashes. Findings from that 49-party batch against Wailing Caverns, aggregated from
+`DungeonLeadSessions.csv`:
+- **CC ("moon mark") failing to land is the dominant bottleneck, not navigation.** 49 `cc_released`
+  events across the batch, concentrated on trash right at the entrance (`Druid of the Fang` x17,
+  `Deviate Guardian` x12, `Deviate Ravager` x10) - well before the first named boss. 28 of 50 runs
+  (56%) never killed even that first boss inside the 45-minute timeout window. Not yet root-caused;
+  added `.playerbots pathcheck <bot> <x> <y> <z>` (runs the exact `PathGenerator` call
+  `MoveRouteTo()` uses in production and dumps path type/actual end position/waypoints) as the next
+  diagnostic step, but that's for the separate navigation finding below, not this one - CC timing/
+  targeting is a strategy-engine question, not a pathing one.
+- **Verdan the Everliving and Lord Serpentis sit on a platform ~50-90 units higher (Z) than the rest
+  of the dungeon**, confirmed against real `creature` spawn data (not guessed): everything from the
+  entrance through Kresh sits around Z -89 to -107, then jumps to Z -31/-28.6 for Verdan/Serpentis's
+  platform, in roughly the last 10 yards of horizontal approach. Every `skip_stuck` event on those
+  two bosses (7 of 8 total `skip_stuck`s in the batch) shows the bot's real Z still down at -83 to
+  -107 while the route's target Z is -31 - strong evidence the route needs an intermediate waypoint
+  guiding bots up the connecting ramp, not a straight mmap path to the boss's own coordinates. Not
+  fixed yet - `pathcheck` exists to see what `PathGenerator` actually returns for this specific
+  climb before picking a waypoint, rather than guessing coordinates off a reference map image.
+- Route step order sends parties from Lord Pythas/Skum (the dungeon's far east side) directly to
+  Lord Cobrahn (far west, near the entrance) - a full-map backtrack. Only 1 of 50 runs got far
+  enough to reach that transition, so lower priority than the two findings above, but noted for
+  whenever a run starts clearing far enough to hit it.
+
+### Added
+- `.playerbots pathcheck <botName> <x> <y> <z>` (SOAP-reachable): one-shot diagnostic, not wired
+  into any automatic path - dumps `PathGenerator`'s path type, actual end position, and a sample of
+  waypoints for the exact call `MoveRouteTo()` makes in production, so a stuck-navigation fix can be
+  based on what the navmesh actually returns instead of guessed coordinates.
+
 DungeonTestBotPool, Phase 1 of the targeted-unattended-testing plan (see
 [ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)) - deterministic, on-demand test bot
 identities, independent of the general bot population and of any human staying logged in.

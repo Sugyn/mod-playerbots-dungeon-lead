@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <list>
 #include <mutex>
 #include <sstream>
@@ -497,6 +498,55 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
         group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
     st.ccGuid.Clear();
+}
+
+std::string DungeonLead::DiagnosePath(Player* bot, float dx, float dy, float dz)
+{
+    std::ostringstream out;
+    out << bot->GetName() << " at (" << bot->GetPositionX() << "," << bot->GetPositionY() << ","
+        << bot->GetPositionZ() << ") -> (" << dx << "," << dy << "," << dz << "): ";
+
+    float const disToDest = bot->GetExactDist(dx, dy, dz);
+    out << "straight-line dist=" << disToDest << ". ";
+
+    PathGenerator path(bot);
+    path.CalculatePath(dx, dy, dz);
+    PathType const type = path.GetPathType();
+
+    std::ostringstream typeStr;
+    if (type & PATHFIND_NORMAL) typeStr << "NORMAL ";
+    if (type & PATHFIND_SHORTCUT) typeStr << "SHORTCUT ";
+    if (type & PATHFIND_INCOMPLETE) typeStr << "INCOMPLETE ";
+    if (type & PATHFIND_NOPATH) typeStr << "NOPATH ";
+    if (type & PATHFIND_NOT_USING_PATH) typeStr << "NOT_USING_PATH ";
+    if (type & PATHFIND_SHORT) typeStr << "SHORT ";
+    if (type & PATHFIND_FARFROMPOLY_START) typeStr << "FARFROMPOLY_START ";
+    if (type & PATHFIND_FARFROMPOLY_END) typeStr << "FARFROMPOLY_END ";
+    if (typeStr.str().empty()) typeStr << "BLANK ";
+    out << "type=" << typeStr.str();
+
+    uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
+    bool const canReach = !(type & (~typeOk));
+    out << "canReach=" << canReach << ". ";
+
+    G3D::Vector3 const& endPos = path.GetActualEndPosition();
+    float const actualToDest = std::sqrt((endPos.x - dx) * (endPos.x - dx) + (endPos.y - dy) * (endPos.y - dy) +
+                                          (endPos.z - dz) * (endPos.z - dz));
+    out << "actualEnd=(" << endPos.x << "," << endPos.y << "," << endPos.z << ") "
+        << "actualEndToDest=" << actualToDest << " "
+        << "wouldImprove=" << (actualToDest + 5.0f < disToDest) << ". ";
+
+    Movement::PointsArray const& pts = path.GetPath();
+    out << "waypoints=" << pts.size();
+    if (!pts.empty())
+    {
+        out << " [";
+        size_t const step = pts.size() > 8 ? pts.size() / 8 : 1;
+        for (size_t i = 0; i < pts.size(); i += step)
+            out << "(" << pts[i].x << "," << pts[i].y << "," << pts[i].z << ") ";
+        out << "]";
+    }
+    return out.str();
 }
 
 void DungeonLead::GuardActiveSessions()
