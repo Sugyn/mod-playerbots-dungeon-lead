@@ -6,6 +6,46 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 
 ## [Unreleased]
 
+Wailing Caverns navigation/CC fixes, from root-causing the 0.8.0 scale-test findings against real
+mod-playerbots source (not guessed) and a new `.playerbots pathcheck` diagnostic.
+
+### Added
+- `.playerbots pathcheck <botName> <x> <y> <z>` (SOAP-reachable): runs the production
+  `PathGenerator` call directly and dumps path type/actual end position/waypoints.
+- `AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds` (default 45): absolute ceiling on how long a
+  moon-marked CC candidate can go un-crowd-controlled before being released unconditionally.
+- A new non-mandatory `playerbots_dungeon_route` step ("Ramp waypoint", Wailing Caverns lfg_id 1,
+  step 3) bridging the low-cave-to-Verdan-platform climb.
+
+### Fixed
+- **CC timeout counted down before the caster could possibly act.** The base mod-playerbots CC
+  reaction (`RtiCcTrigger`) only ever fires once the marked creature is in the bot's own
+  `"attackers"` list (confirmed by reading `TargetValue::FindTarget`); `DungeonLeadMarkAction`
+  marks a candidate by proximity, routinely before it has aggroed onto anyone. `CheckCcMark()` now
+  holds the grace window open until the marked creature is actually in combat, bounded by the new
+  absolute ceiling above (a candidate that never aggros would otherwise hold the mark forever).
+  Also stopped a real regression this introduced mid-fix (an earlier version gated on "any party
+  member in combat", which is a different creature entirely and just as easy to satisfy without
+  the mark ever having a chance).
+- **The "creature already dead" branch of `CheckCcMark()` cleared silently.** No log line, no CSV
+  event - indistinguishable from a genuine multi-minute stall when debugging live. Now logs and
+  records a `cc_target_gone` event.
+- **`Verdan the Everliving`/`Lord Serpentis` sit on a platform ~50-90 Z-units above the rest of
+  Wailing Caverns**, with no route waypoint for the climb between them and Kresh. Confirmed via
+  `pathcheck`: a direct `PathGenerator` call from the low area returned `NOPATH`, but a call from
+  further out returned a real (if length-budget-truncated) `INCOMPLETE` path climbing toward the
+  platform - the connection exists, a single-hop hardly ever completes it. Fixed by adding the
+  "Ramp waypoint" route step above, placed at a `PathGenerator`-confirmed point on that climbing
+  path. Verified live end-to-end: a full run reached and killed both Verdan and Serpentis with zero
+  `skip_stuck` on either, immediately after `RunTestParty` runs that reliably failed there before.
+
+### Known limitation (found via the same live run, not yet fixed)
+- Wailing Caverns' route order goes from Skum (far south-east) directly to Lord Cobrahn (far
+  north-west) - confirmed via `pathcheck` to be a genuine `NOPATH` at that range, and still `NOPATH`
+  even toward the central Lady Anacondra hub area from the same position. Needs more `pathcheck`
+  probing than one route step could resolve tonight; the CC-landing mechanism itself (why
+  `CanCastSpell` fails for the caster even once the timing is fixed) is also still open.
+
 ## [0.8.0] - 2026-09-13
 
 DungeonTestBotPool (see [ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)):

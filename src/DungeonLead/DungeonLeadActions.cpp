@@ -473,7 +473,14 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     Creature* c = botAI->GetCreature(st.ccGuid);
     if (!c || !c->IsAlive())
     {
-        // dead/gone - our job is done, free the icon for whatever comes next
+        // dead/gone - our job is done, free the icon for whatever comes next. Logged (unlike the
+        // original version of this branch): found live (2026-09-13) that a silent clear here reads
+        // indistinguishably from a genuine multi-minute stall in the CSV/log - a moon mark that
+        // never resolved via the timeout path below and never showed as a stuck party either just
+        // looks like nothing is happening, when really the target quietly died to something else
+        // (cleave, an add, whatever) and cleared itself here with no trace.
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} cc target gone (dead/despawned), clearing mark", bot->GetName());
+        DungeonLead::RecordEvent(botAI, "cc_target_gone", "");
         if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
             group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
         st.ccGuid.Clear();
@@ -484,6 +491,49 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     {
         // actually crowd controlled right now: reset the grace window so a later break gets a
         // fresh chance instead of instantly expiring
+        st.ccMarkedTs = getMSTime();
+        return;
+    }
+
+    // Absolute ceiling, independent of the combat-aware wait below: if this creature has been
+    // marked for a long time and STILL never got crowd controlled - whether because it's stuck
+    // waiting to enter combat (see below) or because it did enter combat and the timeout window
+    // just kept getting hit - stop waiting on it unconditionally. Without this, a candidate that
+    // never aggros onto anyone (picked by proximity to the boss, not confirmed to actually be part
+    // of the pull) would hold the grace window open forever under the combat-aware wait below,
+    // permanently excluding it from normal DPS targeting for no reason - worse than the original
+    // "released too early" bug this was meant to fix.
+    if (GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sPlayerbotAIConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS)
+    {
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed within the absolute ceiling ({}s since marked), releasing mark",
+                 bot->GetName(), c->GetName(), sPlayerbotAIConfig.dungeonLeadCcAbsoluteTimeoutSeconds);
+        DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
+        if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
+            group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
+        st.ccGuid.Clear();
+        return;
+    }
+
+    // The base mod-playerbots CC pipeline (CcTargetValue::Calculate -> TargetValue::FindTarget)
+    // only ever considers creatures already in the bot's own "attackers" list - confirmed by
+    // reading TargetValue::FindTarget directly, not assumed - so a moon-marked creature that
+    // isn't yet fighting anyone is invisible to it regardless of the RTI icon. DungeonLeadMarkAction
+    // marks a CC candidate as soon as one is found near the skulled boss (by proximity, via
+    // "possible targets"), which is routinely before that specific creature has aggroed onto
+    // anyone - so a chunk, and on a slow approach the *entirety*, of the timeout window was ticking
+    // away against a mechanism that could not possibly see the target yet. Found live
+    // (2026-09-13): 49 cc_released events in one batch, most within ~10-13s of the mark - right at
+    // (or before) CcTimeoutSeconds's default of 10. Hold the grace window open (instead of counting
+    // down) until the marked creature itself is actually in combat, so the caster gets the full
+    // configured window from the moment it's first even eligible to try - bounded by the absolute
+    // ceiling just above, so this can't hold forever. (An earlier version of this fix gated on
+    // DungeonLead::GroupInCombat() - any party member in combat - which turned out to still be too
+    // loose: the party can easily be fighting something else nearby while the specific marked
+    // creature is still standing there unaggroed, same failure by a different path. Gating on the
+    // marked creature's own combat state is the precise match for what TargetValue::FindTarget
+    // actually requires.)
+    if (!c->IsInCombat())
+    {
         st.ccMarkedTs = getMSTime();
         return;
     }
@@ -1312,6 +1362,7 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
                 DungeonLeadState& ccSt = sDungeonRouteMgr.State(bot->GetGUID());
                 ccSt.ccGuid = cc->GetGUID();
                 ccSt.ccMarkedTs = getMSTime();
+                ccSt.ccMarkedAbsoluteTs = ccSt.ccMarkedTs;
                 changed = true;
             }
         }

@@ -5,13 +5,14 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 4,Ragefire Chasm,389,0,0,-,4,boss,Bazzalan,11519,-384.9,146,7.8,spawn,upper walkway
 1,Wailing Caverns,43,0,0,-,1,boss,Lady Anacondra,3671,-67.8,122.6,-92.8,spawn,Screaming Gully
 1,Wailing Caverns,43,0,0,-,2,optional,Kresh,3653,-64.4,319.1,-106.7,spawn,river turtle
-1,Wailing Caverns,43,0,0,-,3,optional,Verdan the Everliving,5775,-81.9,32.3,-31,spawn,
-1,Wailing Caverns,43,0,0,-,4,boss,Lord Serpentis,3673,-120.2,-24.6,-28.6,spawn,
-1,Wailing Caverns,43,0,0,-,5,boss,Lord Pythas,3670,36.8,-241.1,-79.5,spawn,
-1,Wailing Caverns,43,0,0,-,6,optional,Skum,3674,-285.6,-313,-69.2,spawn,
-1,Wailing Caverns,43,0,0,-,7,boss,Lord Cobrahn,3669,-151.1,414.4,-72.6,spawn,
-1,Wailing Caverns,43,0,0,-,8,event,Disciple of Naralex,3678,-135,125.4,-78.1,spawn,escort from entrance after 4 Fanglords -> spawns Mutanus
-1,Wailing Caverns,43,0,0,-,9,event,Mutanus the Devourer,3654,NULL,NULL,NULL,script,script-spawned by escort
+1,Wailing Caverns,43,0,0,-,3,optional,Ramp waypoint (not a real boss),3653,-85.3333,-31.4667,-57.8694,derived,2026-09-13: bridges low-cave-to-Verdan-platform climb (see pathcheck in ADR/CHANGELOG); entry=Kresh reused as a harmless non-zero placeholder
+1,Wailing Caverns,43,0,0,-,4,optional,Verdan the Everliving,5775,-81.9,32.3,-31,spawn,
+1,Wailing Caverns,43,0,0,-,5,boss,Lord Serpentis,3673,-120.2,-24.6,-28.6,spawn,
+1,Wailing Caverns,43,0,0,-,6,boss,Lord Pythas,3670,36.8,-241.1,-79.5,spawn,
+1,Wailing Caverns,43,0,0,-,7,optional,Skum,3674,-285.6,-313,-69.2,spawn,
+1,Wailing Caverns,43,0,0,-,8,boss,Lord Cobrahn,3669,-151.1,414.4,-72.6,spawn,
+1,Wailing Caverns,43,0,0,-,9,event,Disciple of Naralex,3678,-135,125.4,-78.1,spawn,escort from entrance after 4 Fanglords -> spawns Mutanus
+1,Wailing Caverns,43,0,0,-,10,event,Mutanus the Devourer,3654,NULL,NULL,NULL,script,script-spawned by escort
 6,Deadmines,36,0,0,-,1,boss,Rhahk'Zor,644,-192.9,-448.2,54.4,spawn,
 6,Deadmines,36,0,0,-,2,boss,Sneed's Shredder,642,-289.5,-513,49.7,spawn,Sneed pops out after shredder dies (script)
 6,Deadmines,36,0,0,-,3,boss,Gilnid,1763,-177.4,-574.5,19.3,spawn,

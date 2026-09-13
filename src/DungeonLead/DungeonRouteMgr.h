@@ -176,6 +176,13 @@ struct DungeonLeadState
                                  // reconstructable from the CSV's own "start" row timestamp)
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
     uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
+    uint32 ccMarkedAbsoluteTs = 0;  // when it was FIRST marked - never reset (unlike ccMarkedTs,
+                                     // which holds open while waiting for the target to enter
+                                     // combat/for CC to land). Absolute ceiling: a target that
+                                     // never enters combat at all would otherwise hold the mark
+                                     // forever under the combat-aware wait, permanently excluding
+                                     // it from normal DPS targeting for no reason - see
+                                     // CcAbsoluteTimeoutSeconds and CheckCcMark().
     ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)
     bool paused = false;    // "startdungeon pause" / "startdungeon continue"
     bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
