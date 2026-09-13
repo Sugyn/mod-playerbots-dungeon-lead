@@ -6,8 +6,11 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 
 ## [Unreleased]
 
-`RunTestParty` (part of DungeonTestBotPool, see ADR-003) now forms parties directly instead of
-going through LFG.
+## [0.8.0] - 2026-09-13
+
+DungeonTestBotPool (see [ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)):
+deterministic, on-demand test bot identities, independent of the general bot population and of any
+human staying logged in - Phases 1-3.
 
 ### Added
 - `DungeonLead::ActiveCanaryCount()` exposed (was file-local to `DungeonLeadCanary.cpp`) so
@@ -16,18 +19,6 @@ going through LFG.
 - `.playerbots pathcheck <botName> <x> <y> <z>` (SOAP-reachable): dumps `PathGenerator`'s path
   type, actual end position, and a sample of waypoints for the exact call `MoveRouteTo()` makes in
   production.
-
-### Changed
-- `RunTestParty` builds each `Group` directly (`Group::Create()`+`GroupMgr::AddGroup()`), teleports
-  every member to the route's first walkable step (`Player::TeleportTo()`), and calls
-  `DungeonLead::StartSession()` itself, instead of queuing bots through LFG and waiting for
-  `CanaryTick()` to notice the resulting match - see ADR-003 for why LFG was dropped.
-
-DungeonTestBotPool, Phase 1 of the targeted-unattended-testing plan (see
-[ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)) - deterministic, on-demand test bot
-identities, independent of the general bot population and of any human staying logged in.
-
-### Added
 - `.playerbots testbotpool acquire tank|healer [level]` / `status` / `release <name>` (SOAP-reachable
   GM console commands): reserves an offline character from the existing upstream AddClass bot pool
   (`account_type=2`, ~500 idle characters), logs it in via the masterless `AddPlayerBot(guid, 0)`
@@ -41,7 +32,7 @@ identities, independent of the general bot population and of any human staying l
   13-argument constructor or its lifecycle ownership wrong and crash the whole worldserver), and
   adopting AddClass bots under a live player's own account (ties the bot's uptime to that player
   staying logged in - the opposite of "unattended").
-- **Phase 2 same day: a `Dps` role** (`.playerbots testbotpool acquire dps <class> [level]`,
+- **A `Dps` role** (`.playerbots testbotpool acquire dps <class> [level]`,
   any of the ten playable classes) alongside Tank/Healer, enabling a full 5-bot party
   (Tank + Healer + 3 Dps) built entirely on demand. No talent spec is forced for Dps (any spec is
   valid DPS), but a requested class with a known CC spell is verified to actually know it before
@@ -49,6 +40,12 @@ identities, independent of the general bot population and of any human staying l
   (Warlock/Druid/Rogue/Hunter) are talent- or ability-gated in ways not yet independently verified
   (see ADR-003). Verified live: a full 5-bot party (Warrior/Priest/Mage/Rogue/Hunter) acquired in
   one sequence, all five `Ready`.
+
+### Changed
+- `RunTestParty` builds each `Group` directly (`Group::Create()`+`GroupMgr::AddGroup()`), teleports
+  every member to the route's first walkable step (`Player::TeleportTo()`), and calls
+  `DungeonLead::StartSession()` itself, instead of queuing bots through LFG and waiting for
+  `CanaryTick()` to notice the resulting match - see ADR-003 for why LFG was dropped.
 
 ### Fixed
 - **`Ready` verification was flaky for Healer** - caught live, not assumed: the same character,
@@ -88,6 +85,11 @@ identities, independent of the general bot population and of any human staying l
   `DungeonRouteMgr` considers active, for as long as it stays active. Self-heals regardless of how
   long the external reset takes to land, with no arbitrary timeout to get wrong.
 
+## [0.7.0] - 2026-09-13
+
+L1 (test & observability platform) work, per the architecture roadmap - starting with the parts
+that don't need a running worldserver.
+
 ### Added
 - `startdungeon status`: read-only, no effect on the run - reports current run id, dungeon, step,
   outcome (with domain/reason if `Partial`), paused/debug/test-mode flags, on demand. Part of L1.1/
@@ -101,19 +103,6 @@ identities, independent of the general bot population and of any human staying l
   verified for names with more than one candidate in the world DB (Wailing Caverns' Lady Anacondra
   has several) - caught by diffing against the committed file before it was ever pushed, reverted,
   and redone the safe way.
-
-### Changed
-- **`DungeonRouteStep::kind` is now a real `enum class DungeonRouteKind`, not a free-form
-  `std::string`.** The DB column itself is untouched (still `VARCHAR`, parsed once at `Load()`);
-  a typo there used to silently become a non-walkable, non-mandatory step with zero diagnostic -
-  now it's `Unknown`, which is never walkable/mandatory *and* logs a `LOG_ERROR` naming the exact
-  lfg_id/step/boss at load time. `tools/validate_routes.py` already catches this ahead of time in
-  CI; this is the runtime-side backstop for anything that slips through anyway.
-
-L1 (test & observability platform) work, per the architecture roadmap - starting with the parts
-that don't need a running worldserver.
-
-### Added
 - `tools/validate_routes.py` (L1.2, T0 fast validation): checks `data/dungeon_routes.csv` against
   `data/lfg_dungeons.tsv` in well under a second - unknown/invalid lfg_id, map/difficulty mismatch,
   invalid `kind`, duplicate steps, non-finite coordinates, and the single most valuable check: a
@@ -144,6 +133,14 @@ that don't need a running worldserver.
   report field would be exactly the "new recovery behavior added only to support telemetry" the
   roadmap says not to do; the report says so explicitly rather than implying a false "0".
 
+### Changed
+- **`DungeonRouteStep::kind` is now a real `enum class DungeonRouteKind`, not a free-form
+  `std::string`.** The DB column itself is untouched (still `VARCHAR`, parsed once at `Load()`);
+  a typo there used to silently become a non-walkable, non-mandatory step with zero diagnostic -
+  now it's `Unknown`, which is never walkable/mandatory *and* logs a `LOG_ERROR` naming the exact
+  lfg_id/step/boss at load time. `tools/validate_routes.py` already catches this ahead of time in
+  CI; this is the runtime-side backstop for anything that slips through anyway.
+
 ### Fixed
 - **`GroupTooSpread` gave no indication of *which* bot it was waiting on.** Found during live
   testing: the leader correctly held position for several minutes because one bot was stuck on
@@ -151,6 +148,8 @@ that don't need a running worldserver.
   nothing at all (unlike `MasterTooFar`'s "We're waiting for you!"). Added `FindSpreadMember()` and
   a matching one-shot `We're waiting for <name> to catch up!` ping (re-sent if a different bot
   becomes the farthest-behind one), plus the name in the `waiting` CSV/log detail.
+
+## [0.6.0] - 2026-09-13
 
 AutoBot Canary, Stage 0/1 of the design reviewed in `docs/architecture/` - the first slice that
 actually runs, deliberately narrow (see that doc for the full staged plan; later stages are not
