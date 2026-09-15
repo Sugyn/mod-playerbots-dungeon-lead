@@ -197,6 +197,15 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   live runs today) and `StopDungChatShortcutAction` (manual "stopdungeon" from a human master) both
   now call `RecordRunSummary()` before `Stop()` erases state, matching the three sites already fixed
   earlier today. `DungeonLeadRuns.csv` now gets a row from every known way a session ends.
+- **DL-020 - the ~2s reconciliation loop mutated every follower's formation/strategy (and the
+  leader's own) on every pass, whether or not anything had drifted.** `ApplyLeaderFollowerStrategies`
+  already computed a per-follower wiped comparison to decide whether to *log* a restore, then called
+  `ChangeStrategy()`/`FormationValue::Load()` unconditionally anyway - not free upstream (they remove
+  and reinitialize an engine even on a no-op `+token`). Each mutation now only runs when its own
+  wiped flag is true; added the same missing check for the leader's own two `ChangeStrategy` calls
+  (mirrors `DungeonLead::IsOn()`). `startdungeon`'s own unconditional first application is untouched.
+  Verified live: the new leader check fired exactly once at session start (the expected reset), then
+  zero further restores over 7+ subsequent guard passes on a stable session.
 
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
