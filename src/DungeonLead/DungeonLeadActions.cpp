@@ -198,12 +198,16 @@ namespace
 
     // The actual desired strategy state for an active dungeon-lead session: followers on "leader"
     // formation with +follow/+cc, the leader itself on +dungeon lead/+grind/+cc/+mark rti.
-    // Idempotent by construction (ChangeStrategy's +/- deltas are no-ops when already applied), so
-    // this is safe to call repeatedly - both at "startdungeon" itself and from the reconciliation
-    // loop (GuardActiveSessions) that keeps reasserting it for as long as the session is active.
+    // Safe to call repeatedly - both at "startdungeon" itself and from the reconciliation loop
+    // (GuardActiveSessions) that keeps reasserting it for as long as the session is active - but
+    // NOT a free no-op upstream (see DL-020): ChangeStrategy()/FormationValue::Load() remove and
+    // reinitialize engines even when the desired state already matches, so this function only
+    // mutates what logWipeDetection's own comparison found actually wiped.
     // logWipeDetection: only meaningful when called from the reconciliation loop (GuardActiveSessions)
-    // - checks and logs, per bot, whether it actually needed fixing before reapplying, so a healed
-    // external reset is directly observable in the log instead of only inferable by elimination.
+    // - checks and logs, per bot, whether it actually needed fixing, and mutates ONLY the pieces
+    // (formation / follower strategy / leader strategy) that did, so a healed external reset is
+    // directly observable in the log instead of only inferable by elimination, and a stable session
+    // stops paying for engine rebuilds it doesn't need every ~2s.
     // Off at "startdungeon" itself, where everyone is expected to need the full application anyway.
     void ApplyLeaderFollowerStrategies(PlayerbotAI* botAI, Group* group, bool logWipeDetection = false)
     {
@@ -219,26 +223,50 @@ namespace
 
             FormationValue* fv = dynamic_cast<FormationValue*>(
                 memberAI->GetAiObjectContext()->GetValue<Formation*>("formation"));
-            if (logWipeDetection)
+            // 2026-09-15 (independent architecture review DL-020 - "periodic mutation, not
+            // idempotent repair"): logWipeDetection already computed formationWiped/strategyWiped
+            // to decide whether to LOG a restore, then reapplied both unconditionally regardless of
+            // the answer - ChangeStrategy()/fv->Load() are not free no-ops upstream (they remove and
+            // reinitialize engines even when nothing actually changed), so a stable session with N
+            // active parties was rewriting every follower's formation and strategy every ~2s for no
+            // reason. Skip each mutation when its own wiped flag is false - startdungeon itself
+            // (logWipeDetection=false) is untouched, everyone there is expected to need the full
+            // apply anyway.
+            bool formationWiped = fv && fv->Save() != "leader";
+            bool strategyWiped = !memberAI->HasStrategy("follow", BOT_STATE_NON_COMBAT);
+            if (logWipeDetection && (formationWiped || strategyWiped))
             {
-                bool formationWiped = fv && fv->Save() != "leader";
-                bool strategyWiped = !memberAI->HasStrategy("follow", BOT_STATE_NON_COMBAT);
-                if (formationWiped || strategyWiped)
-                {
-                    LOG_INFO("playerbots.dungeonlead",
-                             "[DungeonLead] follower {} was missing formation/strategy (external AI "
-                             "reset) - reconciliation loop restoring it (formation={} strategy={})",
-                             member->GetName(), formationWiped, strategyWiped);
-                    DungeonLead::RecordEvent(botAI, "strategy_restored", "follower=" + member->GetName());
-                }
+                LOG_INFO("playerbots.dungeonlead",
+                         "[DungeonLead] follower {} was missing formation/strategy (external AI "
+                         "reset) - reconciliation loop restoring it (formation={} strategy={})",
+                         member->GetName(), formationWiped, strategyWiped);
+                DungeonLead::RecordEvent(botAI, "strategy_restored", "follower=" + member->GetName());
             }
-            if (fv)
+            if (fv && (!logWipeDetection || formationWiped))
                 fv->Load("leader");
-            memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
-            memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
+            if (!logWipeDetection || strategyWiped)
+            {
+                memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
+                memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
+            }
         }
-        botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
-        botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
+        // Same DL-020 guard for the leader's own two lines: only reassert if the reconciliation
+        // loop actually found it missing. HasStrategy("dungeon lead", ...) mirrors DungeonLead::IsOn
+        // exactly (see its declaration) - the leader's non-combat strategy is the canonical "is this
+        // session actually active" signal.
+        bool leaderStrategyWiped = !botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT);
+        if (logWipeDetection && leaderStrategyWiped)
+        {
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead] leader {} was missing its own strategy (external AI reset) - "
+                     "reconciliation loop restoring it", bot->GetName());
+            DungeonLead::RecordEvent(botAI, "strategy_restored", "leader=" + std::string(bot->GetName()));
+        }
+        if (!logWipeDetection || leaderStrategyWiped)
+        {
+            botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
+            botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
+        }
     }
 
     // Equivalent to PositionsResetAction::ResetReturnPosition()/ResetStayPosition() (see
