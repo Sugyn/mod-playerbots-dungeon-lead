@@ -1175,8 +1175,12 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     while (st.stepIndex < route->steps.size())
     {
         DungeonRouteStep const& s = route->steps[st.stepIndex];
+        // 2026-09-15 (DL-011): !s.IsPathAnchor() added to the SkipOptional condition - see
+        // DungeonRouteStep::IsPathAnchor()'s comment. A pure navigation waypoint is never
+        // "optional content" in the sense SkipOptional means (skip a boss/mob nobody needs to
+        // fight), so it must not be deletable by that same switch.
         bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
-                    (s.kind == DungeonRouteKind::Optional && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
+                    (s.kind == DungeonRouteKind::Optional && !s.IsPathAnchor() && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
                     (s.entry && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;

@@ -59,6 +59,17 @@ struct DungeonRouteStep
     // need this one line updated, not every place that currently checks it. See the architecture
     // roadmap's L0 closeout notes.
     bool IsMandatory() const { return kind == DungeonRouteKind::Boss; }
+
+    // 2026-09-15 (independent architecture review DL-011 - "navigation identity, execution, and
+    // observation are conflated"): entry=1 is AzerothCore's universal "Waypoint (Only GM can see
+    // it)" creature template (confirmed against the live creature_template table, not just this
+    // dungeon's data) - never real gameplay content, only ever used here as a dummy entry for a
+    // pure navigation anchor (Wailing Caverns' six bridge waypoints, kind=Optional since there was
+    // no better-fitting kind when they were added). Without this distinction,
+    // AiPlayerbot.DungeonLead.SkipOptional=1 would silently delete the anchors some routes need
+    // just to be walkable at all, reintroducing the direct NOPATH hops they exist to prevent - see
+    // the skip condition in DungeonLeadNextAction::Execute.
+    bool IsPathAnchor() const { return entry == 1; }
 };
 
 // Run-level outcome, shared vocabulary between the runtime and (eventually) an automated test
