@@ -412,12 +412,18 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
             dps.push_back(c);
     }
 
-    size_t parties = std::min(tanks.size(), heals.size());
+    // 2026-09-15 (independent architecture review, DL-004 - "direct targeted tests do not prove
+    // the requested scenario"): this used to be min(tanks, heals) with no dps floor - the per-party
+    // loop below hands out up to 3 dps per party from one shared cursor, so once dps ran out mid-
+    // loop, later "parties" silently formed with 2-4 members instead of 5 and were started anyway.
+    // A short/incomplete party is not the scenario a caller asked for; require dps/3 too so every
+    // party this function forms actually has 1 tank + 1 healer + 3 dps, never fewer.
+    size_t parties = std::min({tanks.size(), heals.size(), dps.size() / 3});
     if (!parties)
     {
-        return "Not enough idle tank+healer leases to form even one party (tanks=" +
-               std::to_string(tanks.size()) + ", healers=" + std::to_string(heals.size()) +
-               "). Acquire more first.";
+        return "Not enough idle tank+healer+dps(x3) leases to form even one full 5-bot party "
+               "(tanks=" + std::to_string(tanks.size()) + ", healers=" + std::to_string(heals.size()) +
+               ", dps=" + std::to_string(dps.size()) + "). Acquire more first.";
     }
 
     // Same shared budget CanaryTick()/TriggerTargetedTest() respect (AiPlayerbot.DungeonLead.
