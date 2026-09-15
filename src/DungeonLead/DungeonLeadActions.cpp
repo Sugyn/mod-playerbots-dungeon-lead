@@ -1558,6 +1558,10 @@ bool DungeonLeadStopAction::Execute(Event /*event*/)
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STOP - auto (left instance), now map={} instance={} pos=({:.1f},{:.1f},{:.1f})",
              bot->GetName(), bot->GetMapId(), bot->GetInstanceId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
     DungeonLead::RecordEvent(botAI, "stop", "auto (left instance)");
+    // 2026-09-15 (DL-006, closing the 4th of 5 known Stop() call sites): this is the single most
+    // common exit path in practice - watching live runs today, most ended here, not via route
+    // completion or a canary timeout - and it had no DungeonLeadRuns.csv row until now.
+    DungeonLead::RecordRunSummary(botAI, "left_instance");
     DungeonLead::Stop(botAI, true);
     botAI->TellMasterNoFacing("Dungeon lead: OFF (not in a 5-man dungeon anymore)");
     return true;
@@ -1682,6 +1686,10 @@ bool StopDungChatShortcutAction::Execute(Event /*event*/)
     // log BEFORE Stop() - see DungeonLeadStopAction::Execute
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STOP by master", bot->GetName());
     DungeonLead::RecordEvent(botAI, "stop", "");
+    // 2026-09-15 (DL-006, closing the 5th and last known Stop() call site): a human explicitly
+    // typing "stopdungeon" is a deliberate, meaningful end to a run too - it should read the same
+    // in DungeonLeadRuns.csv as any other terminal reason, not look like the run never ended.
+    DungeonLead::RecordRunSummary(botAI, "stopdungeon_by_master");
     DungeonLead::Stop(botAI, true);
     ResetReturnPosition();
     ResetStayPosition();
