@@ -1229,6 +1229,13 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                                       std::to_string(st.skippedSteps.size()) + " skipped");
             DungeonLead::RecordRunSummary(botAI, "route_end");
 
+            // 2026-09-15 (independent architecture review DL-018 - "a route-complete test clears
+            // testMode but leaves the session active"): capture what Stop() below will erase before
+            // it erases it - same reasoning as RecordRunSummary/RecordEvent needing to run before
+            // Stop() elsewhere in this file.
+            bool const wasTestMode = st.testMode;
+            DungeonLeadSessionOrigin const origin = st.origin;
+
             // "startdungeon test" (L1.3): report a structured RunResult at the terminal outcome,
             // then clear test mode so any further play this session isn't mislabeled as a test.
             // One line, not several - TellMasterNoFacing sends a single WoW chat packet, and this
@@ -1254,6 +1261,21 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                          bot->GetName(), st.runId, ToString(st.outcome), durationMs);
                 st.testMode = false;
             }
+
+            // 2026-09-15 (DL-018): every AutoCanary session (organic or targeted) is always
+            // testMode=true (see StartSession() call sites in DungeonLeadCanary.cpp/
+            // DungeonTestBotPool.cpp), so wasTestMode alone already covers "this was a canary run" -
+            // stopping here is exactly the fix the review names: without it, a canary session that
+            // finished its route stayed active, kept its CanaryMaxConcurrent slot occupied, and
+            // later got force-stopped by the unrelated timeout supervisor, which then recorded
+            // "canary_timeout" as the terminal reason for a run that had actually already completed.
+            // A non-test "startdungeon" from a real human (origin==Manual, wasTestMode==false) is
+            // left running - a player who typed that command may still want the group held/formed
+            // even after the pathed content runs out (farming, waiting on something the route
+            // doesn't model), and auto-stopping their session out from under them was never the
+            // problem this finding described.
+            if (wasTestMode || origin != DungeonLeadSessionOrigin::Manual)
+                DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
         }
         return false;
     }
