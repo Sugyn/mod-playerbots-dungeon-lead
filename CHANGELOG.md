@@ -207,6 +207,19 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   Verified live: the new leader check fired exactly once at session start (the expected reset), then
   zero further restores over 7+ subsequent guard passes on a stable session.
 
+- **DL-018 - a canary run that finished its route stayed active until an unrelated timeout
+  mislabeled it.** `DungeonLeadNextAction::Execute`'s terminal-outcome block already recorded the
+  right outcome and reported it, but never called `Stop()` - the session kept its
+  `CanaryMaxConcurrent` slot, kept `GuardActiveSessions` reasserting its strategies, and kept its
+  group/leases held until the canary timeout supervisor eventually force-stopped it and recorded
+  `terminal_reason=canary_timeout` for a run that had already actually finished. Now calls
+  `Stop(botAI, true)` whenever the session was `testMode` (every `AutoCanary` session, organic or
+  targeted, always is) or its origin wasn't `Manual` - a genuine non-test `startdungeon` from a
+  human player is left running, since they may still want the group held after the route's data
+  runs out. Verified by code review and build/deploy; not live-triggered end to end - reaching a
+  genuine full route completion (rather than the timeout or a `skip_stuck`) took longer than this
+  session's testing window allowed (see the Cobrahn finding above).
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
