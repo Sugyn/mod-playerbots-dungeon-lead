@@ -157,14 +157,23 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   `GetLeaderGUID()` to actually match before committing state - two tanks racing for the same
   group remains open.
 
+- **DL-006 (extended) - `ReleaseTestBot()` was a third silent exit path.** Route completion and
+  canary timeout already wrote a `DungeonLeadRuns.csv` row on Stop(); releasing a leased test-pool
+  tank mid-run - the normal way an operator reclaims a bot - didn't. Found live, by accident
+  (released a demo tank a moment before it could be watched, with no telemetry trail left behind).
+  Fixed and live-verified: `DungeonLeadRuns.csv` didn't exist anywhere on the server before this -
+  DL-006's original two paths were never live-triggered either - and this release wrote its
+  first-ever row.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
-cleanup running), DL-006 (structured `RunRecord`/exactly-once run summary with campaign/scenario
-identity), the rest of DL-004 (role/level/gear qualification per bot, shared-difficulty binding,
-consistent-instance postconditions before `StartSession`), the rest of DL-009 (atomic group-keyed
-claim/generation token, waiting for the world-thread leader change to actually land before
-committing session state), DL-008's long-term explicit finish/abort/drain policy on disable-mid-run
-remain open.
+cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
+identity; a bot that logs out/disconnects without going through `ReleaseTestBot()` or a route's own
+terminal state is still a silent exit path), the rest of DL-004 (role/level/gear qualification per
+bot, shared-difficulty binding, consistent-instance postconditions before `StartSession`), the rest
+of DL-009 (atomic group-keyed claim/generation token, waiting for the world-thread leader change to
+actually land before committing session state), DL-008's long-term explicit finish/abort/drain
+policy on disable-mid-run remain open.
 
 ## [0.8.0] - 2026-09-13
 
