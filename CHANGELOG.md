@@ -165,15 +165,32 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   DL-006's original two paths were never live-triggered either - and this release wrote its
   first-ever row.
 
+- **DL-004 (extended) - a dead party member was silently left behind.** Found live, watching a run
+  with the user: a leased healer died en route to the dungeon entrance (open-world mobs) before LFG
+  teleported the group in; LFG drops a dead character from the teleport without erroring, so the
+  tank and three dps ran the whole instance a healer short with no signal anywhere that the group
+  was incomplete. `RunTestParty()`'s candidate filter now excludes `!bot->IsAlive()` the same way it
+  already excluded a grouped bot.
+- **Live full-length run (2026-09-15, watched with the user, terminated by DL-008's 45-minute
+  timeout, not a crash or hang)**: exposed a real navigation gap the pathcheck-only verification
+  process didn't catch - the bot's live movement AI got stuck approaching/returning from Lord
+  Cobrahn's dead-end bridge (`stuckAttempts` climbing, `skip_stuck` eventually firing) even though
+  point-to-point `pathcheck` had confirmed the same segment walkable. `DungeonLeadRuns.csv` recorded
+  it correctly: `outcome=partial, failure_domain=navigation, failure_reason=path_failed,
+  skipped_steps=7`. Not yet fixed - pathcheck verifying a graph is walkable turns out not to
+  guarantee the live pathing AI executes it reliably under real (combat-interrupted) conditions;
+  needs its own investigation, tracked loosely under DL-011 (navigation identity/execution split).
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
 identity; a bot that logs out/disconnects without going through `ReleaseTestBot()` or a route's own
 terminal state is still a silent exit path), the rest of DL-004 (role/level/gear qualification per
-bot, shared-difficulty binding, consistent-instance postconditions before `StartSession`), the rest
-of DL-009 (atomic group-keyed claim/generation token, waiting for the world-thread leader change to
-actually land before committing session state), DL-008's long-term explicit finish/abort/drain
-policy on disable-mid-run remain open.
+bot beyond alive/dead, shared-difficulty binding, consistent-instance postconditions before
+`StartSession`), the rest of DL-009 (atomic group-keyed claim/generation token, waiting for the
+world-thread leader change to actually land before committing session state), DL-008's long-term
+explicit finish/abort/drain policy on disable-mid-run, and the live-observed Cobrahn navigation
+failure above remain open.
 
 ## [0.8.0] - 2026-09-13
 
