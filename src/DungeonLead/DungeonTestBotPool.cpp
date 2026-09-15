@@ -518,7 +518,16 @@ std::string DungeonLead::ReleaseTestBot(std::string const& botName)
     {
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
         if (botAI && DungeonLead::IsOn(botAI))
+        {
+            // 2026-09-15 (independent architecture review DL-006, extended past its original two
+            // wired paths after live use exposed the gap directly): releasing a leased tank mid-run
+            // - the normal way an operator reclaims a test bot - called Stop() same as every other
+            // exit path, but unlike route completion and canary timeout, this one never wrote a
+            // DungeonLeadRuns.csv row. A run ended by release looked, from the telemetry alone,
+            // like it never ended at all.
+            DungeonLead::RecordRunSummary(botAI, "test_pool_released");
             DungeonLead::Stop(botAI, /*giveLeaderBack*/ false);  // no master to give it back to
+        }
         sRandomPlayerbotMgr.LogoutPlayerBot(it->guid);
     }
 
