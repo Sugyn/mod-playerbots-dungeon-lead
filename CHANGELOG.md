@@ -112,6 +112,11 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
 - **DL-003 - route completion could be a zero-work false positive.** A route with no `boss`-kind
   step at all (14 of 96 configured routes) reported Complete having done zero movement or combat.
   Downgraded to `Blocked`/`UnsupportedEvent` when a route has no mandatory objective to begin with.
+- **DL-006 (partial) - telemetry couldn't yield an authoritative run result.** `run_id` restarted
+  at 1 every worldserver restart while the CSV itself never truncates, so two different processes'
+  run 1 were indistinguishable - now seeded from process start time. New `DungeonLeadRuns.csv`
+  writes one row per run at its terminal outcome (route completion and canary timeout so far, not
+  every exit path yet) instead of requiring event-stream reconstruction.
 - **DL-001 (containment, not a root-cause fix) - a live SIGSEGV was reliably reproduced** by
   teleporting a bot with active followers cross-map (see the SEGV known-limitation note above).
   `tpbot`/`pathcheckfrom` now refuse that specific scenario rather than crashing the server.
