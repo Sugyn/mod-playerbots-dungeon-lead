@@ -126,10 +126,26 @@ def main():
             if not math.isfinite(v):
                 errors.append(f"{loc}: {name} does not parse as a finite number")
 
-        if any_unresolved and not has_position:
+        if kind == "heroic_only" and not has_position:
+            # 2026-09-15 (independent architecture review DL-021 - "heroic-only objectives are
+            # accepted but permanently inert"): unlike a genuinely optional boss (fine to be
+            # unresolved - nobody claimed it works), a heroic_only row exists specifically to
+            # represent supported heroic content. resolve_routes.py only resolves kind in
+            # (boss, optional, event) - heroic_only was never in that list - so every heroic_only
+            # row is unresolved by construction today, and IsWalkable() silently treats it as "not
+            # walkable" at runtime: it shows up in coverage/route-length reports but can never
+            # actually be navigated to or verified. Surfaced as its own warning (not folded into
+            # the general any_unresolved/has_position pass-through below) so this doesn't read as
+            # the same "fine, expected" case as a real optional gap.
+            warnings.append(
+                f"{loc}: heroic_only step has no resolved position - resolve_routes.py doesn't "
+                f"resolve this kind yet (see DL-021), so this row is silently inert at runtime "
+                f"despite counting toward this dungeon's reported route coverage"
+            )
+        elif any_unresolved and not has_position:
             # legitimate and already covered by the boss-mandatory check above if it matters;
-            # for optional/event/heroic_only this is just "not walkable", which is fine and
-            # expected (see 'source=script' below) - not worth a second warning of its own
+            # for optional/event this is just "not walkable", which is fine and expected (see
+            # 'source=script' below) - not worth a second warning of its own
             pass
         elif has_position and (xv == 0 or yv == 0 or zv == 0) and r.get("source") == "spawn":
             # NOT the same as "no position" (HasPosition() only excludes all-three-zero), but a
