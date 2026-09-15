@@ -23,6 +23,7 @@
 #include "Timer.h"
 
 #include <algorithm>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -37,6 +38,15 @@ namespace
         DungeonLead::TestBotLeaseState state;
         uint32 stateTs;        // getMSTime() of the last state transition - for the login timeout
         uint32 targetLevel;
+        uint32 accountId = 0;  // 2026-09-15 (independent architecture review DL-005/DL-019): an
+                                // AddClass account owns ~10 characters (one per class), and
+                                // AzerothCore's AccountInstancesPerHour throttle is counted per
+                                // ACCOUNT, not per character - acquiring several characters that
+                                // happen to share an account concentrates instance-entry load onto
+                                // that one account's budget instead of spreading it, which is
+                                // exactly what silently caused today's "left instance" mystery
+                                // (see HISTORY.md 2026-09-15). AcquireBot() now prefers a candidate
+                                // whose account isn't already represented among active leases.
 
         // 2026-09-15: some party members teleported by RunTestParty() were left sitting on map 1
         // ("some bots stay outside, I had to /summon them" - reported very early in this project),
@@ -205,7 +215,7 @@ namespace
         } while (accIds->NextRow());
 
         QueryResult chars = CharacterDatabase.Query(
-            "SELECT guid, name FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 20",
+            "SELECT guid, name, account FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 20",
             classId, idList.str());
         if (!chars)
         {
@@ -213,26 +223,45 @@ namespace
             return false;
         }
 
+        struct Candidate { ObjectGuid guid; std::string name; uint32 accountId; };
+        std::vector<Candidate> candidates;
         do
         {
             Field* f = chars->Fetch();
-            uint32 const lowGuid = f[0].Get<uint32>();
-            std::string const name = f[1].Get<std::string>();
-            ObjectGuid const guid = ObjectGuid::Create<HighGuid::Player>(lowGuid);
-
-            bool const alreadyLeased = std::any_of(g_leases.begin(), g_leases.end(),
-                [&](TestBotLease const& l) { return l.guid == guid; });
-            if (alreadyLeased)
-                continue;
-
-            sRandomPlayerbotMgr.AddPlayerBot(guid, 0);
-            g_leases.push_back({guid, name, role, classId, DungeonLead::TestBotLeaseState::LoggingIn,
-                                 getMSTime(), targetLevel});
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] acquiring {} as {} (class {}, target level {})",
-                     name, RoleName(role), classId, targetLevel);
-            outMessage = "Acquiring " + name + " (" + RoleName(role) + ") - logging in, check status shortly";
-            return true;
+            candidates.push_back({ObjectGuid::Create<HighGuid::Player>(f[0].Get<uint32>()),
+                                   f[1].Get<std::string>(), f[2].Get<uint32>()});
         } while (chars->NextRow());
+
+        std::set<uint32> leasedAccounts;
+        for (TestBotLease const& l : g_leases)
+            leasedAccounts.insert(l.accountId);
+
+        // Two passes: first only candidates whose account isn't already leased (spreads
+        // AccountInstancesPerHour load across accounts - see the struct comment on accountId),
+        // then fall back to any offline candidate if every account among the first 20 rows is
+        // already in use. Never refuse an acquisition just to keep the spread - degrade gracefully.
+        for (bool requireFreshAccount : {true, false})
+        {
+            for (Candidate const& c : candidates)
+            {
+                bool const alreadyLeased = std::any_of(g_leases.begin(), g_leases.end(),
+                    [&](TestBotLease const& l) { return l.guid == c.guid; });
+                if (alreadyLeased)
+                    continue;
+                if (requireFreshAccount && leasedAccounts.count(c.accountId))
+                    continue;
+
+                sRandomPlayerbotMgr.AddPlayerBot(c.guid, 0);
+                g_leases.push_back({c.guid, c.name, role, classId, DungeonLead::TestBotLeaseState::LoggingIn,
+                                     getMSTime(), targetLevel, c.accountId});
+                LOG_INFO("playerbots.dungeonlead",
+                         "[DungeonLead][TestBotPool] acquiring {} as {} (class {}, target level {}, account {}{})",
+                         c.name, RoleName(role), classId, targetLevel, c.accountId,
+                         requireFreshAccount ? "" : " - REUSED, no fresh account left in this batch");
+                outMessage = "Acquiring " + c.name + " (" + RoleName(role) + ") - logging in, check status shortly";
+                return true;
+            }
+        }
 
         outMessage = "All offline AddClass characters of that class are already leased";
         return false;
