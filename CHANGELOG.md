@@ -220,6 +220,21 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   genuine full route completion (rather than the timeout or a `skip_stuck`) took longer than this
   session's testing window allowed (see the Cobrahn finding above).
 
+- **DL-016 (minimal fix) - a stuck objective whose target stayed alive waited forever.** Confirmed
+  live: watching tonight's full-length run reach Wailing Caverns' Disciple of Naralex (a friendly
+  gossip NPC whose escort/Mutanus chain this module has no `INTERACT` executor for - the review's
+  DL-016 finding exactly), "reached" fired and then nothing - the only give-up path required the
+  target to be *not found*, and a friendly NPC that never dies is never not-found either. The
+  objective silently occupied the session until the unrelated canary timeout eventually stopped it
+  and mislabeled a stuck objective as a timed-out run. The give-up timeout (`StuckSeconds`, 45s
+  default) now fires whether the target vanished or is simply still alive and not progressing -
+  distinguished in the log/telemetry as `stuck_alive` vs `not_found`, both counting as a mandatory-
+  objective failure. Not the review's full fix (no `INTERACT`/`ESCORT` executor exists - this still
+  can't walk through the gossip chain, it just now gives up and reports Partial within seconds
+  instead of up to 45 minutes). Can't fire mid-fight against a live hostile boss -
+  `DungeonLeadNextAction::isUseful()` already returns false while `bot->IsInCombat()` - verified at
+  the source level; not independently stress-tested against a real pre-pull delay near the 45s edge.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
