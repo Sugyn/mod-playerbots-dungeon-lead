@@ -181,12 +181,18 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   guarantee the live pathing AI executes it reliably under real (combat-interrupted) conditions;
   needs its own investigation, tracked loosely under DL-011 (navigation identity/execution split).
 
+- **DL-006 (extended) - the last two of five known `Stop()` call sites now record a run summary
+  too.** `DungeonLeadStopAction` (auto "left instance" - the single most common exit path watching
+  live runs today) and `StopDungChatShortcutAction` (manual "stopdungeon" from a human master) both
+  now call `RecordRunSummary()` before `Stop()` erases state, matching the three sites already fixed
+  earlier today. `DungeonLeadRuns.csv` now gets a row from every known way a session ends.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
-identity; a bot that logs out/disconnects without going through `ReleaseTestBot()` or a route's own
-terminal state is still a silent exit path), the rest of DL-004 (role/level/gear qualification per
-bot beyond alive/dead, shared-difficulty binding, consistent-instance postconditions before
+identity - every *known* exit path is covered now, but a bot that hard-disconnects without any of
+them running is still unaccounted for), the rest of DL-004 (role/level/gear qualification per bot
+beyond alive/dead, shared-difficulty binding, consistent-instance postconditions before
 `StartSession`), the rest of DL-009 (atomic group-keyed claim/generation token, waiting for the
 world-thread leader change to actually land before committing session state), DL-008's long-term
 explicit finish/abort/drain policy on disable-mid-run, and the live-observed Cobrahn navigation
