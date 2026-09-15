@@ -140,12 +140,21 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   *size* - role/level/gear qualification, shared-difficulty binding, and consistent-instance
   postconditions are still open (see below).
 
+- **DL-008 - disabling canary creation also disabled safety supervision of already-active canary
+  sessions.** `CanaryTick()` returned before its real-player-join/timeout safety pass ever ran
+  whenever `CanaryEnabled` was false (including the documented default). Split into
+  `CanarySupervisorTick()` (unconditional) and `MaybeStartCanary()` (still flag-gated). Verified
+  by code review and build/deploy; a live attempt (short `CanaryTimeoutMinutes`, forced
+  `canarytest`) didn't converge - the party sat queued >10 minutes without an LFG match under the
+  current bot-pool load - so not live-triggered end to end.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), DL-006 (structured `RunRecord`/exactly-once run summary with campaign/scenario
 identity), the rest of DL-004 (role/level/gear qualification per bot, shared-difficulty binding,
 consistent-instance postconditions before `StartSession`), DL-009 (group-scoped session ownership
-instead of per-tank-GUID) remain open.
+instead of per-tank-GUID), DL-008's long-term explicit finish/abort/drain policy on disable-mid-run
+remain open.
 
 ## [0.8.0] - 2026-09-13
 
