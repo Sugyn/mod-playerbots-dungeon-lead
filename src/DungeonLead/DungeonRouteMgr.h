@@ -153,6 +153,12 @@ struct DungeonLeadState
     uint32 stuckTs = 0;
     uint32 stuckAttempts = 0;
     float bestDist = 0.f;
+    uint32 lastPathLogTs = 0;  // throttle for the "pathing" telemetry line in MoveRouteTo() -
+                                // one line per ~3s per bot, position/target/distance/path-type,
+                                // sent to BOTH LOG_INFO and RecordEvent (CSV -> panel) so the
+                                // actual walking trace is visible in both places, not just
+                                // milestone events (reached/stuck/mark). Added 2026-09-13 - see
+                                // ADR/CHANGELOG: neither the log nor the panel had this before.
     bool noRouteTold = false;
     bool doneTold = false;
     uint32 lastWaitLogTs = 0;
@@ -176,6 +182,9 @@ struct DungeonLeadState
                                  // reconstructable from the CSV's own "start" row timestamp)
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
     uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
+    bool ccLandedTold = false;  // whether "cc_landed" has already fired for the current ccGuid -
+                                 // logged once per landing, not every tick it stays crowd
+                                 // controlled. Reset alongside ccGuid.
     uint32 ccMarkedAbsoluteTs = 0;  // when it was FIRST marked - never reset (unlike ccMarkedTs,
                                      // which holds open while waiting for the target to enter
                                      // combat/for CC to land). Absolute ceiling: a target that
@@ -207,6 +216,7 @@ struct DungeonLeadState
         stuckTs = 0;
         stuckAttempts = 0;
         bestDist = 0.f;
+        lastPathLogTs = 0;
         noRouteTold = false;
         doneTold = false;
         lastWaitLogTs = 0;
