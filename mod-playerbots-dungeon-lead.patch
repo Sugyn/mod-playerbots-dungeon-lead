@@ -145,10 +145,10 @@ index 55792aa5..efec9184 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..3dd4bd6b
+index 00000000..72f82ca2
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1590 @@
+@@ -0,0 +1,1626 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -830,12 +830,28 @@ index 00000000..3dd4bd6b
 +    ObjectGuid const ownedCc = st.ccGuid;
 +    ObjectGuid const ownedSkull = st.skullGuid;
 +    std::vector<DungeonLeadMemberSnapshot> const snapshots = st.memberSnapshots;
++    DungeonLeadMemberSnapshot const leaderSnap = st.leaderSnapshot;
++    bool const hasLeaderSnap = st.hasLeaderSnapshot;
 +
 +    // Full Reset() rather than just stripping "-dungeon lead,-grind"/"-mark rti": "startdungeon"
 +    // itself calls Reset() before adding its own strategies, so anything the leader had beyond
 +    // dungeon-lead's own additions (e.g. "+cc"/"+mark rti", also added to the leader's own combat
 +    // state at start) was never tracked and never got removed by the narrow -/- pair alone.
 +    botAI->Reset();
++
++    // 2026-09-15 (independent architecture review DL-002 - "Stop() does not turn Dungeon Lead
++    // off"): upstream Reset() alone does not reliably strip an active strategy back off, so
++    // IsOn() could still read true here despite the run being reported stopped. Restore the
++    // leader to its exact pre-"startdungeon" snapshot (same RestoreMember() path already used for
++    // every follower below) rather than trusting Reset()'s side effects, then verify the
++    // postcondition explicitly instead of assuming it.
++    if (hasLeaderSnap)
++        RestoreMember(botAI, leaderSnap);
++    if (DungeonLead::IsOn(botAI))
++        LOG_ERROR("playerbots.dungeonlead",
++                   "[DungeonLead] {} Stop() completed but IsOn() is still true (hasLeaderSnapshot={}) "
++                   "- dungeon lead did not actually turn off",
++                   bot->GetName(), hasLeaderSnap);
 +
 +    if (Group* group = bot->GetGroup())
 +    {
@@ -885,6 +901,19 @@ index 00000000..3dd4bd6b
 +{
 +    Player* bot = botAI->GetBot();
 +
++    // 2026-09-15 (independent architecture review DL-002): reject a start on a bot that is
++    // already leading a session instead of re-initializing over it - re-snapshotting a bot whose
++    // "current" strategies are already dungeon-lead's own would capture the WRONG baseline for
++    // Stop() to later restore to, silently corrupting the exact-restore guarantee this function
++    // otherwise provides. Caller must Stop() (or the run must terminate) before starting again.
++    if (DungeonLead::IsOn(botAI))
++    {
++        LOG_ERROR("playerbots.dungeonlead",
++                   "[DungeonLead] {} StartSession refused - already active (call Stop() first)",
++                   bot->GetName());
++        return false;
++    }
++
 +    // snapshot every follower's current formation/strategies BEFORE touching anything (and before
 +    // any leadership change below), so Stop() can put them back to what they *actually* had going
 +    // in, not to whatever an external reset leaves them at - see Stop() above.
@@ -900,6 +929,11 @@ index 00000000..3dd4bd6b
 +        snapshots.push_back(SnapshotMember(member, memberAI));
 +    }
 +
++    // Snapshot the leader's own pre-"startdungeon" state too, same as every follower above and for
++    // the same reason (see DungeonLeadState::leaderSnapshot) - taken here, before
++    // ApplyLeaderFollowerStrategies below makes its first change to the leader's own engine.
++    DungeonLeadMemberSnapshot const leaderSnap = SnapshotMember(bot, botAI);
++
 +    if (group->GetLeaderGUID() != bot->GetGUID())
 +    {
 +        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
@@ -913,6 +947,8 @@ index 00000000..3dd4bd6b
 +        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
 +        st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
 +        st.memberSnapshots = std::move(snapshots);
++        st.leaderSnapshot = leaderSnap;
++        st.hasLeaderSnapshot = true;
 +        st.runId = NextRunId();
 +        st.origin = origin;
 +        st.sessionStartTs = getMSTime();
@@ -2780,10 +2816,10 @@ index 00000000..c82996da
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..cc4c1e6e
+index 00000000..9898e888
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,293 @@
+@@ -0,0 +1,304 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2982,6 +3018,17 @@ index 00000000..cc4c1e6e
 +    bool paused = false;    // "startdungeon pause" / "startdungeon continue"
 +    bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
 +    std::vector<DungeonLeadMemberSnapshot> memberSnapshots;  // pre-"startdungeon" state, for exact restore
++
++    // 2026-09-15: the leader itself was never snapshotted - Stop() relied on botAI->Reset() alone
++    // to strip "dungeon lead" back off the leader's own engine, but a plain Reset() does not
++    // remove active strategies (see independent architecture review, DL-002: "Stop() does not
++    // turn Dungeon Lead off" - IsOn() could still read true after a reported stop). Captured the
++    // same way as memberSnapshots, before ApplyLeaderFollowerStrategies first touches the leader
++    // in StartSession(), so Stop() can restore the leader to its exact pre-"startdungeon" state via
++    // the same RestoreMember() helper already used for followers, instead of hoping Reset() side
++    // effects happen to cover it.
++    DungeonLeadMemberSnapshot leaderSnapshot;
++    bool hasLeaderSnapshot = false;
 +
 +    // "startdungeon test" (L1.3 first live smoke-test command): reports a structured RunResult
 +    // summary once the run reaches a terminal outcome, instead of just the normal chat lines.
@@ -3894,7 +3941,7 @@ index 769bfba8..cb702cb5 100644
      uint32 saveManaThreshold;
      AutoPartyBuffMode autoGreaterBlessings;
 diff --git a/src/Script/PlayerbotCommandScript.cpp b/src/Script/PlayerbotCommandScript.cpp
-index 3e73fda9..8e82614f 100644
+index 3e73fda9..29ab3fa3 100644
 --- a/src/Script/PlayerbotCommandScript.cpp
 +++ b/src/Script/PlayerbotCommandScript.cpp
 @@ -6,12 +6,22 @@
@@ -3945,7 +3992,7 @@ index 3e73fda9..8e82614f 100644
              {"debug", playerbotsDebugCommandTable},
              {"account", playerbotsAccountCommandTable},
          };
-@@ -58,6 +81,297 @@ public:
+@@ -58,6 +81,331 @@ public:
          return RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(handler, args);
      }
  
@@ -4058,9 +4105,35 @@ index 3e73fda9..8e82614f 100644
 +    // Player::TeleportTo() RunTestParty already uses for entry teleport), then runs the same
 +    // PathGenerator diagnostic as `pathcheck`. Console-only, GM-gated, no live PlayerbotAI path
 +    // touched - a one-off DB-hop verifier, not part of any production code path.
++    // 2026-09-15: a live SIGSEGV was reproduced deterministically by calling `tpbot` on a bot that
++    // was actively being followed by its party (gdb backtrace: TeleportTo -> RemovePlayerFromMap
++    // -> Unit::RemoveFromWorld -> Unit::RemoveAllFollowers -> crash dereferencing a stale
++    // AbstractFollower* in m_followingMe - see the independent architecture review's DL-001 and
++    // HISTORY.md 2026-09-15). The exact AzerothCore-core lifetime bug that lets a follower go
++    // stale is NOT fixed here - that needs real investigation this session didn't have time to
++    // finish safely. This is a containment fix: refuse to cross-map teleport a bot that currently
++    // has other live group members (a reasonable proxy for "might have active followers" without
++    // a public Unit::m_followingMe accessor), since that's the exact condition that crashed the
++    // server. `force=1` as a trailing argument bypasses this for a deliberate, accepted-risk case.
++    static bool RefuseIfMayHaveFollowers(ChatHandler* handler, Player* bot, bool force)
++    {
++        if (force)
++            return false;
++        Group* group = bot->GetGroup();
++        if (!group || group->GetMembersCount() <= 1)
++            return false;
++        handler->PSendSysMessage(
++            "Refusing to teleport {}: still in a {}-member group, which reproduced a live SIGSEGV "
++            "when done to a bot with active followers (see HISTORY.md 2026-09-15, DL-001). Stop "
++            "the Dungeon Lead session or remove this bot from its group first, or append 'force' "
++            "to override if you accept the crash risk.",
++            bot->GetName(), group->GetMembersCount());
++        return true;
++    }
++
 +    static bool HandlePathCheckFromCommand(ChatHandler* handler, char const* args)
 +    {
-+        char const* usage = "Usage: .playerbots pathcheckfrom <botName> <mapId> <srcX> <srcY> <srcZ> <destX> <destY> <destZ>";
++        char const* usage = "Usage: .playerbots pathcheckfrom <botName> <mapId> <srcX> <srcY> <srcZ> <destX> <destY> <destZ> [force]";
 +        if (!args || !*args)
 +        {
 +            handler->PSendSysMessage(usage);
@@ -4070,17 +4143,21 @@ index 3e73fda9..8e82614f 100644
 +        std::string botName;
 +        uint32 mapId = 0;
 +        float sx = 0.f, sy = 0.f, sz = 0.f, dx = 0.f, dy = 0.f, dz = 0.f;
++        std::string forceFlag;
 +        if (!(iss >> botName >> mapId >> sx >> sy >> sz >> dx >> dy >> dz))
 +        {
 +            handler->PSendSysMessage(usage);
 +            return true;
 +        }
++        iss >> forceFlag;
 +        Player* bot = ObjectAccessor::FindPlayerByName(botName);
 +        if (!bot)
 +        {
 +            handler->PSendSysMessage("No online player/bot named '{}'", botName);
 +            return true;
 +        }
++        if (RefuseIfMayHaveFollowers(handler, bot, forceFlag == "force"))
++            return true;
 +        bot->TeleportTo(mapId, sx, sy, sz, bot->GetOrientation());
 +        std::string const result = DungeonLead::DiagnosePath(bot, dx, dy, dz);
 +        handler->PSendSysMessage(result);
@@ -4096,7 +4173,7 @@ index 3e73fda9..8e82614f 100644
 +    // the now-correct current position. Console-only, GM-gated, diagnostic-only.
 +    static bool HandleTeleportBotCommand(ChatHandler* handler, char const* args)
 +    {
-+        char const* usage = "Usage: .playerbots tpbot <botName> <mapId> <x> <y> <z>";
++        char const* usage = "Usage: .playerbots tpbot <botName> <mapId> <x> <y> <z> [force]";
 +        if (!args || !*args)
 +        {
 +            handler->PSendSysMessage(usage);
@@ -4106,17 +4183,21 @@ index 3e73fda9..8e82614f 100644
 +        std::string botName;
 +        uint32 mapId = 0;
 +        float x = 0.f, y = 0.f, z = 0.f;
++        std::string forceFlag;
 +        if (!(iss >> botName >> mapId >> x >> y >> z))
 +        {
 +            handler->PSendSysMessage(usage);
 +            return true;
 +        }
++        iss >> forceFlag;
 +        Player* bot = ObjectAccessor::FindPlayerByName(botName);
 +        if (!bot)
 +        {
 +            handler->PSendSysMessage("No online player/bot named '{}'", botName);
 +            return true;
 +        }
++        if (RefuseIfMayHaveFollowers(handler, bot, forceFlag == "force"))
++            return true;
 +        bot->TeleportTo(mapId, x, y, z, bot->GetOrientation());
 +        handler->PSendSysMessage("Teleporting {} to map {} ({},{},{}) - wait a few seconds, then check with pathcheck", botName, mapId, x, y, z);
 +        return true;
