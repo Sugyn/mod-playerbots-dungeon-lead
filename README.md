@@ -184,7 +184,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 | path | content |
 |------|---------|
-| `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`b949b50b`) — 8 new files + 12 touched |
+| `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`b949b50b`) — 12 new files + 14 touched |
 | `src/DungeonLead/` | the new sources on their own (`src/Ai/Base/DungeonLead/` in the module) |
 | `sql/playerbots_dungeon_route.sql` | route table for the `acore_playerbots` database (408 steps, 96 LFD entries incl. heroics) |
 | `data/routes.tsv` | hand-authored boss order per LFD entry with source per dungeon (Classic-era wiki / Icy Veins Classic / Wowhead TBC) |
@@ -231,6 +231,36 @@ Notes:
   Only worth it if `git apply` genuinely won't work for you - e.g. your mod-playerbots checkout has
   drifted far enough from `b949b50b` (see Prerequisites) that the patch no longer applies cleanly;
   `.github/workflows/upstream-compat.yml` checks for exactly that weekly against upstream `master`.
+
+### Maintainer workflow: updating for a new mod-playerbots release
+
+`mod-playerbots-dungeon-lead.patch` is *generated*, not hand-written. Until 2026-09-15 it was
+produced by diffing a live mod-playerbots checkout's uncommitted working-tree changes against the
+pinned base commit - which meant "mod-playerbots ships a new commit" had no better answer than
+manually re-deriving that flat diff by hand, file by file. There was no git history to rebase.
+
+The actual source of truth is now a `dungeon-lead` branch, committed on top of the pinned base
+commit in a mod-playerbots checkout (not published to a public fork as of this writing - ask
+whoever last regenerated the patch for access to that checkout, or recreate the branch yourself
+from this repo's `src/DungeonLead/` + the patch's non-DungeonLead hunks applied by hand once).
+
+To pick up a new upstream mod-playerbots release:
+
+```sh
+cd modules/mod-playerbots          # the checkout that has the dungeon-lead branch
+git checkout dungeon-lead
+git fetch origin
+git rebase origin/master           # resolve any real conflicts here, with normal git tooling -
+                                    # this is the whole point: git's own 3-way merge on the 14
+                                    # touched files, instead of a flat patch silently going stale
+git diff origin/master..dungeon-lead > /path/to/dungeon-lead-repo/mod-playerbots-dungeon-lead.patch
+```
+
+Then, from that same checkout, re-sync this repo's standalone mirror (`src/DungeonLead/` here
+should always be byte-identical to `src/Ai/Base/DungeonLead/` in the checkout - diff them as part
+of the same update, don't just trust the patch), update the README's pinned-base-commit references
+and this table's file/line counts, run `tools/validate_routes.py`, and grep the regenerated patch
+for anything host/credential-specific before committing (see `CHANGELOG.md`'s existing practice).
 
 ### Configuration (all optional - sensible defaults, nothing here is required to install)
 
