@@ -197,6 +197,17 @@ struct DungeonLeadState
     bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
     std::vector<DungeonLeadMemberSnapshot> memberSnapshots;  // pre-"startdungeon" state, for exact restore
 
+    // 2026-09-15: the leader itself was never snapshotted - Stop() relied on botAI->Reset() alone
+    // to strip "dungeon lead" back off the leader's own engine, but a plain Reset() does not
+    // remove active strategies (see independent architecture review, DL-002: "Stop() does not
+    // turn Dungeon Lead off" - IsOn() could still read true after a reported stop). Captured the
+    // same way as memberSnapshots, before ApplyLeaderFollowerStrategies first touches the leader
+    // in StartSession(), so Stop() can restore the leader to its exact pre-"startdungeon" state via
+    // the same RestoreMember() helper already used for followers, instead of hoping Reset() side
+    // effects happen to cover it.
+    DungeonLeadMemberSnapshot leaderSnapshot;
+    bool hasLeaderSnapshot = false;
+
     // "startdungeon test" (L1.3 first live smoke-test command): reports a structured RunResult
     // summary once the run reaches a terminal outcome, instead of just the normal chat lines.
     // Deliberately does NOT track deaths/wipes yet - no death/wipe detection exists anywhere in

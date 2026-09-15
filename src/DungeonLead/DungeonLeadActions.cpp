@@ -679,12 +679,28 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
     ObjectGuid const ownedCc = st.ccGuid;
     ObjectGuid const ownedSkull = st.skullGuid;
     std::vector<DungeonLeadMemberSnapshot> const snapshots = st.memberSnapshots;
+    DungeonLeadMemberSnapshot const leaderSnap = st.leaderSnapshot;
+    bool const hasLeaderSnap = st.hasLeaderSnapshot;
 
     // Full Reset() rather than just stripping "-dungeon lead,-grind"/"-mark rti": "startdungeon"
     // itself calls Reset() before adding its own strategies, so anything the leader had beyond
     // dungeon-lead's own additions (e.g. "+cc"/"+mark rti", also added to the leader's own combat
     // state at start) was never tracked and never got removed by the narrow -/- pair alone.
     botAI->Reset();
+
+    // 2026-09-15 (independent architecture review DL-002 - "Stop() does not turn Dungeon Lead
+    // off"): upstream Reset() alone does not reliably strip an active strategy back off, so
+    // IsOn() could still read true here despite the run being reported stopped. Restore the
+    // leader to its exact pre-"startdungeon" snapshot (same RestoreMember() path already used for
+    // every follower below) rather than trusting Reset()'s side effects, then verify the
+    // postcondition explicitly instead of assuming it.
+    if (hasLeaderSnap)
+        RestoreMember(botAI, leaderSnap);
+    if (DungeonLead::IsOn(botAI))
+        LOG_ERROR("playerbots.dungeonlead",
+                   "[DungeonLead] {} Stop() completed but IsOn() is still true (hasLeaderSnapshot={}) "
+                   "- dungeon lead did not actually turn off",
+                   bot->GetName(), hasLeaderSnap);
 
     if (Group* group = bot->GetGroup())
     {
@@ -734,6 +750,19 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
 {
     Player* bot = botAI->GetBot();
 
+    // 2026-09-15 (independent architecture review DL-002): reject a start on a bot that is
+    // already leading a session instead of re-initializing over it - re-snapshotting a bot whose
+    // "current" strategies are already dungeon-lead's own would capture the WRONG baseline for
+    // Stop() to later restore to, silently corrupting the exact-restore guarantee this function
+    // otherwise provides. Caller must Stop() (or the run must terminate) before starting again.
+    if (DungeonLead::IsOn(botAI))
+    {
+        LOG_ERROR("playerbots.dungeonlead",
+                   "[DungeonLead] {} StartSession refused - already active (call Stop() first)",
+                   bot->GetName());
+        return false;
+    }
+
     // snapshot every follower's current formation/strategies BEFORE touching anything (and before
     // any leadership change below), so Stop() can put them back to what they *actually* had going
     // in, not to whatever an external reset leaves them at - see Stop() above.
@@ -749,6 +778,11 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
         snapshots.push_back(SnapshotMember(member, memberAI));
     }
 
+    // Snapshot the leader's own pre-"startdungeon" state too, same as every follower above and for
+    // the same reason (see DungeonLeadState::leaderSnapshot) - taken here, before
+    // ApplyLeaderFollowerStrategies below makes its first change to the leader's own engine.
+    DungeonLeadMemberSnapshot const leaderSnap = SnapshotMember(bot, botAI);
+
     if (group->GetLeaderGUID() != bot->GetGUID())
     {
         auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
@@ -762,6 +796,8 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
         DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
         st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
         st.memberSnapshots = std::move(snapshots);
+        st.leaderSnapshot = leaderSnap;
+        st.hasLeaderSnapshot = true;
         st.runId = NextRunId();
         st.origin = origin;
         st.sessionStartTs = getMSTime();
