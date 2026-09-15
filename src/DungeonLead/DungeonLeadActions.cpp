@@ -1337,15 +1337,32 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
             DungeonLead::RecordEvent(botAI, "reached", step.boss);
         }
-        else if (found.empty() &&
-                 GetMSTimeDiffToNow(st.arrivedTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+        else if (GetMSTimeDiffToNow(st.arrivedTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
         {
+            // 2026-09-15 (independent architecture review DL-016 - "required interactions and
+            // scripted events have no executor"): this used to require found.empty() too, so a
+            // step whose target is found and stays alive - a friendly NPC that needs a gossip
+            // interaction to progress (Wailing Caverns' Disciple of Naralex escort trigger is
+            // exactly this, confirmed live tonight) - never timed out here at all. already_dead
+            // above only fires once the target actually dies, which a gossip-only NPC never does,
+            // so the run just sat at "reached" indefinitely - not hung forever in practice only
+            // because the unrelated canary timeout (up to 45 minutes) eventually force-stopped the
+            // whole session and mislabeled a stuck objective as a timed-out run.
+            //
+            // Not DL-016's full fix - no INTERACT/ESCORT executor exists, so this still can't
+            // actually progress an interaction-gated objective - but it now gives up and reports
+            // Partial within the same dungeonLeadStuckSeconds window as every other stuck case,
+            // instead of silently occupying the session until something else notices.
+            bool const stillAlive = !found.empty();
             std::ostringstream out;
-            out << "Dungeon lead: nothing found at " << step.boss << ", moving on";
+            out << "Dungeon lead: " << (stillAlive ? "can't progress past " : "nothing found at ") << step.boss
+                << ", moving on";
             botAI->TellMasterNoFacing(out);
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}' - nothing at destination, giving up", bot->GetName(),
-                     step.step, step.boss);
-            DungeonLead::RecordEvent(botAI, "not_found", step.boss);
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead] {} step {} '{}' - {}, giving up", bot->GetName(), step.step, step.boss,
+                     stillAlive ? "target alive but not progressing (needs an interaction this module can't do)"
+                                : "nothing at destination");
+            DungeonLead::RecordEvent(botAI, stillAlive ? "stuck_alive" : "not_found", step.boss);
             st.skippedSteps.push_back(step.boss);
             if (step.IsMandatory())
             {
