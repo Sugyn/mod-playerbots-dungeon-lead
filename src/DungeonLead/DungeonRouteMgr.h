@@ -195,6 +195,17 @@ struct DungeonLeadState
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
+    // 2026-09-15 (independent architecture review DL-013 - "wipe, death, evade, reset, and event
+    // recovery are largely absent", narrow slice only): getMSTime() when the tank was first
+    // observed dead this stretch, 0 while alive/not tracked. DungeonLeadNextAction::isUseful()
+    // already gates the entire route-progression action out while bot->IsAlive()==false, so a
+    // wipe with no other cause of death (corpse run, resurrection, external Stop()) would
+    // otherwise occupy the session - and a CanaryMaxConcurrent slot - forever with no telemetry at
+    // all. GuardActiveSessions() uses this to give up (Stop() with reason "wipe") after
+    // StuckSeconds of being dead - the same honest-failure-instead-of-silent-hang shape as DL-016,
+    // not an attempt at the review's actual recovery model (no corpse release, resurrection,
+    // regroup, or resume-after-recovery here).
+    uint32 tankDeathTs = 0;
     std::vector<uint8> visited;
     std::vector<std::string> skippedSteps;  // bosses skipped (stuck/not-found) - reported at "route complete"
     bool mandatorySkipped = false;  // true if any of the above was IsMandatory() - run outcome PARTIAL, not COMPLETE

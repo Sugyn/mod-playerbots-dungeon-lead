@@ -751,6 +751,45 @@ void DungeonLead::GuardActiveSessions()
         if (!group)
             continue;
 
+        // 2026-09-15 (independent architecture review DL-013 - "wipe, death, evade, reset, and
+        // event recovery are largely absent", narrow slice - see DungeonLeadState::tankDeathTs):
+        // DungeonLeadNextAction::isUseful() already refuses to run at all while the tank is dead,
+        // so nothing else in this codebase would ever notice a wipe, let alone recover from one -
+        // found live tonight, watching a run where the tank died fighting Lady Anacondra and the
+        // session just sat there afterward. Give up honestly (Stop(), outcome=Partial,
+        // Combat/PartyWipe) after StuckSeconds of being dead, same shape as DL-016's stuck-alive
+        // fix, rather than occupying the session (and a CanaryMaxConcurrent slot) forever. This is
+        // NOT the review's actual recovery model - no corpse release, resurrection, regroup, or
+        // resume; a resurrected tank within the grace window is simply left running as if nothing
+        // happened, same as before this change.
+        DungeonLeadState& st = sDungeonRouteMgr.State(guid);
+        if (!bot->IsAlive())
+        {
+            if (!st.tankDeathTs)
+            {
+                st.tankDeathTs = now;
+                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} died while leading (run={}) - "
+                         "giving it {}s to release/resurrect before giving up", bot->GetName(), st.runId,
+                         sPlayerbotAIConfig.dungeonLeadStuckSeconds);
+                DungeonLead::RecordEvent(botAI, "wipe_detected", "");
+            }
+            else if (GetMSTimeDiffToNow(st.tankDeathTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+            {
+                LOG_INFO("playerbots.dungeonlead",
+                         "[DungeonLead] {} still dead {}s into leading run={} - giving up (wipe)",
+                         bot->GetName(), sPlayerbotAIConfig.dungeonLeadStuckSeconds, st.runId);
+                st.outcome = DungeonRunOutcome::Partial;
+                st.failureDomain = DungeonFailureDomain::Combat;
+                st.failureReason = DungeonFailureReason::PartyWipe;
+                DungeonLead::RecordEvent(botAI, "wipe_giveup", "");
+                DungeonLead::RecordRunSummary(botAI, "wipe");
+                DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
+            }
+            continue;  // dead either way this tick - nothing below applies to a corpse
+        }
+        if (st.tankDeathTs)
+            st.tankDeathTs = 0;  // resurrected inside the grace window - back to normal, no giveup
+
         // Observability only - the reapply below is unconditional regardless of this check (a
         // FOLLOWER-only wipe wouldn't show up here at all, see below), but logging specifically
         // when the LEADER's own strategy was found missing gives a direct, queryable confirmation
