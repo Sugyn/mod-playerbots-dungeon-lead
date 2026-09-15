@@ -235,6 +235,23 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   `DungeonLeadNextAction::isUseful()` already returns false while `bot->IsInCombat()` - verified at
   the source level; not independently stress-tested against a real pre-pull delay near the 45s edge.
 
+- **DL-011 (narrow fix) - `AiPlayerbot.DungeonLead.SkipOptional=1` could silently delete navigation
+  anchors, not just optional content.** The review names this exact scenario: Wailing Caverns'
+  six bridge waypoints (added earlier today to make its dead-end/backtrack segments walkable) are
+  modeled as `kind=Optional` with a dummy `entry=1`, since no better-fitting kind existed - so
+  flipping `SkipOptional` on (currently `0` on this server, so dormant, not live) would have skipped
+  them along with genuine optional bosses, reintroducing the direct NOPATH hops they exist to
+  prevent. Added `DungeonRouteStep::IsPathAnchor()` (`entry == 1` - verified against the live
+  `creature_template` table that this is AzerothCore's universal "Waypoint (Only GM can see it)"
+  template, not WC-specific data) and excluded it from the `SkipOptional` skip condition. This is
+  the review's own assessed low-risk slice of DL-011 ("Regression risk: High for route behavior;
+  low for the immediate WC type correction"), not the full Navigator rearchitecture.
+  **Found live while testing this**: a fresh run with `SkipOptional=1` had Lady Anacondra alive and
+  engaged (unlike every earlier attempt tonight) - the tank then died mid-fight and the session
+  simply stalled (`DungeonLeadNextAction::isUseful()` requires `bot->IsAlive()`). A live instance of
+  DL-013 ("wipe/death recovery is largely absent"), not touched by this change and not investigated
+  further - noted here since it's exactly the failure mode that finding describes.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
