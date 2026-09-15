@@ -3297,10 +3297,10 @@ index 00000000..e3b85488
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
 new file mode 100644
-index 00000000..8370378e
+index 00000000..af8bff36
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
-@@ -0,0 +1,537 @@
+@@ -0,0 +1,545 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -3703,7 +3703,15 @@ index 00000000..8370378e
 +
 +        Player* bot = ObjectAccessor::FindPlayer(lease.guid);
 +        PlayerbotAI* botAI = bot ? GET_PLAYERBOT_AI(bot) : nullptr;
-+        if (!bot || !botAI || bot->GetGroup())
++        // 2026-09-15 (found live, watching a run with the user: a dead healer never made it into
++        // the instance - "reached"/"pathing" events kept coming from the other 4 members while she
++        // sat corpsed back in the open world, and nothing here had noticed. LFG's own teleport
++        // silently drops a dead character rather than erroring, so a candidate that dies between
++        // being leased and being drawn into a party here would otherwise look identical to a live
++        // one right up until the group is short a healer mid-dungeon. Independent architecture
++        // review DL-004's "verified role/... capabilities" scope, found by direct observation
++        // rather than by reading the review text.
++        if (!bot || !botAI || bot->GetGroup() || !bot->IsAlive())
 +            continue;
 +
 +        Candidate c{i, bot, botAI};
