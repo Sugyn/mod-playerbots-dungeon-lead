@@ -252,6 +252,17 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   DL-013 ("wipe/death recovery is largely absent"), not touched by this change and not investigated
   further - noted here since it's exactly the failure mode that finding describes.
 
+- **DL-021 (validation visibility) - unresolved `heroic_only` rows now warn explicitly.**
+  `resolve_routes.py` only ever resolved `kind in (boss, optional, event)` - `heroic_only` was never
+  in that list, so all six heroic-only rows (Yor, Anzu, Blood Guard Porung, Eck the Ferocious,
+  Amanitar, Commander Kolurg) are unresolved by construction and silently inert at runtime
+  (`IsWalkable()` requires a resolved position), while still counting toward reported route
+  coverage. `validate_routes.py` used to fold this into the same "unresolved, that's fine" bucket as
+  a genuinely optional gap; it now warns on each one by name. Pure tooling change, no server code
+  touched - verified `python3 tools/validate_routes.py` emits exactly the six expected warnings,
+  exit code still 0. Not the actual resolver fix (still needs real DB lookups per boss, the same
+  kind of work the Wailing Caverns route rewrite did).
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
