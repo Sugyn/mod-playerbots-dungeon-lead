@@ -148,12 +148,22 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   `canarytest`) didn't converge - the party sat queued >10 minutes without an LFG match under the
   current bot-pool load - so not live-triggered end to end.
 
+- **DL-009 (partial) - a dropped leader-change enqueue was invisible to the caller.**
+  `StartSession()`/`Stop()` both queued a `GroupSetLeaderOperation` onto the bounded world-thread
+  processor and discarded its bool result - if the queue was full, the operation was silently
+  dropped and the caller proceeded as if leadership had actually changed. `StartSession()` now
+  refuses to start (and logs why) if the enqueue itself fails; `Stop()`'s handback now at least
+  logs when it fails. Still no atomic group-keyed claim, operation token, or wait for
+  `GetLeaderGUID()` to actually match before committing state - two tanks racing for the same
+  group remains open.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), DL-006 (structured `RunRecord`/exactly-once run summary with campaign/scenario
 identity), the rest of DL-004 (role/level/gear qualification per bot, shared-difficulty binding,
-consistent-instance postconditions before `StartSession`), DL-009 (group-scoped session ownership
-instead of per-tank-GUID), DL-008's long-term explicit finish/abort/drain policy on disable-mid-run
+consistent-instance postconditions before `StartSession`), the rest of DL-009 (atomic group-keyed
+claim/generation token, waiting for the world-thread leader change to actually land before
+committing session state), DL-008's long-term explicit finish/abort/drain policy on disable-mid-run
 remain open.
 
 ## [0.8.0] - 2026-09-13
