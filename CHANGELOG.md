@@ -130,12 +130,22 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   AzerothCore account, not per character, and an AddClass account owns ~10 characters - acquiring
   leases without regard to account concentrated instance-entry load on a few accounts. Verified
   live: 5 sequential Mage acquisitions landed on 5 different accounts.
+- **DL-004 (partial) - `RunTestParty` could silently form incomplete parties.** Party count was
+  `min(tanks, healers)` with no floor on dps, and the per-party loop hands out up to 3 dps per
+  party from one shared cursor - once dps ran out mid-loop, later "parties" formed with 2-4
+  members instead of 5 and were started anyway. Added a `dps/3` floor so every party this function
+  forms has exactly 1 tank + 1 healer + 3 dps, or it refuses with a clear count in the message.
+  Verified live: 2 tanks/2 healers/4 dps leased, `run` formed exactly 1 full 5-member party and
+  left 1 tank/1 healer/1 dps idle instead of starting a broken second party. Only fixes party
+  *size* - role/level/gear qualification, shared-difficulty binding, and consistent-instance
+  postconditions are still open (see below).
 
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), DL-006 (structured `RunRecord`/exactly-once run summary with campaign/scenario
-identity), DL-004 (verified-instance-before-`StartSession` postconditions), DL-009 (group-scoped
-session ownership instead of per-tank-GUID) remain open.
+identity), the rest of DL-004 (role/level/gear qualification per bot, shared-difficulty binding,
+consistent-instance postconditions before `StartSession`), DL-009 (group-scoped session ownership
+instead of per-tank-GUID) remain open.
 
 ## [0.8.0] - 2026-09-13
 
