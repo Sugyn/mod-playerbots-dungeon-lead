@@ -7,15 +7,33 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 ## [Unreleased]
 
 Wailing Caverns navigation/CC fixes, from root-causing the 0.8.0 scale-test findings against real
-mod-playerbots source (not guessed) and a new `.playerbots pathcheck` diagnostic.
+mod-playerbots source (not guessed) and new `.playerbots pathcheck`/`pathcheckfrom`/`tpbot`
+diagnostics.
 
 ### Added
 - `.playerbots pathcheck <botName> <x> <y> <z>` (SOAP-reachable): runs the production
   `PathGenerator` call directly and dumps path type/actual end position/waypoints.
+- `.playerbots pathcheckfrom <botName> <mapId> <srcX> <srcY> <srcZ> <destX> <destY> <destZ>` and
+  `.playerbots tpbot <botName> <mapId> <x> <y> <z>`: teleport a bot to an arbitrary position first,
+  so a specific route hop can be verified independent of wherever the bot currently stands.
 - `AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds` (default 45): absolute ceiling on how long a
   moon-marked CC candidate can go un-crowd-controlled before being released unconditionally.
-- A new non-mandatory `playerbots_dungeon_route` step ("Ramp waypoint", Wailing Caverns lfg_id 1,
-  step 3) bridging the low-cave-to-Verdan-platform climb.
+- `TestBotPoolTick()` retries a party member's entrance teleport (bounded, 3 attempts) if it
+  doesn't land on the expected map within a few seconds - defense-in-depth for a genuine transient
+  teleport failure, kept even after the "left instance" root cause below turned out to be
+  something else.
+
+### Changed
+- **Wailing Caverns route rewritten from scratch, all 15 steps individually `pathcheck`-verified**
+  (supersedes the single "Ramp waypoint" step from the previous entry, which is now known to have
+  never actually been reached - see Fixed below). Straight-line hop distance turned out to be no
+  guide at all to whether a hop actually completes (a 133y hop failed, a 330y hop was perfectly
+  fine); every hop in the new route is backed by a real `PathGenerator` result, either
+  `PATHFIND_NORMAL` or `PATHFIND_INCOMPLETE` landing within <0.5y of the next step. Lord Cobrahn and
+  Skum both turned out to be navmesh dead ends (no path onward to any other boss/waypoint) and the
+  route now explicitly backtracks through the same bridge point rather than assuming a shortcut
+  exists. Also confirmed `Disciple of Naralex` is gated behind all 4 "Fanglords" (Cobrahn, Verdan,
+  Serpentis, Pythas) being dead, not just orderable for pathing convenience.
 
 ### Fixed
 - **CC timeout counted down before the caster could possibly act.** The base mod-playerbots CC
@@ -30,21 +48,31 @@ mod-playerbots source (not guessed) and a new `.playerbots pathcheck` diagnostic
 - **The "creature already dead" branch of `CheckCcMark()` cleared silently.** No log line, no CSV
   event - indistinguishable from a genuine multi-minute stall when debugging live. Now logs and
   records a `cc_target_gone` event.
-- **`Verdan the Everliving`/`Lord Serpentis` sit on a platform ~50-90 Z-units above the rest of
-  Wailing Caverns**, with no route waypoint for the climb between them and Kresh. Confirmed via
-  `pathcheck`: a direct `PathGenerator` call from the low area returned `NOPATH`, but a call from
-  further out returned a real (if length-budget-truncated) `INCOMPLETE` path climbing toward the
-  platform - the connection exists, a single-hop hardly ever completes it. Fixed by adding the
-  "Ramp waypoint" route step above, placed at a `PathGenerator`-confirmed point on that climbing
-  path. Verified live end-to-end: a full run reached and killed both Verdan and Serpentis with zero
-  `skip_stuck` on either, immediately after `RunTestParty` runs that reliably failed there before.
+- **Route waypoints reusing a dead boss's creature `entry` as a harmless placeholder were silently
+  skipped.** `MoveRouteTo()`'s first move is to search for a live/dead creature matching the
+  step's `entry` within 150y of the bot; a waypoint placed right after killing that same boss finds
+  its corpse immediately and takes the "already dead, next" branch without ever walking to the
+  waypoint's actual coordinates. This is why the previous "Ramp waypoint" (entry reused from
+  Kresh) was never actually verified live despite the earlier changelog entry claiming otherwise -
+  it was being skipped every single time. All pure waypoint steps now use `entry=1` ("Waypoint
+  (Only GM can see it)", a stock `creature_template` row confirmed to have zero spawns on this
+  map), so the entry-search always comes back empty and the stored coordinates are used as
+  intended.
+- **Some party members were left outside the instance after `RunTestParty` ("left instance" /
+  needing a manual `/summon`, reported very early in this project).** Root cause was not a
+  Dungeon Lead bug: AzerothCore's standard `AccountInstancesPerHour` throttle (default 5) silently
+  refuses entry once an account has opened that many distinct dungeon instances in an hour, and
+  `RunTestParty` opens a fresh instance every call - reliably hit by running many test parties
+  against the same small AddClass account pool in one session. No code fix needed once identified;
+  documented here since it looks exactly like a pathing/teleport bug from the symptoms alone.
 
-### Known limitation (found via the same live run, not yet fixed)
-- Wailing Caverns' route order goes from Skum (far south-east) directly to Lord Cobrahn (far
-  north-west) - confirmed via `pathcheck` to be a genuine `NOPATH` at that range, and still `NOPATH`
-  even toward the central Lady Anacondra hub area from the same position. Needs more `pathcheck`
-  probing than one route step could resolve tonight; the CC-landing mechanism itself (why
-  `CanCastSpell` fails for the caster even once the timing is fixed) is also still open.
+### Known limitation
+- CC still lands only a small fraction of the time even with correct timing (mark/attack-list
+  gating) - something else (range, line of sight, or GCD) is blocking the actual spell cast. Not
+  yet investigated.
+- Worldserver has crashed (SIGSEGV) three times against mass concurrent test-party load; core dump
+  capture is now configured on the test host but no crash has recurred since, so there is still no
+  backtrace and no fix.
 
 ## [0.8.0] - 2026-09-13
 
