@@ -205,6 +205,13 @@ struct DungeonLeadState
     // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
     uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
     DungeonLeadSessionOrigin origin = DungeonLeadSessionOrigin::Manual;
+    // 2026-09-15 (independent architecture review DL-006 - the one remaining silent exit path: a
+    // hard disconnect never runs any Stop() call site at all): every other RecordRunSummary() call
+    // site reads the tank's name straight off a live Player*, which a disconnected bot no longer
+    // has. Cached here at StartSession() specifically so GuardActiveSessions() can still name the
+    // run in DungeonLeadRuns.csv after the character object itself is gone.
+    std::string tankName;
+
     uint32 sessionStartTs = 0;  // getMSTime() at StartSession() - used by the canary controller's
                                  // timeout check; also generally useful (duration is otherwise only
                                  // reconstructable from the CSV's own "start" row timestamp)

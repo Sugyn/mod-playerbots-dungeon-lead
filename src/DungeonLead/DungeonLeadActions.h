@@ -75,11 +75,17 @@ namespace DungeonLead
     // thousands of interleaved rows by run_id and inferring the ending from whichever event came
     // last, which a restart or a crash can leave with no terminal row at all. This writes ONE row
     // to DungeonLeadRuns.csv at the point a run's outcome becomes final, so "how did run N end" is
-    // a single lookup instead of a reconstruction. Not exhaustive - only wired into the two most
-    // common terminal paths (normal route-completion and the canary timeout), not every Stop()/
-    // left-instance exit; a real fix needs the review's full state machine (Requested->...->
-    // Closed), out of scope for this pass.
+    // a single lookup instead of a reconstruction. As of 2026-09-15 this is wired into every known
+    // Stop()/left-instance/route-completion exit plus a hard-disconnect cleanup in
+    // GuardActiveSessions() - the only gap left is the review's full state machine
+    // (Requested->...->Closed) itself, out of scope for this pass.
     void RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason);
+
+    // Core the overload above delegates to (it just reads guid/name off a live Player*) - exposed
+    // separately so GuardActiveSessions() can close out a session whose character object is already
+    // gone (a hard disconnect), using DungeonLeadState::tankName cached at StartSession() instead of
+    // a live GetName().
+    void RecordRunSummary(ObjectGuid guid, std::string const& tankName, std::string const& terminalReason);
 }
 
 class DungeonLeadNextAction : public NewRpgBaseAction

@@ -334,12 +334,23 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
 void DungeonLead::RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason)
 {
     Player* bot = botAI->GetBot();
-    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    DungeonLead::RecordRunSummary(bot->GetGUID(), bot->GetName(), terminalReason);
+}
+
+// 2026-09-15 (independent architecture review DL-006 - the last silent exit path: a bot that hard-
+// disconnects runs no Stop() call site at all, so none of the other four RecordRunSummary() call
+// sites ever fire for it): the GUID/name-based core those all secretly needed anyway (the
+// PlayerbotAI* overload above just reads both off a live Player*) - lets
+// GuardActiveSessions() close out a session whose character object is already gone, using the
+// name cached in DungeonLeadState::tankName at StartSession() time instead of a live GetName().
+void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName, std::string const& terminalReason)
+{
+    DungeonLeadState& st = sDungeonRouteMgr.State(guid);
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
 
     std::string const ts = FormatLogTimestamp();
     std::string const dungeonName = CsvEscape(route ? route->name : "?");
-    std::string const botName = CsvEscape(bot->GetName());
+    std::string const botName = CsvEscape(tankName);
     std::string const reasonEsc = CsvEscape(terminalReason);
     uint32 const lfgId = st.lfgId;
     uint64 const runId = st.runId;
@@ -714,7 +725,24 @@ void DungeonLead::GuardActiveSessions()
     for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
     {
         Player* bot = ObjectAccessor::FindPlayer(guid);
-        if (!bot || !bot->IsInWorld())
+        // 2026-09-15 (independent architecture review DL-006 - the last silent exit path): a bot
+        // that hard-disconnects (logs out, character deleted from memory - ObjectAccessor can no
+        // longer find it at all, distinct from bot->IsInWorld()==false, which a bot mid-teleport
+        // hits routinely and is NOT a reason to tear anything down) never runs any Stop() call
+        // site - it just silently drops out of every future GuardActiveSessions() pass forever,
+        // with no DungeonLeadRuns.csv row and its GetActiveSessionGuids() entry never cleared.
+        // Close it out here instead: record it as its own terminal reason and stop tracking it.
+        if (!bot)
+        {
+            DungeonLeadState const& goneSt = sDungeonRouteMgr.State(guid);
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead] {} hard-disconnected while leading (run={}) - closing out the "
+                     "session instead of leaving it silently active", goneSt.tankName, goneSt.runId);
+            DungeonLead::RecordRunSummary(guid, goneSt.tankName, "hard_disconnect");
+            sDungeonRouteMgr.ResetState(guid);
+            continue;
+        }
+        if (!bot->IsInWorld())
             continue;
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
         if (!botAI)
@@ -913,6 +941,7 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
         st.runId = NextRunId();
         st.origin = origin;
         st.sessionStartTs = getMSTime();
+        st.tankName = bot->GetName();
         if (testMode)
         {
             st.testMode = true;
