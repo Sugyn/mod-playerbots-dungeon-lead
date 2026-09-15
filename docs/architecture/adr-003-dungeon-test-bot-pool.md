@@ -241,7 +241,18 @@ inferring a fix from telemetry distance numbers; neither finding is fixed yet as
   the 49-party batch above, CC landing reliably at all now looks like a bigger open question than
   which classes it's verified for.
 - Fresh dungeon instance provisioning per run (not needed in practice yet - AC hands out a distinct
-  instance per group automatically, confirmed at 49-way scale above).
+  instance per group automatically, confirmed at 49-way scale above). **2026-09-15 postscript:**
+  this deferral needs revisiting for a *long-running* test session, not just wide concurrent scale.
+  `RunTestParty` opens a brand-new instance every call and never releases/reuses one, so an account
+  churning through many test parties over an hour reliably hits AzerothCore's own
+  `AccountInstancesPerHour` throttle (default 5) - `Player::TeleportTo()` then silently refuses
+  entry (`MapMgr::PlayerCannotEnter` -> `Player::CheckInstanceCount`) with no error surfaced to
+  Dungeon Lead at all. Looked identical to the "left instance" bug from a `RunTestParty` teleport
+  race (which is real and separately fixed - see `TestBotPoolTick()`'s retry loop) until a
+  diagnostic log showed the *same* bots failing all 3 retries identically, which a genuine race
+  wouldn't do. Fixed for now by raising the config value on the test host; the real fix, whenever
+  this phase gets built, is to bind/reuse one instance per lease group rather than opening a new
+  one per run.
 - `DungeonRunResult`/campaign aggregation contract (the CHANGELOG-style manual aggregation done for
   the 49-party batch is a preview of what this should eventually automate).
 - `DungeonTestOrchestrator` and the BotPool/ProfileManager/PartyBuilder/InstanceProvisioner/

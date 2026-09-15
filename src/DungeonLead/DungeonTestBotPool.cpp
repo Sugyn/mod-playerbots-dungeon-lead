@@ -37,6 +37,26 @@ namespace
         DungeonLead::TestBotLeaseState state;
         uint32 stateTs;        // getMSTime() of the last state transition - for the login timeout
         uint32 targetLevel;
+
+        // 2026-09-15: some party members teleported by RunTestParty() were left sitting on map 1
+        // ("some bots stay outside, I had to /summon them" - reported very early in this project),
+        // each spamming "STOP - auto (left instance)" forever with nothing retrying their teleport.
+        // First suspected a cross-map TeleportTo() race (it IS async - confirmed via the
+        // .playerbots tpbot tool the same day); built this retry mechanism for that. Live-tested
+        // under load it changed nothing: the exact same bots failed all 3 retries identically. Root
+        // cause turned out to be upstream of Dungeon Lead entirely - AzerothCore's standard
+        // AccountInstancesPerHour throttle (worldserver.conf, default 5): MapMgr::PlayerCannotEnter
+        // -> Player::CheckInstanceCount silently refuses entry once an account has opened that many
+        // *distinct* dungeon instances in the last hour, and RunTestParty forms a fresh instance
+        // every call - exactly what dozens of test runs against the same small AddClass account
+        // pool does in a single evening. Raised to 500 in worldserver.conf (reloadable, no restart
+        // needed - the check reads sWorld->getIntConfig() live) once this was found; confirmed live
+        // (.playerbots tpbot) that all 3 previously-stuck bots teleport in immediately afterward.
+        // Kept the retry loop anyway as cheap defense-in-depth for a genuine transient teleport
+        // failure, even though it wasn't what was actually happening here.
+        uint32 entryMapId = 0;
+        float entryX = 0.f, entryY = 0.f, entryZ = 0.f;
+        uint8 teleportRetries = 0;
     };
 
     // Session-scoped, in-memory - resets on restart, same as every other Dungeon Lead session
@@ -156,6 +176,14 @@ namespace
 
     constexpr uint32 LOGIN_TIMEOUT_MS = 30000;
 
+    // See the TestBotLease struct comment: a cross-map TeleportTo() fired from RunTestParty() is
+    // fire-and-forget and can silently not land for some party members. Give it a few seconds to
+    // resolve on its own before checking (same-tick checks would always fail, since no world tick
+    // has actually passed), then retry a bounded number of times rather than leaving a straggler
+    // stuck outside the instance for the rest of the run.
+    constexpr uint32 TELEPORT_CHECK_GRACE_MS = 8000;
+    constexpr uint8 TELEPORT_MAX_RETRIES = 3;
+
     // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
     // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
     bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage)
@@ -243,6 +271,43 @@ void DungeonLead::TestBotPoolTick()
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} login timed out after {}ms",
                      lease.name, LOGIN_TIMEOUT_MS);
         }
+    }
+
+    // Straggler check: a party member RunTestParty() teleported into the dungeon but who never
+    // actually landed there (see the TestBotLease struct comment). entryMapId is cleared once a
+    // bot is confirmed to have arrived, so this only ever does work for bots still pending.
+    for (TestBotLease& lease : g_leases)
+    {
+        if (lease.state != TestBotLeaseState::Leased || lease.entryMapId == 0)
+            continue;
+        if (GetMSTimeDiffToNow(lease.stateTs) < TELEPORT_CHECK_GRACE_MS)
+            continue;
+
+        Player* bot = ObjectAccessor::FindPlayer(lease.guid);
+        if (!bot || !bot->IsInWorld())
+            continue;  // logged out mid-run or similar - nothing this tick can do about that
+
+        if (bot->GetMapId() == lease.entryMapId)
+        {
+            lease.entryMapId = 0;  // arrived - stop tracking
+            continue;
+        }
+
+        if (lease.teleportRetries >= TELEPORT_MAX_RETRIES)
+        {
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead][TestBotPool] {} still on map {} (wanted {}) after {} retries - giving up",
+                     lease.name, bot->GetMapId(), lease.entryMapId, TELEPORT_MAX_RETRIES);
+            lease.entryMapId = 0;  // stop retrying; the "left instance" auto-stop will catch this
+            continue;
+        }
+
+        ++lease.teleportRetries;
+        lease.stateTs = now;
+        LOG_INFO("playerbots.dungeonlead",
+                 "[DungeonLead][TestBotPool] {} never arrived on map {} (still on {}) - retry {}/{}",
+                 lease.name, lease.entryMapId, bot->GetMapId(), lease.teleportRetries, TELEPORT_MAX_RETRIES);
+        bot->TeleportTo(lease.entryMapId, lease.entryX, lease.entryY, lease.entryZ, 0.0f);
     }
 }
 
@@ -363,8 +428,17 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
         for (Candidate* c : members)
         {
             c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, 0.0f);
-            g_leases[c->leaseIdx].state = TestBotLeaseState::Leased;
-            g_leases[c->leaseIdx].stateTs = getMSTime();
+            TestBotLease& lease = g_leases[c->leaseIdx];
+            lease.state = TestBotLeaseState::Leased;
+            lease.stateTs = getMSTime();
+            // See the struct comment: this TeleportTo() is fire-and-forget and can silently not
+            // land for some members of the party. Remember where this bot is supposed to end up so
+            // TestBotPoolTick() can notice and retry if it doesn't.
+            lease.entryMapId = route->mapId;
+            lease.entryX = entrance->x;
+            lease.entryY = entrance->y;
+            lease.entryZ = entrance->z;
+            lease.teleportRetries = 0;
         }
 
         bool const ok = DungeonLead::StartSession(tank.botAI, group, DungeonLeadSessionOrigin::AutoCanary,

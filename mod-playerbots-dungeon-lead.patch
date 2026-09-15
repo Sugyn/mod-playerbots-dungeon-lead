@@ -145,10 +145,10 @@ index 55792aa5..efec9184 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..da21e786
+index 00000000..3dd4bd6b
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1547 @@
+@@ -0,0 +1,1590 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -641,7 +641,17 @@ index 00000000..da21e786
 +    if (c->HasBreakableByDamageCrowdControlAura())
 +    {
 +        // actually crowd controlled right now: reset the grace window so a later break gets a
-+        // fresh chance instead of instantly expiring
++        // fresh chance instead of instantly expiring. Logged once per landing (not every tick
++        // it stays up) so the CSV can distinguish "never landed at all" from "landed, then broke
++        // and was never reapplied" - the two have different causes (the first is a casting/
++        // targeting problem, the second is more likely something damaging it early, e.g. cleave/
++        // AoE splash from the party's own attacks on an adjacent target - raised live 2026-09-13).
++        if (!st.ccLandedTold)
++        {
++            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC landed on {}", bot->GetName(), c->GetName());
++            DungeonLead::RecordEvent(botAI, "cc_landed", c->GetName());
++            st.ccLandedTold = true;
++        }
 +        st.ccMarkedTs = getMSTime();
 +        return;
 +    }
@@ -1337,6 +1347,32 @@ index 00000000..da21e786
 +
 +    float disToDest = bot->GetDistance(dest);
 +    uint32 now = getMSTime();
++
++    // Actual walking telemetry - not just milestone events (reached/stuck/mark). Task from the
++    // user 2026-09-13: "pathfinding is the only job right now - log every step, evaluate it,
++    // only then fix anything." Throttled to ~1 line per 3s per bot (this function can otherwise
++    // be reached many times a second while a move is in flight and short-circuits above); sent to
++    // BOTH LOG_INFO (DungeonLeadDebug.log) and RecordEvent (CSV -> sync -> panel dungeon_lead_events)
++    // so the walking trace is visible in both places this session's earlier telemetry claims turned
++    // out to be wrong about (RecordDebug's per-tick dump never actually wrote anything, and this
++    // MoveRouteTo() function itself had zero position logging outside the one-shot stuck/skip line).
++    if (!st.lastPathLogTs || now - st.lastPathLogTs > 3000)
++    {
++        st.lastPathLogTs = now;
++        LOG_INFO("playerbots.dungeonlead",
++                 "[DungeonLead] {} pathing step {} '{}' pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) "
++                 "dist={:.1f} bestDist={:.1f} moving={} stuckAttempts={}",
++                 bot->GetName(), step.step, step.boss, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
++                 dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), disToDest, st.bestDist,
++                 bot->isMoving(), st.stuckAttempts);
++        std::ostringstream pd;
++        pd << step.boss << " pos=(" << bot->GetPositionX() << "," << bot->GetPositionY() << "," << bot->GetPositionZ()
++           << ") target=(" << dest.GetPositionX() << "," << dest.GetPositionY() << "," << dest.GetPositionZ() << ")"
++           << " dist=" << disToDest << " bestDist=" << st.bestDist << " moving=" << bot->isMoving()
++           << " stuckAttempts=" << st.stuckAttempts;
++        DungeonLead::RecordEvent(botAI, "pathing", pd.str());
++    }
++
 +    if (st.bestDist == 0.f || disToDest + 5.0f < st.bestDist)
 +    {
 +        st.bestDist = disToDest;
@@ -1514,6 +1550,7 @@ index 00000000..da21e786
 +                ccSt.ccGuid = cc->GetGUID();
 +                ccSt.ccMarkedTs = getMSTime();
 +                ccSt.ccMarkedAbsoluteTs = ccSt.ccMarkedTs;
++                ccSt.ccLandedTold = false;
 +                changed = true;
 +            }
 +        }
@@ -1527,7 +1564,13 @@ index 00000000..da21e786
 +bool DungeonLeadStopAction::Execute(Event /*event*/)
 +{
 +    // log BEFORE Stop() - it erases the route/session state RecordEvent reads (lfg_id, dungeon
-+    // name, ...), so logging after it left every "stop" row with an empty dungeon/lfg_id
++    // name, ...), so logging after it left every "stop" row with an empty dungeon/lfg_id.
++    // Also LOG_INFO (not just RecordEvent) - this event previously only reached the CSV, invisible
++    // to anyone reading DungeonLeadDebug.log live, which made a real "left instance" bug (found
++    // live 2026-09-13, still open) look like a silent multi-minute stall instead of what it was.
++    Player* bot = botAI->GetBot();
++    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STOP - auto (left instance), now map={} instance={} pos=({:.1f},{:.1f},{:.1f})",
++             bot->GetName(), bot->GetMapId(), bot->GetInstanceId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
 +    DungeonLead::RecordEvent(botAI, "stop", "auto (left instance)");
 +    DungeonLead::Stop(botAI, true);
 +    botAI->TellMasterNoFacing("Dungeon lead: OFF (not in a 5-man dungeon anymore)");
@@ -2737,10 +2780,10 @@ index 00000000..c82996da
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..2e48fb56
+index 00000000..cc4c1e6e
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,293 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2896,6 +2939,12 @@ index 00000000..2e48fb56
 +    uint32 stuckTs = 0;
 +    uint32 stuckAttempts = 0;
 +    float bestDist = 0.f;
++    uint32 lastPathLogTs = 0;  // throttle for the "pathing" telemetry line in MoveRouteTo() -
++                                // one line per ~3s per bot, position/target/distance/path-type,
++                                // sent to BOTH LOG_INFO and RecordEvent (CSV -> panel) so the
++                                // actual walking trace is visible in both places, not just
++                                // milestone events (reached/stuck/mark). Added 2026-09-13 - see
++                                // ADR/CHANGELOG: neither the log nor the panel had this before.
 +    bool noRouteTold = false;
 +    bool doneTold = false;
 +    uint32 lastWaitLogTs = 0;
@@ -2919,6 +2968,9 @@ index 00000000..2e48fb56
 +                                 // reconstructable from the CSV's own "start" row timestamp)
 +    ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
 +    uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
++    bool ccLandedTold = false;  // whether "cc_landed" has already fired for the current ccGuid -
++                                 // logged once per landing, not every tick it stays crowd
++                                 // controlled. Reset alongside ccGuid.
 +    uint32 ccMarkedAbsoluteTs = 0;  // when it was FIRST marked - never reset (unlike ccMarkedTs,
 +                                     // which holds open while waiting for the target to enter
 +                                     // combat/for CC to land). Absolute ceiling: a target that
@@ -2950,6 +3002,7 @@ index 00000000..2e48fb56
 +        stuckTs = 0;
 +        stuckAttempts = 0;
 +        bestDist = 0.f;
++        lastPathLogTs = 0;
 +        noRouteTold = false;
 +        doneTold = false;
 +        lastWaitLogTs = 0;
@@ -3026,10 +3079,10 @@ index 00000000..2e48fb56
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
 new file mode 100644
-index 00000000..514422cd
+index 00000000..fb6f5e9e
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
-@@ -0,0 +1,419 @@
+@@ -0,0 +1,493 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -3069,6 +3122,26 @@ index 00000000..514422cd
 +        DungeonLead::TestBotLeaseState state;
 +        uint32 stateTs;        // getMSTime() of the last state transition - for the login timeout
 +        uint32 targetLevel;
++
++        // 2026-09-15: some party members teleported by RunTestParty() were left sitting on map 1
++        // ("some bots stay outside, I had to /summon them" - reported very early in this project),
++        // each spamming "STOP - auto (left instance)" forever with nothing retrying their teleport.
++        // First suspected a cross-map TeleportTo() race (it IS async - confirmed via the
++        // .playerbots tpbot tool the same day); built this retry mechanism for that. Live-tested
++        // under load it changed nothing: the exact same bots failed all 3 retries identically. Root
++        // cause turned out to be upstream of Dungeon Lead entirely - AzerothCore's standard
++        // AccountInstancesPerHour throttle (worldserver.conf, default 5): MapMgr::PlayerCannotEnter
++        // -> Player::CheckInstanceCount silently refuses entry once an account has opened that many
++        // *distinct* dungeon instances in the last hour, and RunTestParty forms a fresh instance
++        // every call - exactly what dozens of test runs against the same small AddClass account
++        // pool does in a single evening. Raised to 500 in worldserver.conf (reloadable, no restart
++        // needed - the check reads sWorld->getIntConfig() live) once this was found; confirmed live
++        // (.playerbots tpbot) that all 3 previously-stuck bots teleport in immediately afterward.
++        // Kept the retry loop anyway as cheap defense-in-depth for a genuine transient teleport
++        // failure, even though it wasn't what was actually happening here.
++        uint32 entryMapId = 0;
++        float entryX = 0.f, entryY = 0.f, entryZ = 0.f;
++        uint8 teleportRetries = 0;
 +    };
 +
 +    // Session-scoped, in-memory - resets on restart, same as every other Dungeon Lead session
@@ -3188,6 +3261,14 @@ index 00000000..514422cd
 +
 +    constexpr uint32 LOGIN_TIMEOUT_MS = 30000;
 +
++    // See the TestBotLease struct comment: a cross-map TeleportTo() fired from RunTestParty() is
++    // fire-and-forget and can silently not land for some party members. Give it a few seconds to
++    // resolve on its own before checking (same-tick checks would always fail, since no world tick
++    // has actually passed), then retry a bounded number of times rather than leaving a straggler
++    // stuck outside the instance for the rest of the run.
++    constexpr uint32 TELEPORT_CHECK_GRACE_MS = 8000;
++    constexpr uint8 TELEPORT_MAX_RETRIES = 3;
++
 +    // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
 +    // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
 +    bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage)
@@ -3275,6 +3356,43 @@ index 00000000..514422cd
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} login timed out after {}ms",
 +                     lease.name, LOGIN_TIMEOUT_MS);
 +        }
++    }
++
++    // Straggler check: a party member RunTestParty() teleported into the dungeon but who never
++    // actually landed there (see the TestBotLease struct comment). entryMapId is cleared once a
++    // bot is confirmed to have arrived, so this only ever does work for bots still pending.
++    for (TestBotLease& lease : g_leases)
++    {
++        if (lease.state != TestBotLeaseState::Leased || lease.entryMapId == 0)
++            continue;
++        if (GetMSTimeDiffToNow(lease.stateTs) < TELEPORT_CHECK_GRACE_MS)
++            continue;
++
++        Player* bot = ObjectAccessor::FindPlayer(lease.guid);
++        if (!bot || !bot->IsInWorld())
++            continue;  // logged out mid-run or similar - nothing this tick can do about that
++
++        if (bot->GetMapId() == lease.entryMapId)
++        {
++            lease.entryMapId = 0;  // arrived - stop tracking
++            continue;
++        }
++
++        if (lease.teleportRetries >= TELEPORT_MAX_RETRIES)
++        {
++            LOG_INFO("playerbots.dungeonlead",
++                     "[DungeonLead][TestBotPool] {} still on map {} (wanted {}) after {} retries - giving up",
++                     lease.name, bot->GetMapId(), lease.entryMapId, TELEPORT_MAX_RETRIES);
++            lease.entryMapId = 0;  // stop retrying; the "left instance" auto-stop will catch this
++            continue;
++        }
++
++        ++lease.teleportRetries;
++        lease.stateTs = now;
++        LOG_INFO("playerbots.dungeonlead",
++                 "[DungeonLead][TestBotPool] {} never arrived on map {} (still on {}) - retry {}/{}",
++                 lease.name, lease.entryMapId, bot->GetMapId(), lease.teleportRetries, TELEPORT_MAX_RETRIES);
++        bot->TeleportTo(lease.entryMapId, lease.entryX, lease.entryY, lease.entryZ, 0.0f);
 +    }
 +}
 +
@@ -3395,8 +3513,17 @@ index 00000000..514422cd
 +        for (Candidate* c : members)
 +        {
 +            c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, 0.0f);
-+            g_leases[c->leaseIdx].state = TestBotLeaseState::Leased;
-+            g_leases[c->leaseIdx].stateTs = getMSTime();
++            TestBotLease& lease = g_leases[c->leaseIdx];
++            lease.state = TestBotLeaseState::Leased;
++            lease.stateTs = getMSTime();
++            // See the struct comment: this TeleportTo() is fire-and-forget and can silently not
++            // land for some members of the party. Remember where this bot is supposed to end up so
++            // TestBotPoolTick() can notice and retry if it doesn't.
++            lease.entryMapId = route->mapId;
++            lease.entryX = entrance->x;
++            lease.entryY = entrance->y;
++            lease.entryZ = entrance->z;
++            lease.teleportRetries = 0;
 +        }
 +
 +        bool const ok = DungeonLead::StartSession(tank.botAI, group, DungeonLeadSessionOrigin::AutoCanary,
@@ -3767,7 +3894,7 @@ index 769bfba8..cb702cb5 100644
      uint32 saveManaThreshold;
      AutoPartyBuffMode autoGreaterBlessings;
 diff --git a/src/Script/PlayerbotCommandScript.cpp b/src/Script/PlayerbotCommandScript.cpp
-index 3e73fda9..d7acdf50 100644
+index 3e73fda9..8e82614f 100644
 --- a/src/Script/PlayerbotCommandScript.cpp
 +++ b/src/Script/PlayerbotCommandScript.cpp
 @@ -6,12 +6,22 @@
@@ -3793,7 +3920,7 @@ index 3e73fda9..d7acdf50 100644
  using namespace Acore::ChatCommands;
  
  class playerbots_commandscript : public CommandScript
-@@ -32,11 +42,22 @@ public:
+@@ -32,11 +42,24 @@ public:
              {"unlink", HandleUnlinkAccountCommand, SEC_PLAYER, Console::No},
          };
  
@@ -3812,11 +3939,13 @@ index 3e73fda9..d7acdf50 100644
 +            {"canarytest", HandleCanaryTestCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"lfgstate", HandleLfgStateCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"pathcheck", HandlePathCheckCommand, SEC_GAMEMASTER, Console::Yes},
++            {"pathcheckfrom", HandlePathCheckFromCommand, SEC_GAMEMASTER, Console::Yes},
++            {"tpbot", HandleTeleportBotCommand, SEC_GAMEMASTER, Console::Yes},
 +            {"testbotpool", playerbotsTestBotPoolCommandTable},
              {"debug", playerbotsDebugCommandTable},
              {"account", playerbotsAccountCommandTable},
          };
-@@ -58,6 +79,222 @@ public:
+@@ -58,6 +81,297 @@ public:
          return RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(handler, args);
      }
  
@@ -3915,6 +4044,81 @@ index 3e73fda9..d7acdf50 100644
 +        }
 +        std::string const result = DungeonLead::DiagnosePath(bot, x, y, z);
 +        handler->PSendSysMessage(result);
++        return true;
++    }
++
++    // ".playerbots pathcheckfrom <botName> <mapId> <srcX> <srcY> <srcZ> <destX> <destY> <destZ>" -
++    // 2026-09-15 data review of the mass-scale runs (build 44 pathing telemetry) showed several
++    // route hops (Cobrahn->Ramp waypoint, Serpentis->Pythas, Pythas->Skum, Skum->Naralex) with
++    // >30-50% stuckAttempts rates despite "reasonable-looking" straight-line distances - the
++    // 2026-09-12 Kresh->Cobrahn "133y is fine" assumption turned out to be wrong too (53% stuck in
++    // the data). Plain `pathcheck` only tests from wherever the named bot currently happens to be
++    // standing, so verifying an exact route-DB source->target hop meant first hand-summoning a bot
++    // there. This teleports the bot straight to the given source position first (same
++    // Player::TeleportTo() RunTestParty already uses for entry teleport), then runs the same
++    // PathGenerator diagnostic as `pathcheck`. Console-only, GM-gated, no live PlayerbotAI path
++    // touched - a one-off DB-hop verifier, not part of any production code path.
++    static bool HandlePathCheckFromCommand(ChatHandler* handler, char const* args)
++    {
++        char const* usage = "Usage: .playerbots pathcheckfrom <botName> <mapId> <srcX> <srcY> <srcZ> <destX> <destY> <destZ>";
++        if (!args || !*args)
++        {
++            handler->PSendSysMessage(usage);
++            return true;
++        }
++        std::istringstream iss(args);
++        std::string botName;
++        uint32 mapId = 0;
++        float sx = 0.f, sy = 0.f, sz = 0.f, dx = 0.f, dy = 0.f, dz = 0.f;
++        if (!(iss >> botName >> mapId >> sx >> sy >> sz >> dx >> dy >> dz))
++        {
++            handler->PSendSysMessage(usage);
++            return true;
++        }
++        Player* bot = ObjectAccessor::FindPlayerByName(botName);
++        if (!bot)
++        {
++            handler->PSendSysMessage("No online player/bot named '{}'", botName);
++            return true;
++        }
++        bot->TeleportTo(mapId, sx, sy, sz, bot->GetOrientation());
++        std::string const result = DungeonLead::DiagnosePath(bot, dx, dy, dz);
++        handler->PSendSysMessage(result);
++        return true;
++    }
++
++    // ".playerbots tpbot <botName> <mapId> <x> <y> <z>" - split out of pathcheckfrom because a
++    // cross-map TeleportTo() is asynchronous: GetPositionX/Y/Z right after the call in the SAME
++    // command still read the pre-teleport position (the actual map change resolves over later
++    // world ticks), so pathcheckfrom's immediate DiagnosePath was silently testing from the bot's
++    // OLD location every time. Use this to teleport, wait a few seconds (".playerbots pathcheck"
++    // or "pmon"/"lfgstate" to confirm the bot actually arrived), then run plain `pathcheck` from
++    // the now-correct current position. Console-only, GM-gated, diagnostic-only.
++    static bool HandleTeleportBotCommand(ChatHandler* handler, char const* args)
++    {
++        char const* usage = "Usage: .playerbots tpbot <botName> <mapId> <x> <y> <z>";
++        if (!args || !*args)
++        {
++            handler->PSendSysMessage(usage);
++            return true;
++        }
++        std::istringstream iss(args);
++        std::string botName;
++        uint32 mapId = 0;
++        float x = 0.f, y = 0.f, z = 0.f;
++        if (!(iss >> botName >> mapId >> x >> y >> z))
++        {
++            handler->PSendSysMessage(usage);
++            return true;
++        }
++        Player* bot = ObjectAccessor::FindPlayerByName(botName);
++        if (!bot)
++        {
++            handler->PSendSysMessage("No online player/bot named '{}'", botName);
++            return true;
++        }
++        bot->TeleportTo(mapId, x, y, z, bot->GetOrientation());
++        handler->PSendSysMessage("Teleporting {} to map {} ({},{},{}) - wait a few seconds, then check with pathcheck", botName, mapId, x, y, z);
 +        return true;
 +    }
 +

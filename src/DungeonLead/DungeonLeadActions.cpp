@@ -490,7 +490,17 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     if (c->HasBreakableByDamageCrowdControlAura())
     {
         // actually crowd controlled right now: reset the grace window so a later break gets a
-        // fresh chance instead of instantly expiring
+        // fresh chance instead of instantly expiring. Logged once per landing (not every tick
+        // it stays up) so the CSV can distinguish "never landed at all" from "landed, then broke
+        // and was never reapplied" - the two have different causes (the first is a casting/
+        // targeting problem, the second is more likely something damaging it early, e.g. cleave/
+        // AoE splash from the party's own attacks on an adjacent target - raised live 2026-09-13).
+        if (!st.ccLandedTold)
+        {
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC landed on {}", bot->GetName(), c->GetName());
+            DungeonLead::RecordEvent(botAI, "cc_landed", c->GetName());
+            st.ccLandedTold = true;
+        }
         st.ccMarkedTs = getMSTime();
         return;
     }
@@ -1186,6 +1196,32 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
 
     float disToDest = bot->GetDistance(dest);
     uint32 now = getMSTime();
+
+    // Actual walking telemetry - not just milestone events (reached/stuck/mark). Task from the
+    // user 2026-09-13: "pathfinding is the only job right now - log every step, evaluate it,
+    // only then fix anything." Throttled to ~1 line per 3s per bot (this function can otherwise
+    // be reached many times a second while a move is in flight and short-circuits above); sent to
+    // BOTH LOG_INFO (DungeonLeadDebug.log) and RecordEvent (CSV -> sync -> panel dungeon_lead_events)
+    // so the walking trace is visible in both places this session's earlier telemetry claims turned
+    // out to be wrong about (RecordDebug's per-tick dump never actually wrote anything, and this
+    // MoveRouteTo() function itself had zero position logging outside the one-shot stuck/skip line).
+    if (!st.lastPathLogTs || now - st.lastPathLogTs > 3000)
+    {
+        st.lastPathLogTs = now;
+        LOG_INFO("playerbots.dungeonlead",
+                 "[DungeonLead] {} pathing step {} '{}' pos=({:.1f},{:.1f},{:.1f}) target=({:.1f},{:.1f},{:.1f}) "
+                 "dist={:.1f} bestDist={:.1f} moving={} stuckAttempts={}",
+                 bot->GetName(), step.step, step.boss, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                 dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), disToDest, st.bestDist,
+                 bot->isMoving(), st.stuckAttempts);
+        std::ostringstream pd;
+        pd << step.boss << " pos=(" << bot->GetPositionX() << "," << bot->GetPositionY() << "," << bot->GetPositionZ()
+           << ") target=(" << dest.GetPositionX() << "," << dest.GetPositionY() << "," << dest.GetPositionZ() << ")"
+           << " dist=" << disToDest << " bestDist=" << st.bestDist << " moving=" << bot->isMoving()
+           << " stuckAttempts=" << st.stuckAttempts;
+        DungeonLead::RecordEvent(botAI, "pathing", pd.str());
+    }
+
     if (st.bestDist == 0.f || disToDest + 5.0f < st.bestDist)
     {
         st.bestDist = disToDest;
@@ -1363,6 +1399,7 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
                 ccSt.ccGuid = cc->GetGUID();
                 ccSt.ccMarkedTs = getMSTime();
                 ccSt.ccMarkedAbsoluteTs = ccSt.ccMarkedTs;
+                ccSt.ccLandedTold = false;
                 changed = true;
             }
         }
@@ -1376,7 +1413,13 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
 bool DungeonLeadStopAction::Execute(Event /*event*/)
 {
     // log BEFORE Stop() - it erases the route/session state RecordEvent reads (lfg_id, dungeon
-    // name, ...), so logging after it left every "stop" row with an empty dungeon/lfg_id
+    // name, ...), so logging after it left every "stop" row with an empty dungeon/lfg_id.
+    // Also LOG_INFO (not just RecordEvent) - this event previously only reached the CSV, invisible
+    // to anyone reading DungeonLeadDebug.log live, which made a real "left instance" bug (found
+    // live 2026-09-13, still open) look like a silent multi-minute stall instead of what it was.
+    Player* bot = botAI->GetBot();
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STOP - auto (left instance), now map={} instance={} pos=({:.1f},{:.1f},{:.1f})",
+             bot->GetName(), bot->GetMapId(), bot->GetInstanceId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
     DungeonLead::RecordEvent(botAI, "stop", "auto (left instance)");
     DungeonLead::Stop(botAI, true);
     botAI->TellMasterNoFacing("Dungeon lead: OFF (not in a 5-man dungeon anymore)");
