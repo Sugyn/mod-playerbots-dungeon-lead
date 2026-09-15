@@ -7,13 +7,20 @@
 4	-	3	boss	Jergosh the Invoker
 4	-	4	boss	Bazzalan	upper walkway
 # Wailing Caverns (src: warcraft.wiki.gg/Wailing_Caverns)
+# 2026-09-15: boss order below matches the deployed 15-step dungeon_routes.csv/SQL, resolved
+# against real pathcheck data (see docs/architecture/adr-003 postscript + CHANGELOG Unreleased).
+# This resolver cannot represent the 6 "* (bridge)" navigation-anchor rows the deployed route
+# also has (source=derived, entry=1 stock waypoint template, fixed pathcheck-confirmed x/y/z, not
+# a resolvable creature spawn) - resolve_routes.py refuses to overwrite dungeon_routes.csv rather
+# than silently drop them (see DL-014). Do not "fix" that refusal by --force-regenerating from
+# this file; reconcile it to carry the bridge anchors first, or edit the CSV/SQL by hand.
 1	-	1	boss	Lady Anacondra	Screaming Gully
 1	-	2	optional	Kresh	river turtle
-1	-	3	optional	Verdan the Everliving
-1	-	4	boss	Lord Serpentis
-1	-	5	boss	Lord Pythas
-1	-	6	optional	Skum
-1	-	7	boss	Lord Cobrahn
+1	-	3	boss	Lord Cobrahn	Fanglord 1/4, navmesh dead-end - see CSV note
+1	-	4	optional	Verdan the Everliving	Fanglord 2/4
+1	-	5	boss	Lord Serpentis	Fanglord 3/4
+1	-	6	boss	Lord Pythas	Fanglord 4/4
+1	-	7	optional	Skum	navmesh dead-end off Pythas - see CSV note
 1	-	8	event	Disciple of Naralex	escort from entrance after 4 Fanglords -> spawns Mutanus
 1	-	9	event	Mutanus the Devourer	script-spawned by escort
 # Deadmines (src: warcraft.wiki.gg/Deadmines_(Classic))
