@@ -145,10 +145,10 @@ index 55792aa5..efec9184 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..84bf743a
+index 00000000..0fa652dc
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1806 @@
+@@ -0,0 +1,1835 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -485,12 +485,23 @@ index 00000000..84bf743a
 +void DungeonLead::RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason)
 +{
 +    Player* bot = botAI->GetBot();
-+    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
++    DungeonLead::RecordRunSummary(bot->GetGUID(), bot->GetName(), terminalReason);
++}
++
++// 2026-09-15 (independent architecture review DL-006 - the last silent exit path: a bot that hard-
++// disconnects runs no Stop() call site at all, so none of the other four RecordRunSummary() call
++// sites ever fire for it): the GUID/name-based core those all secretly needed anyway (the
++// PlayerbotAI* overload above just reads both off a live Player*) - lets
++// GuardActiveSessions() close out a session whose character object is already gone, using the
++// name cached in DungeonLeadState::tankName at StartSession() time instead of a live GetName().
++void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName, std::string const& terminalReason)
++{
++    DungeonLeadState& st = sDungeonRouteMgr.State(guid);
 +    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
 +
 +    std::string const ts = FormatLogTimestamp();
 +    std::string const dungeonName = CsvEscape(route ? route->name : "?");
-+    std::string const botName = CsvEscape(bot->GetName());
++    std::string const botName = CsvEscape(tankName);
 +    std::string const reasonEsc = CsvEscape(terminalReason);
 +    uint32 const lfgId = st.lfgId;
 +    uint64 const runId = st.runId;
@@ -865,7 +876,24 @@ index 00000000..84bf743a
 +    for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
 +    {
 +        Player* bot = ObjectAccessor::FindPlayer(guid);
-+        if (!bot || !bot->IsInWorld())
++        // 2026-09-15 (independent architecture review DL-006 - the last silent exit path): a bot
++        // that hard-disconnects (logs out, character deleted from memory - ObjectAccessor can no
++        // longer find it at all, distinct from bot->IsInWorld()==false, which a bot mid-teleport
++        // hits routinely and is NOT a reason to tear anything down) never runs any Stop() call
++        // site - it just silently drops out of every future GuardActiveSessions() pass forever,
++        // with no DungeonLeadRuns.csv row and its GetActiveSessionGuids() entry never cleared.
++        // Close it out here instead: record it as its own terminal reason and stop tracking it.
++        if (!bot)
++        {
++            DungeonLeadState const& goneSt = sDungeonRouteMgr.State(guid);
++            LOG_INFO("playerbots.dungeonlead",
++                     "[DungeonLead] {} hard-disconnected while leading (run={}) - closing out the "
++                     "session instead of leaving it silently active", goneSt.tankName, goneSt.runId);
++            DungeonLead::RecordRunSummary(guid, goneSt.tankName, "hard_disconnect");
++            sDungeonRouteMgr.ResetState(guid);
++            continue;
++        }
++        if (!bot->IsInWorld())
 +            continue;
 +        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
 +        if (!botAI)
@@ -1064,6 +1092,7 @@ index 00000000..84bf743a
 +        st.runId = NextRunId();
 +        st.origin = origin;
 +        st.sessionStartTs = getMSTime();
++        st.tankName = bot->GetName();
 +        if (testMode)
 +        {
 +            st.testMode = true;
@@ -1957,10 +1986,10 @@ index 00000000..84bf743a
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..3c9e9d41
+index 00000000..f152ecd5
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,169 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2038,11 +2067,17 @@ index 00000000..3c9e9d41
 +    // thousands of interleaved rows by run_id and inferring the ending from whichever event came
 +    // last, which a restart or a crash can leave with no terminal row at all. This writes ONE row
 +    // to DungeonLeadRuns.csv at the point a run's outcome becomes final, so "how did run N end" is
-+    // a single lookup instead of a reconstruction. Not exhaustive - only wired into the two most
-+    // common terminal paths (normal route-completion and the canary timeout), not every Stop()/
-+    // left-instance exit; a real fix needs the review's full state machine (Requested->...->
-+    // Closed), out of scope for this pass.
++    // a single lookup instead of a reconstruction. As of 2026-09-15 this is wired into every known
++    // Stop()/left-instance/route-completion exit plus a hard-disconnect cleanup in
++    // GuardActiveSessions() - the only gap left is the review's full state machine
++    // (Requested->...->Closed) itself, out of scope for this pass.
 +    void RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason);
++
++    // Core the overload above delegates to (it just reads guid/name off a live Player*) - exposed
++    // separately so GuardActiveSessions() can close out a session whose character object is already
++    // gone (a hard disconnect), using DungeonLeadState::tankName cached at StartSession() instead of
++    // a live GetName().
++    void RecordRunSummary(ObjectGuid guid, std::string const& tankName, std::string const& terminalReason);
 +}
 +
 +class DungeonLeadNextAction : public NewRpgBaseAction
@@ -3049,10 +3084,10 @@ index 00000000..c82996da
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..e6826ba3
+index 00000000..d8e64bff
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,332 @@
+@@ -0,0 +1,339 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -3260,6 +3295,13 @@ index 00000000..e6826ba3
 +    // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
 +    uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
 +    DungeonLeadSessionOrigin origin = DungeonLeadSessionOrigin::Manual;
++    // 2026-09-15 (independent architecture review DL-006 - the one remaining silent exit path: a
++    // hard disconnect never runs any Stop() call site at all): every other RecordRunSummary() call
++    // site reads the tank's name straight off a live Player*, which a disconnected bot no longer
++    // has. Cached here at StartSession() specifically so GuardActiveSessions() can still name the
++    // run in DungeonLeadRuns.csv after the character object itself is gone.
++    std::string tankName;
++
 +    uint32 sessionStartTs = 0;  // getMSTime() at StartSession() - used by the canary controller's
 +                                 // timeout check; also generally useful (duration is otherwise only
 +                                 // reconstructable from the CSV's own "start" row timestamp)
