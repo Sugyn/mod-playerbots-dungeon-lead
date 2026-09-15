@@ -3297,10 +3297,10 @@ index 00000000..e3b85488
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
 new file mode 100644
-index 00000000..200c4dbf
+index 00000000..8370378e
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
-@@ -0,0 +1,528 @@
+@@ -0,0 +1,537 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -3821,7 +3821,16 @@ index 00000000..200c4dbf
 +    {
 +        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
 +        if (botAI && DungeonLead::IsOn(botAI))
++        {
++            // 2026-09-15 (independent architecture review DL-006, extended past its original two
++            // wired paths after live use exposed the gap directly): releasing a leased tank mid-run
++            // - the normal way an operator reclaims a test bot - called Stop() same as every other
++            // exit path, but unlike route completion and canary timeout, this one never wrote a
++            // DungeonLeadRuns.csv row. A run ended by release looked, from the telemetry alone,
++            // like it never ended at all.
++            DungeonLead::RecordRunSummary(botAI, "test_pool_released");
 +            DungeonLead::Stop(botAI, /*giveLeaderBack*/ false);  // no master to give it back to
++        }
 +        sRandomPlayerbotMgr.LogoutPlayerBot(it->guid);
 +    }
 +
