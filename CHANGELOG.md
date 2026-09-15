@@ -70,9 +70,67 @@ diagnostics.
 - CC still lands only a small fraction of the time even with correct timing (mark/attack-list
   gating) - something else (range, line of sight, or GCD) is blocking the actual spell cast. Not
   yet investigated.
-- Worldserver has crashed (SIGSEGV) three times against mass concurrent test-party load; core dump
-  capture is now configured on the test host but no crash has recurred since, so there is still no
-  backtrace and no fix.
+- Worldserver has crashed (SIGSEGV) five times against mass concurrent test-party load. Two crashes
+  now have a symbolized backtrace (core dump capture configured on the test host): both are the
+  same underlying defect, a stale `AbstractFollower*`/`Unit::m_followingMe` pointer surfacing during
+  either normal `MotionMaster` movement-generator expiry or `Player::TeleportTo`'s
+  `RemoveAllFollowers()`. One trigger is now reliably reproducible (cross-map-teleporting a bot with
+  active followers) and is contained - see Fixed below - but the underlying AzerothCore-core
+  lifetime bug is not fixed, only worked around for that one trigger.
+
+## Phase 0 (2026-09-15): safety and truth, from an independent architecture review
+
+An independent architecture/code review of the whole project (not just Wailing Caverns) found the
+harness itself untrustworthy in several ways that could produce false test results, and rated the
+project Alpha/2-10 autonomy. Its "Immediate Next Tasks" became this project's Phase 0 roadmap -
+safety and truth before any further route/party-orchestration work. Findings referenced below by
+their review ID (DL-001 etc.) for traceability; full findings are not reproduced here.
+
+### Added
+- `DungeonLeadState::leaderSnapshot`/`hasLeaderSnapshot`: the session leader's own pre-
+  `startdungeon` formation/strategy state, snapshotted the same way every follower already was.
+- `DungeonRoute::HasAnyMandatory()`.
+- `TestBotLease::accountId`, and `AcquireBot()` now prefers a candidate whose AddClass account
+  isn't already represented among active leases (falls back to reuse rather than ever refusing).
+- `.playerbots tpbot`/`pathcheckfrom` gained a `force` argument and, without it, refuse to
+  cross-map teleport a bot still in a >1-member group.
+- A real `dungeon-lead` git branch (committed on top of the pinned upstream base in the working
+  checkout) replaces hand-diffing an uncommitted working tree to produce
+  `mod-playerbots-dungeon-lead.patch` - a new upstream release is now `fetch` + `rebase` + resolve
+  + regenerate, not a from-scratch manual diff. See README's new "Maintainer workflow" section.
+- `tools/resolve_routes.py` refuses (exit 1) to overwrite `dungeon_routes.csv` if doing so would
+  silently drop a `source=derived` navigation waypoint it has no way to re-derive; `--force`
+  overrides.
+
+### Fixed
+- **DL-002 - `Stop()` didn't reliably turn Dungeon Lead off.** `IsOn()` could still read true after
+  a reported stop (upstream `Reset()` doesn't guarantee stripping an active strategy, and the
+  leader itself was never snapshotted the way followers were). `Stop()` now restores the leader
+  from its own snapshot and explicitly verifies `IsOn()==false` afterward, logging if not.
+  `StartSession()` also now refuses to start on a bot that's already active instead of silently
+  re-snapshotting over a live session.
+- **DL-003 - route completion could be a zero-work false positive.** A route with no `boss`-kind
+  step at all (14 of 96 configured routes) reported Complete having done zero movement or combat.
+  Downgraded to `Blocked`/`UnsupportedEvent` when a route has no mandatory objective to begin with.
+- **DL-001 (containment, not a root-cause fix) - a live SIGSEGV was reliably reproduced** by
+  teleporting a bot with active followers cross-map (see the SEGV known-limitation note above).
+  `tpbot`/`pathcheckfrom` now refuse that specific scenario rather than crashing the server.
+- **DL-017 - the standalone `src/` mirror was uncompilable.** `DungeonRouteMgr.h` was missing
+  `ccLandedTold`/`lastPathLogTs`, fields `DungeonLeadActions.cpp` already used. All 12
+  `src/DungeonLead/` files are now confirmed byte-identical to the deployed checkout.
+- **DL-014 - the route-data pipeline didn't round-trip.** `resolve_routes.py` would have silently
+  regenerated `dungeon_routes.csv` without the Wailing Caverns bridge waypoints (see the fix above);
+  `routes.tsv`'s boss order was also still the pre-rewrite sequence and has been reconciled.
+- **DL-005 - test bot leases weren't account-aware.** `AccountInstancesPerHour` is throttled per
+  AzerothCore account, not per character, and an AddClass account owns ~10 characters - acquiring
+  leases without regard to account concentrated instance-entry load on a few accounts. Verified
+  live: 5 sequential Mage acquisitions landed on 5 different accounts.
+
+### Not yet done from Phase 0
+DL-001's actual root cause (why a follower or its target goes stale without the other side's
+cleanup running), DL-006 (structured `RunRecord`/exactly-once run summary with campaign/scenario
+identity), DL-004 (verified-instance-before-`StartSession` postconditions), DL-009 (group-scoped
+session ownership instead of per-tank-GUID) remain open.
 
 ## [0.8.0] - 2026-09-13
 
