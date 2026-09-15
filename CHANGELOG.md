@@ -263,13 +263,29 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   exit code still 0. Not the actual resolver fix (still needs real DB lookups per boss, the same
   kind of work the Wailing Caverns route rewrite did).
 
+- **DL-006 (last gap closed) - a hard-disconnected tank's session is now closed out.** All five
+  `Stop()` call sites already write a run summary; a tank that hard-disconnects (character object
+  gone entirely) runs none of them and used to just silently drop out of `GuardActiveSessions()`
+  forever - no `DungeonLeadRuns.csv` row, no cleanup. `GuardActiveSessions()` now distinguishes
+  "gone entirely" (`!bot`) from "not currently in world" (`bot->IsInWorld()==false`, which a bot
+  mid-teleport hits routinely and must not be torn down for - unchanged) and records a
+  `hard_disconnect` run summary + resets state for the former. Needed a
+  `DungeonLeadState::tankName` (cached at `StartSession()`) since `RecordRunSummary()` no longer has
+  a live `Player*` to read a name from at this point; split into a GUID+name core with the existing
+  `PlayerbotAI*` overload as a thin wrapper. Every currently-known way a session ends now writes
+  exactly one `DungeonLeadRuns.csv` row. Verified live that the fix doesn't misfire on the
+  legitimate transient `IsInWorld()==false` case (a normal party's cross-map teleport produced zero
+  false-positive `hard_disconnect` rows over 7+ guard passes); an actual hard disconnect itself
+  wasn't triggered live (playerbots have no real network connection to sever).
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
-identity - every *known* exit path is covered now, but a bot that hard-disconnects without any of
-them running is still unaccounted for), the rest of DL-004 (role/level/gear qualification per bot
-beyond alive/dead, shared-difficulty binding, consistent-instance postconditions before
-`StartSession`), the rest of DL-009 (atomic group-keyed claim/generation token, waiting for the
+identity - every known exit path, hard disconnect included, now writes a row, but there's still no
+richer identity per row), the rest of DL-004 (role/level/gear qualification per bot beyond
+alive/dead, shared-difficulty binding, consistent-instance postconditions before `StartSession`),
+DL-013 (wipe/death recovery - live-observed tonight, a dead tank just stalls the session rather than
+recovering or failing cleanly), the rest of DL-009 (atomic group-keyed claim/generation token, waiting for the
 world-thread leader change to actually land before committing session state), DL-008's long-term
 explicit finish/abort/drain policy on disable-mid-run, and the live-observed Cobrahn navigation
 failure above remain open.
