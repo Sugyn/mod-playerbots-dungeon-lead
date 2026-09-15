@@ -5,17 +5,17 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 4,Ragefire Chasm,389,0,0,-,4,boss,Bazzalan,11519,-384.9,146,7.8,spawn,upper walkway
 1,Wailing Caverns,43,0,0,-,1,boss,Lady Anacondra,3671,-67.8,122.6,-92.8,spawn,Screaming Gully
 1,Wailing Caverns,43,0,0,-,2,optional,Kresh,3653,-64.4,319.1,-106.7,spawn,river turtle
-1,Wailing Caverns,43,0,0,-,3,optional,Cobrahn approach (bridge),3653,-104.533,427.733,-99.2298,derived,2026-09-15 pathcheck bridge: Kresh->Cobrahn direct stops exactly here (55y short); from here Cobrahn is NORMAL (0.1y). entry=Kresh dummy.
+1,Wailing Caverns,43,0,0,-,3,optional,Cobrahn approach (bridge),1,-104.533,427.733,-99.2298,derived,2026-09-15 pathcheck bridge: Kresh->Cobrahn direct stops exactly here (55y short); from here Cobrahn is NORMAL (0.1y). entry=1 (GM-only waypoint template, never spawns).
 1,Wailing Caverns,43,0,0,-,4,boss,Lord Cobrahn,3669,-151.1,414.4,-72.6,spawn,Fanglord 1/4. Dead-end: pathcheck confirms NOPATH from here to Verdan/Serpentis/Pythas/Skum/Naralex - must return via step 3 bridge.
-1,Wailing Caverns,43,0,0,-,5,optional,Cobrahn return (bridge),3653,-104.533,427.733,-99.2298,derived,Same point as step 3 reverse leg - required Cobrahn->Verdan direct is NOPATH.
-1,Wailing Caverns,43,0,0,-,6,optional,Verdan approach (bridge),3653,-55.7333,67.4667,-85.9882,derived,2026-09-15 pathcheck bridge hub chokepoint (also reached from Kresh/Naralex directly); Verdan from here is exact (0.08y).
+1,Wailing Caverns,43,0,0,-,5,optional,Cobrahn return (bridge),1,-104.533,427.733,-99.2298,derived,Same point as step 3 reverse leg - required Cobrahn->Verdan direct is NOPATH.
+1,Wailing Caverns,43,0,0,-,6,optional,Verdan approach (bridge),1,-55.7333,67.4667,-85.9882,derived,2026-09-15 pathcheck bridge hub chokepoint (also reached from Kresh/Naralex directly); Verdan from here is exact (0.08y).
 1,Wailing Caverns,43,0,0,-,7,optional,Verdan the Everliving,5775,-81.9,32.3,-31,spawn,Fanglord 2/4.
 1,Wailing Caverns,43,0,0,-,8,boss,Lord Serpentis,3673,-120.2,-24.6,-28.6,spawn,Fanglord 3/4. Direct from Verdan NORMAL/exact (0.02y) - no bridge needed.
-1,Wailing Caverns,43,0,0,-,9,optional,Pythas approach (bridge),3653,-101.333,-42.6667,-22.0857,derived,2026-09-15 pathcheck bridge: exact stop point of direct Serpentis->Pythas path (248y short); Pythas from here is exact (0.08y).
+1,Wailing Caverns,43,0,0,-,9,optional,Pythas approach (bridge),1,-101.333,-42.6667,-22.0857,derived,2026-09-15 pathcheck bridge: exact stop point of direct Serpentis->Pythas path (248y short); Pythas from here is exact (0.08y).
 1,Wailing Caverns,43,0,0,-,10,boss,Lord Pythas,3670,36.8,-241.1,-79.5,spawn,Fanglord 4/4 - all 4 Fanglords dead after this Naralex escort can spawn.
 1,Wailing Caverns,43,0,0,-,11,optional,Skum,3674,-285.6,-313,-69.2,spawn,Direct from Pythas NORMAL/exact (0.01y) despite 330y distance. Dead-end past here: NOPATH onward must return via Pythas.
-1,Wailing Caverns,43,0,0,-,12,optional,Pythas return (bridge),3670,36.8,-241.1,-79.5,derived,Same coords as step 10 pass-through (Pythas already dead existing dead-boss-skip logic applies). Skum->Naralex is NOPATH.
-1,Wailing Caverns,43,0,0,-,13,optional,Naralex approach (bridge),3653,-162.133,92.2667,-76.0141,derived,2026-09-15 pathcheck bridge: exact stop point of direct Pythas->Naralex path (43y short); Naralex from here is exact (0.08y).
+1,Wailing Caverns,43,0,0,-,12,optional,Pythas return (bridge),1,36.8,-241.1,-79.5,derived,Same coords as step 10. entry=1 dummy - reusing Pythas entry here skipped this waypoint (dead-boss fast path). Skum->Naralex is NOPATH.
+1,Wailing Caverns,43,0,0,-,13,optional,Naralex approach (bridge),1,-162.133,92.2667,-76.0141,derived,2026-09-15 pathcheck bridge: exact stop point of direct Pythas->Naralex path (43y short); Naralex from here is exact (0.08y).
 1,Wailing Caverns,43,0,0,-,14,event,Disciple of Naralex,3678,-135,125.4,-78.1,spawn,escort from entrance after 4 Fanglords -> spawns Mutanus
 1,Wailing Caverns,43,0,0,-,15,event,Mutanus the Devourer,3654,NULL,NULL,NULL,script,script-spawned by escort
 6,Deadmines,36,0,0,-,1,boss,Rhahk'Zor,644,-192.9,-448.2,54.4,spawn,
