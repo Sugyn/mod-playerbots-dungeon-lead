@@ -180,6 +180,17 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   skipped_steps=7`. Not yet fixed - pathcheck verifying a graph is walkable turns out not to
   guarantee the live pathing AI executes it reliably under real (combat-interrupted) conditions;
   needs its own investigation, tracked loosely under DL-011 (navigation identity/execution split).
+  **First fix attempt tried and disproved live**: `MoveRouteTo()` was changed to advance along
+  `PathGenerator`'s own computed waypoint list instead of jumping straight to the far endpoint via
+  `MoveTo()` - re-tested on the identical Cobrahn segment and `skip_stuck` fired again with the same
+  pattern (bestDist 53.8y, ending ~196y away). Likely cause: `MoveRouteTo()` recomputes
+  `CalculatePath()` fresh on every call with no cached state, and the navmesh solver appears to
+  return a slightly different winding route each time depending on the bot's exact current
+  position - the bot bounces between route variants instead of committing to and following one.
+  Reverted rather than escalate to a session-state path cache without time to test it broadly
+  across every dungeon's routes (this function runs for every step of every route) - same
+  low-regression-risk posture as DL-007. A real fix needs to cache the computed path once and walk
+  it across ticks, invalidating on real deviation, not recompute-and-hope each call.
 
 - **DL-006 (extended) - the last two of five known `Stop()` call sites now record a run summary
   too.** `DungeonLeadStopAction` (auto "left instance" - the single most common exit path watching
