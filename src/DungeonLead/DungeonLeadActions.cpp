@@ -786,7 +786,18 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
             group->GetLeaderGUID() == bot->GetGUID())
         {
             auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), master->GetGUID());
-            PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
+            // 2026-09-15 (independent architecture review, DL-009 - "enqueue success ... [is] not
+            // required before ... committed"): QueueOperation() already LOG_ERRORs internally when
+            // the bounded world-thread queue is full and drops the operation, but the return value
+            // itself used to be discarded here - the leader handback could silently never happen
+            // and nothing downstream would know. Not the review's full fix (no retry, no owned
+            // completion/rollback transaction - this session is finishing regardless of whether the
+            // handback landed), just making the failure visible instead of silent.
+            if (!PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op)))
+                LOG_ERROR("playerbots.dungeonlead",
+                          "[DungeonLead] {} Stop() could not queue leader handback to {} - world "
+                          "thread queue full, master stays non-leader until something else fixes it",
+                          bot->GetName(), master->GetName());
         }
     }
 
@@ -836,8 +847,30 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
 
     if (group->GetLeaderGUID() != bot->GetGUID())
     {
+        // 2026-09-15 (independent architecture review, DL-009 - "the caller gets success
+        // immediately [without] enqueue success ... required before ... a started session are
+        // committed"): this used to queue the leader-change operation and proceed regardless of
+        // whether it was actually accepted. If the bounded world-thread queue was full,
+        // QueueOperation() drops the operation (logging its own error) - `bot` would then never
+        // actually become group leader, while everything below still commits a started session,
+        // applies follower strategies, and reports success. Refuse instead of starting a session
+        // whose leadership change we know for certain never got queued.
+        //
+        // Not the review's full fix: this only catches the enqueue itself failing, not the
+        // operation later being processed-but-rejected on the world thread (e.g. a stale roster),
+        // and there's still no wait for GetLeaderGUID() to actually match before committing state
+        // below - that would need this function to become asynchronous, out of scope here. A
+        // group already led by someone else (GetLeaderGUID() mismatch after a successful enqueue)
+        // remains an open DL-009 gap.
         auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
-        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
+        if (!PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op)))
+        {
+            LOG_ERROR("playerbots.dungeonlead",
+                      "[DungeonLead] {} StartSession refused - could not queue leader change "
+                      "(world thread queue full), {} would lead a group it was never made leader of",
+                      bot->GetName(), bot->GetName());
+            return false;
+        }
     }
 
     ApplyLeaderFollowerStrategies(botAI, group);
