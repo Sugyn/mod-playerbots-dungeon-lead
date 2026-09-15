@@ -69,6 +69,17 @@ namespace DungeonLead
     // dependency. Gated behind DungeonLeadState::debugMode, defaulting to
     // AiPlayerbot.DungeonLead.DebugDefault (0 for a fresh checkout of this patch).
     void RecordDebug(PlayerbotAI* botAI, std::string const& line);
+
+    // 2026-09-15 (independent architecture review, DL-006): DungeonLeadSessions.csv is a per-event
+    // stream - reconstructing "how many runs actually reached Complete" means grouping potentially
+    // thousands of interleaved rows by run_id and inferring the ending from whichever event came
+    // last, which a restart or a crash can leave with no terminal row at all. This writes ONE row
+    // to DungeonLeadRuns.csv at the point a run's outcome becomes final, so "how did run N end" is
+    // a single lookup instead of a reconstruction. Not exhaustive - only wired into the two most
+    // common terminal paths (normal route-completion and the canary timeout), not every Stop()/
+    // left-instance exit; a real fix needs the review's full state machine (Requested->...->
+    // Closed), out of scope for this pass.
+    void RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason);
 }
 
 class DungeonLeadNextAction : public NewRpgBaseAction

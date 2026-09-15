@@ -114,10 +114,22 @@ namespace
 
     // Session correlation id: every telemetry row from one "startdungeon" run carries the same
     // value, so a bug report's CSV rows (which interleave every dungeon-lead bot on the whole
-    // server) can be grouped back into one run without guessing from timestamps. Monotonic
-    // per-process counter - unique enough to tell runs apart within one worldserver's CSV/debug
-    // log, not meant to be globally unique across restarts or servers.
-    std::atomic<uint64> g_nextRunId{1};
+    // server) can be grouped back into one run without guessing from timestamps.
+    //
+    // 2026-09-15 (independent architecture review, DL-006 - "telemetry cannot yield an
+    // authoritative run result"): this used to restart at 1 every worldserver restart while the
+    // CSV file itself keeps appending across restarts (it's a plain fopen(...,"a"), never
+    // truncated) - run 1 from today's first process and run 1 from the process after a crash
+    // restart were indistinguishable in the same file, and the review's own dashboard-correctness
+    // reasoning depends on run_id actually being unique. Seeded from the process start time
+    // (seconds since epoch, left-shifted to leave room for up to ~1M runs/second before two
+    // processes that started in the same second could theoretically collide - nowhere close to
+    // this project's real scale) instead of a fixed 1, so two different worldserver processes
+    // essentially never hand out the same run_id. Still not a real globally-unique ID scheme
+    // (no commit_sha/campaign_id/scenario_id columns yet - that's the rest of DL-006, not done
+    // here), but the single most load-bearing part - two runs never being confusable as the same
+    // run - now actually holds.
+    std::atomic<uint64> g_nextRunId{static_cast<uint64>(time(nullptr)) << 20};
     uint64 NextRunId() { return g_nextRunId.fetch_add(1); }
 
     std::string FormatLogTimestamp()
@@ -287,6 +299,45 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
     fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts.c_str(),
             static_cast<unsigned long long>(runId), masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
             members.c_str(), eventEsc.c_str(), detailEsc.c_str(), outcome, failureDomain, failureReason);
+    fflush(f);
+    fclose(f);
+}
+
+void DungeonLead::RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason)
+{
+    Player* bot = botAI->GetBot();
+    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
+
+    std::string const ts = FormatLogTimestamp();
+    std::string const dungeonName = CsvEscape(route ? route->name : "?");
+    std::string const botName = CsvEscape(bot->GetName());
+    std::string const reasonEsc = CsvEscape(terminalReason);
+    uint32 const lfgId = st.lfgId;
+    uint64 const runId = st.runId;
+    char const* outcome = ToString(st.outcome);
+    char const* failureDomain = ToString(st.failureDomain);
+    char const* failureReason = ToString(st.failureReason);
+    size_t const skipped = st.skippedSteps.size();
+    uint32 const durationMs = st.sessionStartTs ? GetMSTimeDiffToNow(st.sessionStartTs) : 0;
+    char const* origin = ToString(st.origin);
+
+    std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
+    static bool headerWritten = false;
+    FILE* f = fopen("DungeonLeadRuns.csv", "a");
+    if (!f)
+        return;
+    if (!headerWritten)
+    {
+        fseek(f, 0, SEEK_END);
+        if (ftell(f) == 0)
+            fprintf(f, "ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,"
+                       "skipped_steps,duration_ms,terminal_reason\n");
+        headerWritten = true;
+    }
+    fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%zu,%u,\"%s\"\n", ts.c_str(),
+            static_cast<unsigned long long>(runId), botName.c_str(), lfgId, dungeonName.c_str(), origin,
+            outcome, failureDomain, failureReason, skipped, durationMs, reasonEsc.c_str());
     fflush(f);
     fclose(f);
 }
@@ -1115,6 +1166,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             DungeonLead::RecordEvent(botAI, hadNothingToVerify ? "route_blocked" :
                                       st.mandatorySkipped ? "route_partial" : "route_complete",
                                       std::to_string(st.skippedSteps.size()) + " skipped");
+            DungeonLead::RecordRunSummary(botAI, "route_end");
 
             // "startdungeon test" (L1.3): report a structured RunResult at the terminal outcome,
             // then clear test mode so any further play this session isn't mislabeled as a test.

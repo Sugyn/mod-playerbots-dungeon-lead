@@ -103,6 +103,7 @@ void DungeonLead::CanaryTick()
         char const* reason = realPlayerJoined ? "real_player_joined" : "timeout";
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead][Canary] {} stopping - {}", bot->GetName(), reason);
         DungeonLead::RecordEvent(botAI, "canary_stop", std::string("reason=") + reason);
+        DungeonLead::RecordRunSummary(botAI, std::string("canary_") + reason);  // before Stop() erases state
         DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);  // no-op leader handoff for a canary
                                                              // session - GetMaster() is null/self
                                                              // for a bot nobody is playing
