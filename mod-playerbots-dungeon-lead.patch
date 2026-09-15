@@ -145,10 +145,10 @@ index 55792aa5..efec9184 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..72f82ca2
+index 00000000..1b870ffd
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1626 @@
+@@ -0,0 +1,1642 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -1233,11 +1233,26 @@ index 00000000..72f82ca2
 +            // become COMPLETE". st.outcome was already set to Partial at the skip site if this
 +            // applies; this is only reached for Complete otherwise. The RecordEvent name itself
 +            // carries the outcome for anyone parsing the CSV, not just the wording of the chat line.
-+            if (!st.mandatorySkipped)
++            //
++            // DL-003 (2026-09-15 independent architecture review): a route with no IsMandatory()
++            // step AT ALL (every row is optional/event/door/skip - 14 of 96 configured routes,
++            // confirmed by the review) reaches here having proven nothing whatsoever, not even
++            // "no mandatory step happened to fail" - there was never one to fail. Downgrade that
++            // specific case to Blocked/UnsupportedEvent rather than Complete, so it reads
++            // honestly instead of looking identical to a real full clear.
++            bool const hadNothingToVerify = !route->HasAnyMandatory();
++            if (hadNothingToVerify)
++            {
++                st.outcome = DungeonRunOutcome::Blocked;
++                st.failureDomain = DungeonFailureDomain::Encounter;
++                st.failureReason = DungeonFailureReason::UnsupportedEvent;
++            }
++            else if (!st.mandatorySkipped)
 +                st.outcome = DungeonRunOutcome::Complete;
-+            char const* outcome = st.mandatorySkipped ? "PARTIAL" : "complete";
++            char const* outcome = hadNothingToVerify ? "BLOCKED (no mandatory objective on this route)"
++                                   : st.mandatorySkipped ? "PARTIAL" : "complete";
 +            std::ostringstream out;
-+            if (st.skippedSteps.empty())
++            if (st.skippedSteps.empty() && !hadNothingToVerify)
 +                out << "Dungeon lead: route complete";
 +            else
 +            {
@@ -1248,7 +1263,8 @@ index 00000000..72f82ca2
 +            }
 +            botAI->TellMasterNoFacing(out);
 +            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route {} ({} skipped)", bot->GetName(), outcome, st.skippedSteps.size());
-+            DungeonLead::RecordEvent(botAI, st.mandatorySkipped ? "route_partial" : "route_complete",
++            DungeonLead::RecordEvent(botAI, hadNothingToVerify ? "route_blocked" :
++                                      st.mandatorySkipped ? "route_partial" : "route_complete",
 +                                      std::to_string(st.skippedSteps.size()) + " skipped");
 +
 +            // "startdungeon test" (L1.3): report a structured RunResult at the terminal outcome,
@@ -1262,7 +1278,7 @@ index 00000000..72f82ca2
 +                std::ostringstream report;
 +                report << "DungeonLead Test #" << st.runId << ": " << (route ? route->name : "?")
 +                       << " -> " << ToString(st.outcome);
-+                if (st.outcome == DungeonRunOutcome::Partial)
++                if (st.outcome == DungeonRunOutcome::Partial || st.outcome == DungeonRunOutcome::Blocked)
 +                    report << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";
 +                report << " | duration " << (durationMs / 60000) << "m" << ((durationMs / 1000) % 60) << "s"
 +                       << " | skipped " << st.skippedSteps.size()
@@ -2816,10 +2832,10 @@ index 00000000..c82996da
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonRouteMgr.h b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
 new file mode 100644
-index 00000000..9898e888
+index 00000000..e3b85488
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonRouteMgr.h
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,321 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2944,6 +2960,23 @@ index 00000000..9898e888
 +    uint32 difficulty = 0;
 +    std::string name;
 +    std::vector<DungeonRouteStep> steps;
++
++    // 2026-09-15 (independent architecture review, DL-003 - "route completion can be a zero-work
++    // false positive"): reaching the end of the route with no IsMandatory() step ever skipped was
++    // reported as Complete even if the route has no mandatory step AT ALL to skip - a route with
++    // only optional/event/door/skip rows (12 one-row 'skip' dungeons plus the unpositioned
++    // Headless Horseman/Ahune rows, confirmed by the review) reports Complete having done zero
++    // movement or combat. Used at the terminal-outcome call site to downgrade that specific case
++    // to Blocked instead of Complete - not a full fix (still doesn't verify an *optional* step's
++    // own claimed completion, and doesn't touch InstanceScript/encounter state), just closes the
++    // worst false positive: a route that structurally could never prove anything.
++    bool HasAnyMandatory() const
++    {
++        for (DungeonRouteStep const& s : steps)
++            if (s.IsMandatory())
++                return true;
++        return false;
++    }
 +};
 +
 +// A follower's formation/strategy set as it was right before "startdungeon" touched it, so
