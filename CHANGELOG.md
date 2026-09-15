@@ -278,14 +278,32 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   false-positive `hard_disconnect` rows over 7+ guard passes); an actual hard disconnect itself
   wasn't triggered live (playerbots have no real network connection to sever).
 
+- **DL-013 (narrow slice) - a wiped tank no longer occupies its session forever.** Found live
+  tonight, testing an unrelated fix: a tank died fighting Lady Anacondra and the session just sat
+  there afterward, with no telemetry and no visible failure -
+  `DungeonLeadNextAction::isUseful()` already refuses to run at all while `bot->IsAlive()==false`,
+  but nothing else ever reacted to that. `GuardActiveSessions()` now records `wipe_detected` the
+  first tick a session's tank is found dead, then - after `StuckSeconds` of still being dead - sets
+  `outcome=Partial/Combat/PartyWipe`, records the run summary as `wipe`, and stops the session. A
+  tank resurrected within that window is left running exactly as before. Not the review's actual
+  recovery model (no corpse release, resurrection, regroup, or resume) - the same honest-failure-
+  instead-of-silent-hang shape as DL-016/DL-018, applied to death instead of navigation or route
+  completion. Verified by code review and build/deploy; a live re-test attempted to reproduce the
+  original wipe (AzerothCore's `.die`/`.damage` GM commands require an in-game target selection and
+  aren't usable over the SOAP console this session automates through) - the same tank fought Lady
+  Anacondra again and survived this time, so no regression was introduced (no false `wipe_giveup`
+  during a real, ongoing fight), but the actual give-up path wasn't re-triggered. The same run did
+  confirm DL-016's `stuck_alive` fix firing correctly on Kresh.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
 identity - every known exit path, hard disconnect included, now writes a row, but there's still no
 richer identity per row), the rest of DL-004 (role/level/gear qualification per bot beyond
 alive/dead, shared-difficulty binding, consistent-instance postconditions before `StartSession`),
-DL-013 (wipe/death recovery - live-observed tonight, a dead tank just stalls the session rather than
-recovering or failing cleanly), the rest of DL-009 (atomic group-keyed claim/generation token, waiting for the
+the rest of DL-013 (a wiped session now fails cleanly after a timeout instead of hanging forever,
+but there's still no actual recovery - corpse release, resurrection, regroup, or resume), the rest
+of DL-009 (atomic group-keyed claim/generation token, waiting for the
 world-thread leader change to actually land before committing session state), DL-008's long-term
 explicit finish/abort/drain policy on disable-mid-run, and the live-observed Cobrahn navigation
 failure above remain open.
