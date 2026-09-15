@@ -122,6 +122,23 @@ struct DungeonRoute
     uint32 difficulty = 0;
     std::string name;
     std::vector<DungeonRouteStep> steps;
+
+    // 2026-09-15 (independent architecture review, DL-003 - "route completion can be a zero-work
+    // false positive"): reaching the end of the route with no IsMandatory() step ever skipped was
+    // reported as Complete even if the route has no mandatory step AT ALL to skip - a route with
+    // only optional/event/door/skip rows (12 one-row 'skip' dungeons plus the unpositioned
+    // Headless Horseman/Ahune rows, confirmed by the review) reports Complete having done zero
+    // movement or combat. Used at the terminal-outcome call site to downgrade that specific case
+    // to Blocked instead of Complete - not a full fix (still doesn't verify an *optional* step's
+    // own claimed completion, and doesn't touch InstanceScript/encounter state), just closes the
+    // worst false positive: a route that structurally could never prove anything.
+    bool HasAnyMandatory() const
+    {
+        for (DungeonRouteStep const& s : steps)
+            if (s.IsMandatory())
+                return true;
+        return false;
+    }
 };
 
 // A follower's formation/strategy set as it was right before "startdungeon" touched it, so

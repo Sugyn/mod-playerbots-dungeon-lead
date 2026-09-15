@@ -1082,11 +1082,26 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // become COMPLETE". st.outcome was already set to Partial at the skip site if this
             // applies; this is only reached for Complete otherwise. The RecordEvent name itself
             // carries the outcome for anyone parsing the CSV, not just the wording of the chat line.
-            if (!st.mandatorySkipped)
+            //
+            // DL-003 (2026-09-15 independent architecture review): a route with no IsMandatory()
+            // step AT ALL (every row is optional/event/door/skip - 14 of 96 configured routes,
+            // confirmed by the review) reaches here having proven nothing whatsoever, not even
+            // "no mandatory step happened to fail" - there was never one to fail. Downgrade that
+            // specific case to Blocked/UnsupportedEvent rather than Complete, so it reads
+            // honestly instead of looking identical to a real full clear.
+            bool const hadNothingToVerify = !route->HasAnyMandatory();
+            if (hadNothingToVerify)
+            {
+                st.outcome = DungeonRunOutcome::Blocked;
+                st.failureDomain = DungeonFailureDomain::Encounter;
+                st.failureReason = DungeonFailureReason::UnsupportedEvent;
+            }
+            else if (!st.mandatorySkipped)
                 st.outcome = DungeonRunOutcome::Complete;
-            char const* outcome = st.mandatorySkipped ? "PARTIAL" : "complete";
+            char const* outcome = hadNothingToVerify ? "BLOCKED (no mandatory objective on this route)"
+                                   : st.mandatorySkipped ? "PARTIAL" : "complete";
             std::ostringstream out;
-            if (st.skippedSteps.empty())
+            if (st.skippedSteps.empty() && !hadNothingToVerify)
                 out << "Dungeon lead: route complete";
             else
             {
@@ -1097,7 +1112,8 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             }
             botAI->TellMasterNoFacing(out);
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route {} ({} skipped)", bot->GetName(), outcome, st.skippedSteps.size());
-            DungeonLead::RecordEvent(botAI, st.mandatorySkipped ? "route_partial" : "route_complete",
+            DungeonLead::RecordEvent(botAI, hadNothingToVerify ? "route_blocked" :
+                                      st.mandatorySkipped ? "route_partial" : "route_complete",
                                       std::to_string(st.skippedSteps.size()) + " skipped");
 
             // "startdungeon test" (L1.3): report a structured RunResult at the terminal outcome,
@@ -1111,7 +1127,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                 std::ostringstream report;
                 report << "DungeonLead Test #" << st.runId << ": " << (route ? route->name : "?")
                        << " -> " << ToString(st.outcome);
-                if (st.outcome == DungeonRunOutcome::Partial)
+                if (st.outcome == DungeonRunOutcome::Partial || st.outcome == DungeonRunOutcome::Blocked)
                     report << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";
                 report << " | duration " << (durationMs / 60000) << "m" << ((durationMs / 1000) % 60) << "s"
                        << " | skipped " << st.skippedSteps.size()
