@@ -44,8 +44,23 @@ namespace DungeonLead
 {
     // Called every world tick from PlayerbotsWorldScript::OnUpdate, right next to
     // GuardActiveSessions() - throttles and no-ops internally exactly like that function does, so
-    // the call site stays a single unconditional line regardless of config.
+    // the call site stays a single unconditional line regardless of config. Thin wrapper: runs
+    // CanarySupervisorTick() unconditionally, then MaybeStartCanary() only if CanaryEnabled - see
+    // DL-008 on why supervision and creation are no longer gated by the same check.
     void CanaryTick();
+
+    // DL-008 pass 1: safety-checks every currently-active AutoCanary session (real-player-join,
+    // timeout) and stops any that need it, REGARDLESS of CanaryEnabled - an existing session must
+    // not go unsupervised just because the flag that would have started a new one is off. Returns
+    // the resulting active-canary count for MaybeStartCanary()'s capacity check. Exposed (not
+    // file-local) only so CanaryTick() can sequence it before MaybeStartCanary(); not intended to
+    // be called from anywhere else.
+    uint32 CanarySupervisorTick();
+
+    // DL-008 pass 2: the old CanaryTick()'s "try to start one new canary session" logic, now gated
+    // by CanaryEnabled on its own instead of gating supervision too. `activeCanaryCount` is
+    // CanarySupervisorTick()'s return value - avoids a second scan of GetActiveSessionGuids().
+    void MaybeStartCanary(uint32 activeCanaryCount);
 
     // Stage 2: on-demand targeted test, added after live use of Stage 0/1 surfaced the obvious
     // problem with pure passive sampling - "wait for the right bots to randomly queue for the

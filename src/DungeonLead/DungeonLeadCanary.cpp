@@ -63,20 +63,23 @@ namespace
     }
 }
 
-void DungeonLead::CanaryTick()
+// 2026-09-15 (independent architecture review, DL-008 - "disabling canary creation also disables
+// safety supervision of existing canary sessions"): this used to be pass 1 of a single CanaryTick()
+// that returned at the top whenever CanaryEnabled was false, before the safety pass below ever ran.
+// That meant flipping the kill switch mid-run - or just running with it off, which is also the
+// documented default - left every AutoCanary session's real-player-join and timeout watchdog
+// unserviced: a session already active keeps running with nobody checking it. Split out so this
+// pass always executes regardless of the flag; only *starting new* canary sessions
+// (MaybeStartCanary() below) is gated. Returns the current active-canary count so the caller can
+// pass it straight into MaybeStartCanary()'s own capacity check without a second scan.
+//
+// Not the review's full long-term fix (a world-thread campaign supervisor with an explicit
+// finish/abort/drain policy on disable) - this is the minimal fix it names: unconditional
+// supervision. An operator who disables CanaryEnabled mid-run now gets existing sessions correctly
+// timed out / stopped on real-player-join instead of orphaned, but there's still no distinct
+// "disable requested, drain in progress" state.
+uint32 DungeonLead::CanarySupervisorTick()
 {
-    if (!sPlayerbotAIConfig.dungeonLeadCanaryEnabled)
-        return;
-
-    static uint32 lastRunTs = 0;
-    uint32 now = getMSTime();
-    if (lastRunTs && now - lastRunTs < 5000)
-        return;
-    lastRunTs = now;
-
-    // --- pass 1: safety checks on every currently-active canary session, regardless of whether
-    // we're about to try starting a new one this tick. Both checks below matter even at
-    // CanaryMaxConcurrent capacity - a stuck/abandoned session must not permanently occupy a slot.
     uint32 activeCanaryCount = 0;
     for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
     {
@@ -109,8 +112,16 @@ void DungeonLead::CanaryTick()
                                                              // for a bot nobody is playing
         --activeCanaryCount;
     }
+    return activeCanaryCount;
+}
 
-    // --- pass 2: try to start one new canary session if there's a free concurrency slot.
+// Pass 2 of the old CanaryTick(): try to start one new canary session, gated by CanaryEnabled -
+// only creation is conditional now, see CanarySupervisorTick() above.
+void DungeonLead::MaybeStartCanary(uint32 activeCanaryCount)
+{
+    if (!sPlayerbotAIConfig.dungeonLeadCanaryEnabled)
+        return;
+
     if (activeCanaryCount >= sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent)
         return;
 
@@ -192,6 +203,21 @@ void DungeonLead::CanaryTick()
              candidateTank->GetName(), candidateGroup->GetMembersCount());
     DungeonLead::StartSession(tankAI, candidateGroup, DungeonLeadSessionOrigin::AutoCanary,
                                /*master*/ nullptr, /*testMode*/ true);
+}
+
+// Called every world tick from PlayerbotsWorldScript::OnUpdate - see DL-008 note on
+// CanarySupervisorTick() above for why this is now two calls instead of one early-return. The 5s
+// throttle applies to both passes together, same cost/behavior as before the split.
+void DungeonLead::CanaryTick()
+{
+    static uint32 lastRunTs = 0;
+    uint32 now = getMSTime();
+    if (lastRunTs && now - lastRunTs < 5000)
+        return;
+    lastRunTs = now;
+
+    uint32 const activeCanaryCount = DungeonLead::CanarySupervisorTick();
+    DungeonLead::MaybeStartCanary(activeCanaryCount);
 }
 
 namespace
