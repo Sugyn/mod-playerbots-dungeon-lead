@@ -92,6 +92,35 @@ for hid, d in lfg.items():
 # normal entries drop heroic_only steps
 rows = [r for r in rows if r["kind"] != "heroic_only"] + derived
 
+# --- safety check: never silently drop pathcheck-derived navigation waypoints ---
+# 2026-09-15: this script overwrites dungeon_routes.csv wholesale from routes.tsv, which only
+# knows "boss name -> resolve a creature spawn position". It has no way to represent a pure
+# navigation anchor placed at a PathGenerator-confirmed point (source="derived" in the CSV, e.g.
+# Wailing Caverns' bridge waypoints) - a fresh run silently regenerates the file without them,
+# with CI staying green because the validator only checks the *output*'s shape, not whether it
+# regressed real navigation fixes. See the 2026-09-15 independent architecture review, DL-014.
+# Refuse to overwrite if that would happen; --force bypasses this for a deliberate reconciliation.
+if "--force" not in sys.argv:
+    existing_path = f"{data}/dungeon_routes.csv"
+    if os.path.exists(existing_path):
+        with open(existing_path, newline="") as f:
+            existing_derived = {(r["lfg_id"], r["step"], r["boss"])
+                                 for r in csv.DictReader(f) if r.get("source") == "derived"}
+        fresh_keys = {(str(r["lfg_id"]), str(r["step"]), r["boss"]) for r in rows}
+        lost = [k for k in existing_derived if (k[0], k[1], k[2]) not in fresh_keys]
+        if lost:
+            print(f"REFUSING TO OVERWRITE {existing_path}: {len(lost)} 'derived' navigation "
+                  f"waypoint(s) in the current file have no equivalent in a fresh resolve, and "
+                  f"would be silently deleted:", file=sys.stderr)
+            for lfg_id, step, boss in sorted(lost):
+                print(f"  lfg_id={lfg_id} step={step} '{boss}'", file=sys.stderr)
+            print("These aren't creature spawns this script can re-derive from routes.tsv/"
+                  "boss_positions.tsv - they were placed by hand against real pathcheck results. "
+                  "Reconcile routes.tsv to include them (as manually-added rows with fixed "
+                  "coordinates) before regenerating, or pass --force if this loss is intentional.",
+                  file=sys.stderr)
+            sys.exit(1)
+
 with open(f"{data}/dungeon_routes.csv", "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
     w.writeheader(); w.writerows(rows)
