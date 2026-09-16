@@ -1651,6 +1651,19 @@ bool DungeonLeadMarkAction::isUseful()
 
 Creature* DungeonLeadMarkAction::FindCcCandidate(Creature* boss)
 {
+    // 2026-09-16 (independent architecture review DL-012 - "CC marks are not assignments and may
+    // pull an unrelated pack"): "possible targets" comes from upstream PossibleTargetsValue, which
+    // is unconstrained by pack/encounter - just AnyUnfriendlyUnitInObjectRangeCheck(range) around
+    // the BOT, confirmed by reading its FindUnits()/AcceptUnit(). The review's own named scenario
+    // is exactly a distance-from-bot search picking a closer elite from a DIFFERENT, unrelated
+    // pack over the boss's own intended one. Fixed narrowly: measure distance from the BOSS (the
+    // actual pack anchor this call already receives) instead of from the bot, so "nearest elite"
+    // means nearest to the encounter we're actually pulling, not nearest to wherever the tank
+    // currently stands relative to it.
+    //
+    // Deliberately NOT requiring c->IsInCombat(): a large part of what makes marking useful is
+    // catching an add BEFORE it's pulled - CC lands on it while it's still passive, so it never
+    // joins the fight in the first place. Requiring combat first would defeat that entirely.
     GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
     Creature* best = nullptr;
     float bestDist = kCcSearchRange;
@@ -1662,7 +1675,7 @@ Creature* DungeonLeadMarkAction::FindCcCandidate(Creature* boss)
         CreatureTemplate const* ct = c->GetCreatureTemplate();
         if (!ct || ct->rank != CREATURE_ELITE_ELITE)
             continue;
-        float d = bot->GetDistance(c);
+        float d = boss->GetDistance(c);
         if (d < bestDist)
         {
             bestDist = d;
