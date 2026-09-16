@@ -47,6 +47,10 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         return 0.0f;  // dead/disconnected/left the party: no new pulls until the run has a player again
     if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
         return 0.0f;
+    // 2026-09-16 (DL-010): HealerManaLow() above can't see a dead/off-map healer at all (its
+    // underlying lookup comes back null, read as "fine") - this catches that case directly.
+    if (DungeonLead::HealerUnavailable(botAI))
+        return 0.0f;
     if (isWalk && DungeonLead::GroupInCombat(botAI))
         return 0.0f;
     // isUseful() stops the ROUTE WALK for these, but "grind"'s own pull actions aren't gated by

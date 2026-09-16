@@ -450,6 +450,38 @@ bool DungeonLead::HealerManaLow(PlayerbotAI* botAI)
     return healer->GetPowerPct(POWER_MANA) < float(sPlayerbotAIConfig.dungeonLeadHealerManaPct);
 }
 
+// 2026-09-16 (independent architecture review DL-010 - "no explicit pull plan or trustworthy
+// party-readiness contract"): the concrete failure scenario named there - "the healer is dead or
+// on another map and therefore absent from the helper's effective sample" - applies directly to
+// HealerManaLow() above: its "healer low mana" AiObjectContext value comes back null for a dead/
+// off-map healer, and HealerManaLow() then reads that as "not low on mana" (false, i.e. don't
+// block) - the opposite of the truth. This checks group membership directly instead: any member
+// who IS a healer by spec (bySpec=true - see DungeonTestBotPool.cpp's VerifyReady for why the
+// default bySpec=false lags behind a fresh talent change) but is dead or not on this bot's map
+// blocks new pulls, same as MasterUnavailable() already does for the human player. A composition
+// that never had a healer role at all returns false - unchanged, opportunistic behavior for that
+// content, matching the review's own accepted tradeoff ("conservative readiness may reveal
+// existing content that only advances opportunistically").
+bool DungeonLead::HealerUnavailable(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    Group* group = bot->GetGroup();
+    if (!group)
+        return false;
+
+    bool healerInRoster = false;
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || !PlayerbotAI::IsHeal(member, /*bySpec*/ true))
+            continue;
+        healerInRoster = true;
+        if (member->IsAlive() && member->GetMap() == bot->GetMap())
+            return false;  // at least one healer is up and present - not blocked
+    }
+    return healerInRoster;  // had a healer role, none of them qualify right now
+}
+
 // The real player is part of the run contract (see the architecture roadmap's L0 closeout): dead,
 // disconnected, or no longer in the group at all must block new pulls and route advancement, not
 // just "wait for them to catch up" the way a merely-far-away-but-fine player does. A dead player

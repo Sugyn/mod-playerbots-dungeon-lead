@@ -32,6 +32,11 @@ namespace DungeonLead
     Player* FindSpreadMember(PlayerbotAI* botAI);  // who's causing GroupTooSpread, for messaging
     bool MasterTooFar(PlayerbotAI* botAI);
     bool MasterUnavailable(PlayerbotAI* botAI);
+    // 2026-09-16 (independent architecture review DL-010 - "no explicit ... party-readiness
+    // contract"): true only if the group HAS a healer-spec member (bySpec=true) and every one of
+    // them is currently dead or on a different map - a composition that never had a healer role
+    // at all returns false, same opportunistic behavior as before this existed.
+    bool HealerUnavailable(PlayerbotAI* botAI);
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
     void CheckCcMark(PlayerbotAI* botAI);
 
