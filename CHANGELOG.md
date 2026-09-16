@@ -340,6 +340,21 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   a second, unrelated same-entry creature within 150y of the bot's path but away from the step's own
   location, which this session's route data doesn't happen to contain.
 
+- **DL-019 (minimal-fix slice) - a single `testbotpool run` call could burst-form every requested
+  party in one same-tick spike.** The review's own minimal fix says "pace admission 1->3->10"; new
+  `AiPlayerbot.DungeonLead.MaxPartiesPerRun` (default 5, in the shared `PlayerbotAIConfig.h/.cpp` -
+  patch-only, not mirrored under `src/DungeonLead/`) caps how many parties one call forms, forcing
+  an operator ramping past that to issue separate, naturally-spaced-out calls instead of one big
+  burst. Not a real gradual-admission scheduler - just a hard per-call ceiling. **Live verification
+  was inconclusive and is reported honestly as such**: a 6-set test formed exactly 5 parties
+  (matching the cap), but a follow-up call revealed `testbotpool status` had been reporting stale
+  "Ready" for several leases that were actually ineligible for unrelated reasons (probably stale
+  group membership from an earlier, incompletely-released test today) - so the 6->5 result can't be
+  confidently attributed to this cap rather than to that. That staleness is itself worth noting: the
+  pool's tracked lease state can drift from actual candidate eligibility without `status` reflecting
+  it, echoing DL-019's own broader complaint about the pool not modeling stable party identity - not
+  fixed here.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
