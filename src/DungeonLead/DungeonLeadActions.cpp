@@ -1399,6 +1399,24 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     // prefer the live creature position; a dead boss means this stop is done
     std::list<Creature*> found;
     bot->GetCreatureListWithEntryInGrid(found, step.entry, kCreatureProbeRange);
+    // 2026-09-16 (independent architecture review DL-015 - "encounter completion is inferred from
+    // nearby entry corpses, not encounter identity"): the search above is centered on the BOT's
+    // current live position, not on this step's own recorded coordinates - while still walking
+    // toward the step (this runs every tick along the way, not just on arrival), an unrelated
+    // creature that happens to share this entry ID somewhere else within 150y of wherever the bot
+    // currently is could be mistaken for this specific encounter. AzerothCore's grid search only
+    // takes a WorldObject anchor (no raw-position overload), so reusing it centered elsewhere isn't
+    // a one-line change - filtered the already-fetched list against the step's own coordinates
+    // instead, at the same probe range: cheap (list is already small - one entry ID within 150y),
+    // and only excludes entries the search would have wrongly included, never one it should have
+    // found (the intended encounter is at/near step.x/y/z by construction).
+    if (step.HasPosition())
+    {
+        WorldPosition const stepPos(bot->GetMapId(), step.x, step.y, step.z, 0.f);
+        found.remove_if([&](Creature* c)
+            { return c->GetExactDist(stepPos.GetPositionX(), stepPos.GetPositionY(), stepPos.GetPositionZ()) >
+                     kCreatureProbeRange; });
+    }
     bool anyAlive = false;
     for (Creature* c : found)
     {
