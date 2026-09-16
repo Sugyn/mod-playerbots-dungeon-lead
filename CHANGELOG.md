@@ -295,6 +295,22 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   during a real, ongoing fight), but the actual give-up path wasn't re-triggered. The same run did
   confirm DL-016's `stuck_alive` fix firing correctly on Kresh.
 
+- **DL-010 (narrow slice) - a dead or off-map healer read identically to a healer at full mana.**
+  The review names this exact scenario: `HealerManaLow()`'s underlying "healer low mana"
+  AiObjectContext lookup comes back null for a dead/off-map healer, and the function then returns
+  false (not low on mana - don't block), the opposite of the truth. Added `HealerUnavailable()`:
+  scans the group directly for a healer-spec member (`bySpec=true`) and blocks new pulls only if
+  the composition has a healer role and none of them are currently alive and on the tank's map -
+  mirrors `MasterUnavailable()`'s existing pattern. A composition with no healer role at all is
+  unaffected (unchanged opportunistic behavior), matching the review's own accepted tradeoff for
+  this finding. Wired into `DungeonLeadMultiplier::GetValue()` next to the existing
+  `HealerManaLow()`/`GroupResting()` check. Not the review's full `PartyReadiness`/`PullPlan` model
+  (no roster tracking, pull-target recording, or readiness deadline). Verified by code review and
+  build/deploy; a live regression run with a real healer present completed its startup normally
+  (no unexpected blocking) but ended via a natural "left instance" before reaching combat, so the
+  actual healer-unavailable block itself wasn't re-triggered (killing an arbitrary target by name
+  needs an in-game GM target selection, unreachable over this session's SOAP console).
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
