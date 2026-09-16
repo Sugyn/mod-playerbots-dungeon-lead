@@ -952,6 +952,30 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
         return false;
     }
 
+    // 2026-09-16 (independent architecture review DL-009 - "two tank bots receive start before
+    // the world-thread leader operation executes... both install Dungeon Lead and record active
+    // state"): the check above only looks at THIS bot's own state - nothing stopped a second
+    // member of the SAME group from independently becoming a second active leader for it, which
+    // is the review's actual named failure, not a data race in the C++ sense (this function runs
+    // single-threaded, start to finish, on the world thread - see GuardActiveSessions()' own
+    // fork-join note). Scan the group directly instead of trusting per-bot state alone: if any
+    // OTHER member is already leading, refuse - a group has at most one active leader by
+    // construction, whichever member asked first.
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member == bot)
+            continue;
+        PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+        if (memberAI && DungeonLead::IsOn(memberAI))
+        {
+            LOG_ERROR("playerbots.dungeonlead",
+                       "[DungeonLead] {} StartSession refused - {} is already leading this group "
+                       "(call Stop() on them first)", bot->GetName(), member->GetName());
+            return false;
+        }
+    }
+
     // snapshot every follower's current formation/strategies BEFORE touching anything (and before
     // any leadership change below), so Stop() can put them back to what they *actually* had going
     // in, not to whatever an external reset leaves them at - see Stop() above.
