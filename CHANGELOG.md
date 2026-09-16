@@ -325,6 +325,21 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   assumed) and build/deploy; not live-triggered - needs two simultaneously-nearby elite packs at
   different distances from a boss than from the bot, which this session's testing never produced.
 
+- **DL-015 (narrow slice) - the kill-detection search was centered on the bot, not the encounter.**
+  `GetCreatureListWithEntryInGrid()` runs every tick while still walking toward a step (not just on
+  arrival), searching 150y around wherever the bot currently is - an unrelated creature sharing the
+  step's entry ID somewhere else within that radius could be mistaken for the actual encounter,
+  independent of the review's already-known duplicate-entry/relocated-boss concerns.
+  AzerothCore's grid search only accepts a `WorldObject` anchor (no raw-position overload), so
+  re-centering it on the step's own coordinates isn't a one-line change - filtered the already-
+  fetched candidate list against `step.x/y/z` at the same probe range instead: cheap, and can only
+  remove candidates the search would have wrongly included (the real encounter is at its own
+  recorded coordinates by construction, so this can't exclude a true positive). Not the review's
+  full fix (no selected-GUID/phase tracking, no missing/dead/despawned/evaded/reset distinction, no
+  `InstanceScript` boss state). Verified by code review and build/deploy; not live-triggered - needs
+  a second, unrelated same-entry creature within 150y of the bot's path but away from the step's own
+  location, which this session's route data doesn't happen to contain.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
