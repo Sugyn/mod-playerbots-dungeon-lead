@@ -447,6 +447,18 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
     }
     parties = std::min<size_t>(parties, cap - activeNow);
 
+    // 2026-09-16 (independent architecture review DL-019 - "the pool cannot safely sustain a
+    // realistic 10x5 campaign", minimal-fix slice: "pace admission 1->3->10"): everything below
+    // this point forms and teleports every remaining party in one synchronous burst, all on this
+    // same world tick - a real 10-party request used to do exactly that in a single call. Not the
+    // review's full gradual-admission scheduler (that needs a tick-based queue), but a hard per-
+    // call ceiling: ramping past MaxPartiesPerRun (default 5) requires separate, deliberately
+    // spaced-out "run" calls rather than one big same-tick spike.
+    uint32 const maxPerRun = sPlayerbotAIConfig.dungeonLeadMaxPartiesPerRun;
+    bool const pacedDown = maxPerRun && parties > maxPerRun;
+    if (pacedDown)
+        parties = maxPerRun;
+
     size_t dpsCursor = 0;
     uint32 started = 0;
     std::ostringstream out;
@@ -498,7 +510,10 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
     }
 
     return "Formed " + std::to_string(parties) + " part" + (parties == 1 ? "y" : "ies") +
-           ", started " + std::to_string(started) + ": " + out.str();
+           ", started " + std::to_string(started) + ": " + out.str() +
+           (pacedDown ? " (MaxPartiesPerRun=" + std::to_string(maxPerRun) +
+                        " reached - more idle leases were available; run again to admit more)"
+                      : "");
 }
 
 std::string DungeonLead::TestBotPoolStatus()
