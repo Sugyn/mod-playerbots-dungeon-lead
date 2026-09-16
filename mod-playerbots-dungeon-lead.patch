@@ -3551,10 +3551,10 @@ index 00000000..a4b4f162
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
 new file mode 100644
-index 00000000..af8bff36
+index 00000000..7f44b925
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonTestBotPool.cpp
-@@ -0,0 +1,545 @@
+@@ -0,0 +1,560 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -4004,6 +4004,18 @@ index 00000000..af8bff36
 +    }
 +    parties = std::min<size_t>(parties, cap - activeNow);
 +
++    // 2026-09-16 (independent architecture review DL-019 - "the pool cannot safely sustain a
++    // realistic 10x5 campaign", minimal-fix slice: "pace admission 1->3->10"): everything below
++    // this point forms and teleports every remaining party in one synchronous burst, all on this
++    // same world tick - a real 10-party request used to do exactly that in a single call. Not the
++    // review's full gradual-admission scheduler (that needs a tick-based queue), but a hard per-
++    // call ceiling: ramping past MaxPartiesPerRun (default 5) requires separate, deliberately
++    // spaced-out "run" calls rather than one big same-tick spike.
++    uint32 const maxPerRun = sPlayerbotAIConfig.dungeonLeadMaxPartiesPerRun;
++    bool const pacedDown = maxPerRun && parties > maxPerRun;
++    if (pacedDown)
++        parties = maxPerRun;
++
 +    size_t dpsCursor = 0;
 +    uint32 started = 0;
 +    std::ostringstream out;
@@ -4055,7 +4067,10 @@ index 00000000..af8bff36
 +    }
 +
 +    return "Formed " + std::to_string(parties) + " part" + (parties == 1 ? "y" : "ies") +
-+           ", started " + std::to_string(started) + ": " + out.str();
++           ", started " + std::to_string(started) + ": " + out.str() +
++           (pacedDown ? " (MaxPartiesPerRun=" + std::to_string(maxPerRun) +
++                        " reached - more idle leases were available; run again to admit more)"
++                      : "");
 +}
 +
 +std::string DungeonLead::TestBotPoolStatus()
@@ -4367,10 +4382,10 @@ index c438eb7a..eb101edf 100644
      {
          players.push_back(player);
 diff --git a/src/PlayerbotAIConfig.cpp b/src/PlayerbotAIConfig.cpp
-index 509bec91..f47196d1 100644
+index 509bec91..a7bef3a7 100644
 --- a/src/PlayerbotAIConfig.cpp
 +++ b/src/PlayerbotAIConfig.cpp
-@@ -121,6 +121,25 @@ bool PlayerbotAIConfig::Initialize()
+@@ -121,6 +121,29 @@ bool PlayerbotAIConfig::Initialize()
      aoeRadius = sConfigMgr->GetOption<float>("AiPlayerbot.AoeRadius", 10.0f);
      rpgDistance = sConfigMgr->GetOption<float>("AiPlayerbot.RpgDistance", 200.0f);
      grindDistance = sConfigMgr->GetOption<float>("AiPlayerbot.GrindDistance", 75.0f);
@@ -4393,14 +4408,18 @@ index 509bec91..f47196d1 100644
 +    dungeonLeadCanaryMaxConcurrent = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.CanaryMaxConcurrent", 1);
 +    dungeonLeadCanaryTimeoutMinutes = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.CanaryTimeoutMinutes", 45);
 +    dungeonLeadCanaryAllowedLfgIds = sConfigMgr->GetOption<std::string>("AiPlayerbot.DungeonLead.CanaryAllowedLfgIds", "");
++    // DL-019 (see PlayerbotAIConfig.h) - default 5: a full single-call party burst up to this size
++    // is still one same-tick login/group/teleport spike, but nowhere near a same-tick 10-50 party
++    // spike; ramping further requires deliberately spaced-out separate "run" calls.
++    dungeonLeadMaxPartiesPerRun = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.MaxPartiesPerRun", 5);
      reactDistance = sConfigMgr->GetOption<float>("AiPlayerbot.ReactDistance", 150.0f);
  
      criticalHealth = sConfigMgr->GetOption<int32>("AiPlayerbot.CriticalHealth", 25);
 diff --git a/src/PlayerbotAIConfig.h b/src/PlayerbotAIConfig.h
-index 769bfba8..cb702cb5 100644
+index 769bfba8..432a031b 100644
 --- a/src/PlayerbotAIConfig.h
 +++ b/src/PlayerbotAIConfig.h
-@@ -115,6 +115,16 @@ public:
+@@ -115,6 +115,25 @@ public:
          targetPosRecalcDistance, farDistance, healDistance, aggroDistance;
      uint32 criticalHealth, lowHealth, mediumHealth, almostFullHealth;
      uint32 lowMana, mediumMana, highMana;
@@ -4414,6 +4433,15 @@ index 769bfba8..cb702cb5 100644
 +    bool dungeonLeadCanaryEnabled;
 +    uint32 dungeonLeadCanaryMaxConcurrent, dungeonLeadCanaryTimeoutMinutes;
 +    std::string dungeonLeadCanaryAllowedLfgIds;
++    // 2026-09-16 (independent architecture review DL-019 - "the pool cannot safely sustain a
++    // realistic 10x5 campaign", minimal-fix slice: "pace admission 1->3->10"): RunTestParty()
++    // used to form and teleport every requested party in one synchronous burst - up to
++    // CanaryMaxConcurrent's worth all at once, all on the same tick. Not the review's full
++    // gradual-admission scheduler (that needs a real tick-based queue, out of scope for a config
++    // knob), but a hard ceiling per single "testbotpool run" call: an operator wanting 10 parties
++    // now has to call run 1/1/1.../3/3/3.../10 (or however they choose to ramp), rather than being
++    // able to accidentally trigger a 10-party same-tick login/group/teleport burst in one command.
++    uint32 dungeonLeadMaxPartiesPerRun;
      bool autoSaveMana;
      uint32 saveManaThreshold;
      AutoPartyBuffMode autoGreaterBlessings;
