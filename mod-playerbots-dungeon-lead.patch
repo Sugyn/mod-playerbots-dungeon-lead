@@ -145,10 +145,10 @@ index 55792aa5..efec9184 100644
      static Trigger* follow(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "follow"); }
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
 new file mode 100644
-index 00000000..8a3739d7
+index 00000000..d804de55
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.cpp
-@@ -0,0 +1,1874 @@
+@@ -0,0 +1,1906 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -599,6 +599,38 @@ index 00000000..8a3739d7
 +    if (!healer)
 +        return false;
 +    return healer->GetPowerPct(POWER_MANA) < float(sPlayerbotAIConfig.dungeonLeadHealerManaPct);
++}
++
++// 2026-09-16 (independent architecture review DL-010 - "no explicit pull plan or trustworthy
++// party-readiness contract"): the concrete failure scenario named there - "the healer is dead or
++// on another map and therefore absent from the helper's effective sample" - applies directly to
++// HealerManaLow() above: its "healer low mana" AiObjectContext value comes back null for a dead/
++// off-map healer, and HealerManaLow() then reads that as "not low on mana" (false, i.e. don't
++// block) - the opposite of the truth. This checks group membership directly instead: any member
++// who IS a healer by spec (bySpec=true - see DungeonTestBotPool.cpp's VerifyReady for why the
++// default bySpec=false lags behind a fresh talent change) but is dead or not on this bot's map
++// blocks new pulls, same as MasterUnavailable() already does for the human player. A composition
++// that never had a healer role at all returns false - unchanged, opportunistic behavior for that
++// content, matching the review's own accepted tradeoff ("conservative readiness may reveal
++// existing content that only advances opportunistically").
++bool DungeonLead::HealerUnavailable(PlayerbotAI* botAI)
++{
++    Player* bot = botAI->GetBot();
++    Group* group = bot->GetGroup();
++    if (!group)
++        return false;
++
++    bool healerInRoster = false;
++    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
++    {
++        Player* member = ref->GetSource();
++        if (!member || !PlayerbotAI::IsHeal(member, /*bySpec*/ true))
++            continue;
++        healerInRoster = true;
++        if (member->IsAlive() && member->GetMap() == bot->GetMap())
++            return false;  // at least one healer is up and present - not blocked
++    }
++    return healerInRoster;  // had a healer role, none of them qualify right now
 +}
 +
 +// The real player is part of the run contract (see the architecture roadmap's L0 closeout): dead,
@@ -2025,10 +2057,10 @@ index 00000000..8a3739d7
 +}
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadActions.h b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
 new file mode 100644
-index 00000000..f152ecd5
+index 00000000..419af440
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadActions.h
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,174 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2063,6 +2095,11 @@ index 00000000..f152ecd5
 +    Player* FindSpreadMember(PlayerbotAI* botAI);  // who's causing GroupTooSpread, for messaging
 +    bool MasterTooFar(PlayerbotAI* botAI);
 +    bool MasterUnavailable(PlayerbotAI* botAI);
++    // 2026-09-16 (independent architecture review DL-010 - "no explicit ... party-readiness
++    // contract"): true only if the group HAS a healer-spec member (bySpec=true) and every one of
++    // them is currently dead or on a different map - a composition that never had a healer role
++    // at all returns false, same opportunistic behavior as before this existed.
++    bool HealerUnavailable(PlayerbotAI* botAI);
 +    Creature* FindBossNear(PlayerbotAI* botAI, float range);
 +    void CheckCcMark(PlayerbotAI* botAI);
 +
@@ -2711,10 +2748,10 @@ index 00000000..3e26da64
 +#endif
 diff --git a/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
 new file mode 100644
-index 00000000..7d4f6f03
+index 00000000..31aff695
 --- /dev/null
 +++ b/src/Ai/Base/DungeonLead/DungeonLeadStrategy.cpp
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,63 @@
 +/*
 + * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
 + * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
@@ -2763,6 +2800,10 @@ index 00000000..7d4f6f03
 +    if (DungeonLead::MasterUnavailable(botAI))
 +        return 0.0f;  // dead/disconnected/left the party: no new pulls until the run has a player again
 +    if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
++        return 0.0f;
++    // 2026-09-16 (DL-010): HealerManaLow() above can't see a dead/off-map healer at all (its
++    // underlying lookup comes back null, read as "fine") - this catches that case directly.
++    if (DungeonLead::HealerUnavailable(botAI))
 +        return 0.0f;
 +    if (isWalk && DungeonLead::GroupInCombat(botAI))
 +        return 0.0f;
