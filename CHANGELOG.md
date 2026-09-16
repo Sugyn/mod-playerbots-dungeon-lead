@@ -70,13 +70,38 @@ diagnostics.
 - CC still lands only a small fraction of the time even with correct timing (mark/attack-list
   gating) - something else (range, line of sight, or GCD) is blocking the actual spell cast. Not
   yet investigated.
-- Worldserver has crashed (SIGSEGV) five times against mass concurrent test-party load. Two crashes
-  now have a symbolized backtrace (core dump capture configured on the test host): both are the
-  same underlying defect, a stale `AbstractFollower*`/`Unit::m_followingMe` pointer surfacing during
-  either normal `MotionMaster` movement-generator expiry or `Player::TeleportTo`'s
-  `RemoveAllFollowers()`. One trigger is now reliably reproducible (cross-map-teleporting a bot with
-  active followers) and is contained - see Fixed below - but the underlying AzerothCore-core
-  lifetime bug is not fixed, only worked around for that one trigger.
+### Worldserver crashes - root-caused and fixed (was: a Known limitation here)
+
+The repeated SIGSEGVs during mass concurrent test-party load turned out **not** to be a Dungeon
+Lead defect, and not the follower-lifetime bug they appeared to be. AddressSanitizer identified a
+heap-use-after-free between two unrelated third-party modules installed on the same test host:
+
+- `mod-junk-to-gold` destroys a looted item (`Player::DestroyItem`) from inside its
+  `OnPlayerLootItem` hook, while `ScriptMgr::OnPlayerLootItem` is still handing that same raw
+  `Item*` to every remaining `PlayerScript` in turn.
+- `mod-transmog`, called later in that same dispatch, dereferences the freed pointer
+  (`typeid(*item)`), corrupting the heap. The worldserver died within minutes, every time.
+
+Bots trigger this constantly because they loot grey junk constantly, which is why it looked like
+load-dependent random corruption. Fixed in `mod-junk-to-gold` by deferring the destroy to a
+`m_Events` callback that re-resolves the item from its GUID, so the loot-hook dispatch is finished
+before anything is freed. Verified with ASAN: unfixed builds reported the use-after-free and died
+in ~4-5 minutes under identical load; the fixed build ran cleanly for 52 minutes.
+
+Two earlier conclusions recorded in this changelog were **wrong** and are corrected here:
+
+- Cross-map-teleporting a bot with active followers was **not** a reliable crash trigger. The
+  server was crashing on its own every few minutes at the time, so that teleport happened to land
+  in a window where the heap was already corrupt. On a clean heap the exact same command - same
+  bot, same coordinates - does nothing.
+- The symbolized backtraces through `Unit::m_followingMe` / `AbstractFollower` were showing where
+  the corruption *surfaced* (a SEGV at address `0x8` inside an `unordered_set` bucket lookup), not
+  where it originated. A code audit of that lifetime chain found no defect, and ASAN never flagged
+  it. DL-001/DL-007's follower-ownership concern is therefore neither confirmed nor refuted - it
+  is simply not what was crashing this server.
+
+The `force` guard on `tpbot`/`pathcheckfrom` is kept as ordinary caution, but its refusal message
+still cites the superseded reasoning.
 
 ## Phase 0 (2026-09-15): safety and truth, from an independent architecture review
 
@@ -117,9 +142,10 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   run 1 were indistinguishable - now seeded from process start time. New `DungeonLeadRuns.csv`
   writes one row per run at its terminal outcome (route completion and canary timeout so far, not
   every exit path yet) instead of requiring event-stream reconstruction.
-- **DL-001 (containment, not a root-cause fix) - a live SIGSEGV was reliably reproduced** by
-  teleporting a bot with active followers cross-map (see the SEGV known-limitation note above).
-  `tpbot`/`pathcheckfrom` now refuse that specific scenario rather than crashing the server.
+- **DL-001 (containment) - `tpbot`/`pathcheckfrom` refuse to cross-map teleport a bot that is
+  still in a multi-member group** unless `force` is given. This was added believing that teleport
+  reliably reproduced a live SIGSEGV; it did not - see "Worldserver crashes" above for what was
+  actually crashing the server. The guard is kept as ordinary caution around an unproven concern.
 - **DL-017 - the standalone `src/` mirror was uncompilable.** `DungeonRouteMgr.h` was missing
   `ccLandedTold`/`lastPathLogTs`, fields `DungeonLeadActions.cpp` already used. All 12
   `src/DungeonLead/` files are now confirmed byte-identical to the deployed checkout.
@@ -372,8 +398,10 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   naturally exercises.
 
 ### Not yet done from Phase 0
-DL-001's actual root cause (why a follower or its target goes stale without the other side's
-cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
+DL-001/DL-007's follower-ownership concern (whether a follower or its target can go stale without
+the other side's cleanup running) - note this is no longer believed to be what crashed the test
+server, and neither a code audit nor ASAN found a defect there, but it is unproven either way
+rather than closed, the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
 identity - every known exit path, hard disconnect included, now writes a row, but there's still no
 richer identity per row), the rest of DL-004 (role/level/gear qualification per bot beyond
 alive/dead, shared-difficulty binding, consistent-instance postconditions before `StartSession`),
