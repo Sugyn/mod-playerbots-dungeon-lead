@@ -355,6 +355,22 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   it, echoing DL-019's own broader complaint about the pool not modeling stable party identity - not
   fixed here.
 
+- **DL-009 (extended) - `StartSession()` now refuses to start if another group member is already
+  leading.** The review's named scenario ("two tank bots receive start... both install Dungeon Lead
+  and record active state") isn't a C++ data race - this function runs single-threaded start to
+  finish - but the existing self-check (`IsOn(botAI)`) only looked at the calling bot's own state,
+  so nothing stopped a *second*, separate call for a different member of the same group from also
+  succeeding. Added a scan of the group right after the self-check: any other member already
+  `IsOn()` refuses the new session. A group has at most one active leader by construction now.
+  Reuses the already-proven `IsOn()` helper and the same `GroupReference` iteration pattern already
+  used elsewhere in this file. Not the review's full fix (no atomic group-keyed claim/generation
+  token, no waiting for the async leader-set operation to actually land before committing state) -
+  closes the specific "two simultaneous leaders" scenario named, not a stale/rejected handoff after
+  a successful enqueue. Verified by code review and build/deploy; a normal single-tank start showed
+  no regression. Not live-triggered - reproducing two near-simultaneous starts on the same group's
+  two tank-capable members isn't something the existing test tooling (one tank per formed party)
+  naturally exercises.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
