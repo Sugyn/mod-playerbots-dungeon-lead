@@ -311,6 +311,20 @@ their review ID (DL-001 etc.) for traceability; full findings are not reproduced
   actual healer-unavailable block itself wasn't re-triggered (killing an arbitrary target by name
   needs an in-game GM target selection, unreachable over this session's SOAP console).
 
+- **DL-012 (narrow slice) - CC candidate search was anchored to the bot, not the pack it's
+  fighting.** The review names this exact scenario: "a closer elite behind the group is Moon while
+  the intended pack is ahead." Confirmed by reading upstream `PossibleTargetsValue` directly:
+  `FindCcCandidate()`'s candidate list is unconstrained by pack/encounter (just
+  `AnyUnfriendlyUnitInObjectRangeCheck` around the bot), and the function measured "nearest" from
+  the bot's own position even though it already receives `boss` (the actual pack anchor) as a
+  parameter. Now measures distance from the boss instead. Deliberately did not add an
+  `IsInCombat()` requirement - CC's value is landing on an add *before* it joins the fight, so
+  requiring combat first would defeat the feature rather than fix the pack-selection bug. Not the
+  review's full fix (no provider/capability table, no `CCPlan`, no diminishing-returns/immunity
+  awareness). Verified by code review (including reading the actual upstream value provider, not
+  assumed) and build/deploy; not live-triggered - needs two simultaneously-nearby elite packs at
+  different distances from a boss than from the bot, which this session's testing never produced.
+
 ### Not yet done from Phase 0
 DL-001's actual root cause (why a follower or its target goes stale without the other side's
 cleanup running), the rest of DL-006 (structured `RunRecord` with campaign/scenario/commit_sha
