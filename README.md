@@ -18,7 +18,9 @@ Reflection, Black Morass, Old Hillsbrad) have no route (or only a partial one) a
 you see" once the route runs out.
 
 **Testers are welcome and especially useful right now** — this is early enough that a reproducible bug report
-(see "Debugging" below) is worth more than a feature request.
+(see "Debugging" below) is worth more than a feature request. Questions, comparisons with other mods, or
+feature ideas → [Discussions](../../discussions); concrete reproducible bugs → Issues (the bug report template
+enforces the logs above).
 
 ## Prerequisites
 

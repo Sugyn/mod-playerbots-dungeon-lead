@@ -1,12 +1,24 @@
 # Changelog
 
 All notable changes to this patch, by version and date. Format is [Keep a Changelog](https://keepachangelog.com/).
-Versioning is pre-1.0 (0.MINOR.PATCH) while this is under active development against a single live
-test dungeon — see README "Testing status" for what's actually been run in-game.
+
+### Versioning
+
+`vMAJOR.MINOR.PATCH[-stage]`. PATCH = a narrow fix to already-shipped behavior, no new
+capability. MINOR = a new capability, a new config key, a dungeon gaining a working route it
+didn't have, or several PATCHes cut together. MAJOR (`1.0.0`) is reserved for a specific,
+checkable bar, not a round number: every non-event/vehicle LFD dungeon in README "Testing
+status" reaching at least `Verified` (not just "data ready, untested").
+
+The `-stage` suffix (`-alpha`/`-beta`) is independent of how high MINOR climbs, specifically so
+a version number never implies "close to 1.0" on its own — `v0.47.0-alpha` is exactly as early
+as `v0.1.0-alpha`. `-alpha` (current) = only a handful of dungeons live-verified. `-beta` = most
+non-event dungeons live-verified, only minor gaps (e.g. door/gate handling) remain. No suffix =
+the MAJOR bar above is met.
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-10-02
+## [0.9.0-alpha] - 2026-10-02
 
 ### Fixed
 - **Patch no longer applied to mod-playerbots master** (tracked in #2, caught by the weekly
