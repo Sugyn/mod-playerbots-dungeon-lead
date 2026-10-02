@@ -23,7 +23,7 @@ you see" once the route runs out.
 ## Prerequisites
 
 - **AzerothCore** with **mod-playerbots** already built and working (bots can be added to a group and fight).
-  This patch was written and tested against mod-playerbots `master` @ `b949b50b` — API it relies on
+  This patch was written and tested against mod-playerbots `master` @ `037c014` — API it relies on
   (`MovementAction`/`NewRpgBaseAction`, `FormationValue`, `RtiTargetValue`, `PlayerbotOperations::GroupSetLeaderOperation`,
   `Map::IsNonRaidDungeon`) is fairly stable but not guaranteed identical on a much older or newer checkout.
 - **mmaps generated** for the continents/instances you want to use this in. Without mmaps, `PathGenerator`-based
@@ -184,7 +184,7 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 | path | content |
 |------|---------|
-| `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`b949b50b`) — 12 new files + 14 touched |
+| `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`037c014`) — 12 new files + 14 touched |
 | `src/DungeonLead/` | the new sources on their own (`src/Ai/Base/DungeonLead/` in the module) |
 | `sql/playerbots_dungeon_route.sql` | route table for the `acore_playerbots` database (408 steps, 96 LFD entries incl. heroics) |
 | `data/routes.tsv` | hand-authored boss order per LFD entry with source per dungeon (Classic-era wiki / Icy Veins Classic / Wowhead TBC) |
@@ -229,7 +229,7 @@ Notes:
   it by hand instead of via the patch means also redoing the registration lines it touches elsewhere
   (`ChatActionContext.h`, `ChatTriggerContext.h`, `PlayerbotAIConfig.h/.cpp`, `Script/Playerbots.cpp`).
   Only worth it if `git apply` genuinely won't work for you - e.g. your mod-playerbots checkout has
-  drifted far enough from `b949b50b` (see Prerequisites) that the patch no longer applies cleanly;
+  drifted far enough from `037c014` (see Prerequisites) that the patch no longer applies cleanly;
   `.github/workflows/upstream-compat.yml` checks for exactly that weekly against upstream `master`.
 
 ### Maintainer workflow: updating for a new mod-playerbots release

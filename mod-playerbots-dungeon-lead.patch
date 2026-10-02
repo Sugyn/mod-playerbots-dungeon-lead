@@ -4857,18 +4857,18 @@ diff --git a/src/Script/Playerbots.cpp b/src/Script/Playerbots.cpp
 index fcea6b8d..a55a6006 100644
 --- a/src/Script/Playerbots.cpp
 +++ b/src/Script/Playerbots.cpp
-@@ -11,6 +11,9 @@
- #include "Config.h"
- #include "DatabaseEnv.h"
- #include "DatabaseLoader.h"
+@@ -17,6 +17,9 @@
+ #include <mysqld_error.h>
+ #include "AllMapScript.h"
+ #include "GlobalScript.h"
 +#include "DungeonLeadActions.h"
 +#include "DungeonLeadCanary.h"
 +#include "DungeonTestBotPool.h"
  #include "GuildTaskMgr.h"
  #include "PlayerScript.h"
  #include "PlayerbotAIConfig.h"
-@@ -370,6 +373,23 @@ public:
-     {
+@@ -540,6 +540,23 @@
+         sRandomPlayerbotMgr.UpdateSessions();  // Per-bot packet queues, world thread only
          PlayerbotWorldThreadProcessor::instance().Update(diff);
          sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
 +
@@ -4889,5 +4889,5 @@ index fcea6b8d..a55a6006 100644
 +        // called .playerbots testbotpool acquire - see DungeonTestBotPool.h.
 +        DungeonLead::TestBotPoolTick();
      }
- };
  
+     // Runs before the sessions are kicked on server shutdown

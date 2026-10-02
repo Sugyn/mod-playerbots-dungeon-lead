@@ -6,6 +6,19 @@ test dungeon — see README "Testing status" for what's actually been run in-gam
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-02
+
+### Fixed
+- **Patch no longer applied to mod-playerbots master** (tracked in #2, caught by the weekly
+  `upstream-compat.yml` check since 2026-09-21). Re-verified against mod-playerbots `master` @
+  `037c014` (previously pinned `b949b50b`). Only one of the 25 touched/new files actually
+  conflicted — `src/Script/Playerbots.cpp` — and only on context, not content: upstream removed
+  the `DatabaseLoader.h` include this patch's `#include` block was anchored after, and inserted a
+  new `OnShutdown()` method into the same `WorldScript` subclass right after the `OnUpdate()` this
+  patch hooks into, so the hunk's trailing context (previously the class-closing `};`) no longer
+  matched. Both hunks re-anchored to current, stable context; no functional change. README's pinned
+  commit references bumped to `037c014` accordingly.
+
 Wailing Caverns navigation/CC fixes, from root-causing the 0.8.0 scale-test findings against real
 mod-playerbots source (not guessed) and new `.playerbots pathcheck`/`pathcheckfrom`/`tpbot`
 diagnostics.
