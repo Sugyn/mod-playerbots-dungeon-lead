@@ -3,6 +3,7 @@
 
 #include "DungeonLeadKernels.h"
 #include "DungeonRouteTypes.h"
+#include "DungeonTelemetryBuffer.h"
 
 #include <cstdio>
 #include <string>
@@ -662,6 +663,24 @@ namespace
     }
 }
 
+namespace
+{
+    void TestTelemetryBuffer()
+    {
+        TelemetryBuffer buf(3);
+        Check(buf.Push(TelemetryFile::Sessions, "a\n") && buf.Push(TelemetryFile::Runs, "b\n") &&
+                  buf.Push(TelemetryFile::Debug, "c\n"),
+              "lines up to capacity are accepted");
+        Check(!buf.Push(TelemetryFile::Sessions, "d\n"), "full buffer refuses, does not grow");
+        uint64_t dropped = 0;
+        std::vector<TelemetryLine> lines = buf.Drain(dropped);
+        Check(lines.size() == 3 && dropped == 1, "drain returns everything queued and the drop count");
+        Check(lines[0].text == "a\n" && lines[1].file == TelemetryFile::Runs, "order and target file kept");
+        Check(buf.Size() == 0 && buf.Drain(dropped).empty() && dropped == 0, "drained buffer is empty, count reset");
+        Check(buf.Push(TelemetryFile::Sessions, "e\n"), "accepts again after a drain");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -676,6 +695,7 @@ int main()
     TestRecovery();
     TestCheckpoint();
     TestAssembly();
+    TestTelemetryBuffer();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

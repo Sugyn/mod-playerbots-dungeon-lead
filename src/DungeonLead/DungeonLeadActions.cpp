@@ -13,6 +13,7 @@
 #include "DungeonLeadKernels.h"
 #include "DungeonPack.h"
 #include "DungeonPullController.h"
+#include "DungeonTelemetryBuffer.h"
 #include "DungeonRecoveryController.h"
 #include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
@@ -109,19 +110,13 @@ namespace
         return out.str();
     }
 
-    // Both log files are written from any bot's own AI update, which can run on any map-update
-    // thread - fopen/fprintf/fclose racing across threads can interleave partial lines, and the
-    // old `static bool headerWritten` was itself an unguarded data race. One mutex serializes both
-    // files (they're never on the hot path - one line per key event, not per tick).
-    std::mutex g_dungeonLeadLogMutex;
+    // Telemetry lines are produced from bot AI updates on any map-update thread; they only go
+    // into this bounded buffer (a short lock, no file I/O). The world thread writes them out in
+    // FlushTelemetry() - see DungeonTelemetryBuffer.h. 20000 lines is minutes of a busy server.
+    DungeonLeadKernel::TelemetryBuffer g_telemetry(20000);
 
-    // 2026-10-03 (audit AUDIT-006 - "synchronous file I/O is in the hot path and uses a global
-    // mutex"): fopen+fclose on every single write was avoidable overhead that only shows up under
-    // scale (e.g. the 49-parallel-session test - ADR-003), since these throttled "waiting" events
-    // alone fire at most once per bot per 10s. Each file is now opened once, on first write, and
-    // kept open for the life of the process - appending was already the mode, so nothing else
-    // about on-disk behavior changes. Still fflush()ed after every write (under the same mutex),
-    // so durability on a crash is unchanged; only the repeated open/close syscalls are gone.
+    // Files are opened once, on first write, and kept open for the life of the process. Only the
+    // world thread (FlushTelemetry) touches them.
     FILE* OpenPersistent(char const* path, FILE*& handle)
     {
         if (!handle)
@@ -132,6 +127,17 @@ namespace
     FILE* g_sessionsLogFile = nullptr;
     FILE* g_runsLogFile = nullptr;
     FILE* g_debugLogFile = nullptr;
+
+    // Writes the header into a fresh (empty) file the first time it is opened.
+    void EnsureHeader(FILE* f, bool& done, char const* header)
+    {
+        if (done)
+            return;
+        fseek(f, 0, SEEK_END);
+        if (ftell(f) == 0)
+            fputs(header, f);
+        done = true;
+    }
 
     // Session correlation id: every telemetry row from one "startdungeon" run carries the same
     // value, so a bug report's CSV rows (which interleave every dungeon-lead bot on the whole
@@ -315,40 +321,15 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
     Player* master = botAI->GetMaster();
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
 
-    // gather everything before taking the log mutex - keep the critical section to the file I/O
-    std::string const ts = FormatLogTimestamp();
-    std::string const masterName = CsvEscape(master ? master->GetName() : "?");
-    std::string const dungeonName = CsvEscape(route ? route->name : "?");
-    std::string const botName = CsvEscape(bot->GetName());
-    std::string const members = CsvEscape(GroupMemberList(bot));
-    std::string const eventEsc = CsvEscape(event);
-    std::string const detailEsc = CsvEscape(detail);
-    uint32 const lfgId = st.lfgId;
-    uint64 const runId = st.runId;
-    char const* outcome = ToString(st.outcome);
-    char const* failureDomain = ToString(st.failureDomain);
-    char const* failureReason = ToString(st.failureReason);
-
-    std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
-    static bool headerWritten = false;
-    FILE* f = OpenPersistent("DungeonLeadSessions.csv", g_sessionsLogFile);
-    if (!f)
-        return;
-    if (!headerWritten)
-    {
-        // cheap check: a fresh/empty file needs the header, a pre-existing one from an earlier
-        // run of this same worldserver process already has it
-        fseek(f, 0, SEEK_END);
-        if (ftell(f) == 0)
-            fprintf(f, "timestamp,run_id,player,lfg_id,dungeon,tank,group_members,event,detail,outcome,"
-                       "failure_domain,failure_reason\n");
-        headerWritten = true;
-    }
-
-    fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", ts.c_str(),
-            static_cast<unsigned long long>(runId), masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
-            members.c_str(), eventEsc.c_str(), detailEsc.c_str(), outcome, failureDomain, failureReason);
-    fflush(f);
+    // Columns after failure_reason were added later (2026-10-03); older rows simply lack them.
+    std::ostringstream line;
+    line << FormatLogTimestamp() << "," << st.runId << ",\"" << CsvEscape(master ? master->GetName() : "?")
+         << "\"," << st.lfgId << ",\"" << CsvEscape(route ? route->name : "?") << "\",\""
+         << CsvEscape(bot->GetName()) << "\",\"" << CsvEscape(GroupMemberList(bot)) << "\",\"" << CsvEscape(event)
+         << "\",\"" << CsvEscape(detail) << "\",\"" << ToString(st.outcome) << "\",\"" << ToString(st.failureDomain)
+         << "\",\"" << ToString(st.failureReason) << "\"," << bot->GetMapId() << "," << bot->GetInstanceId() << ",\""
+         << DungeonLeadKernel::ToString(st.state) << "\"," << st.stepIndex << "," << st.packId << "\n";
+    g_telemetry.Push(DungeonLeadKernel::TelemetryFile::Sessions, line.str());
 }
 
 void DungeonLead::RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason)
@@ -368,52 +349,67 @@ void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName,
     DungeonLeadState& st = sDungeonRouteMgr.State(guid);
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
 
-    std::string const ts = FormatLogTimestamp();
-    std::string const dungeonName = CsvEscape(route ? route->name : "?");
-    std::string const botName = CsvEscape(tankName);
-    std::string const reasonEsc = CsvEscape(terminalReason);
-    uint32 const lfgId = st.lfgId;
-    uint64 const runId = st.runId;
-    char const* outcome = ToString(st.outcome);
-    char const* failureDomain = ToString(st.failureDomain);
-    char const* failureReason = ToString(st.failureReason);
-    size_t const skipped = st.skippedSteps.size();
-    uint32 const durationMs = st.sessionStartTs ? GetMSTimeDiffToNow(st.sessionStartTs) : 0;
-    char const* origin = ToString(st.origin);
-    // 2026-09-16 (DL-013): how many times the leader died this run. Recorded because a run can now
-    // recover from a wipe and carry on, so "completed" on its own would otherwise quietly cover up
-    // a party that only got there on its third attempt.
-    uint32 const wipes = st.wipeCount;
-
-    std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
-    static bool headerWritten = false;
-    FILE* f = OpenPersistent("DungeonLeadRuns.csv", g_runsLogFile);
-    if (!f)
-        return;
-    if (!headerWritten)
-    {
-        fseek(f, 0, SEEK_END);
-        if (ftell(f) == 0)
-            fprintf(f, "ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,"
-                       "skipped_steps,wipes,duration_ms,terminal_reason\n");
-        headerWritten = true;
-    }
-    fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%zu,%u,%u,\"%s\"\n", ts.c_str(),
-            static_cast<unsigned long long>(runId), botName.c_str(), lfgId, dungeonName.c_str(), origin,
-            outcome, failureDomain, failureReason, skipped, wipes, durationMs, reasonEsc.c_str());
-    fflush(f);
+    // st.wipeCount: how many times the leader died this run - a run can recover from a wipe and
+    // carry on, so "completed" on its own would otherwise hide that it took several attempts.
+    std::ostringstream line;
+    line << FormatLogTimestamp() << "," << st.runId << ",\"" << CsvEscape(tankName) << "\"," << st.lfgId << ",\""
+         << CsvEscape(route ? route->name : "?") << "\",\"" << ToString(st.origin) << "\",\"" << ToString(st.outcome)
+         << "\",\"" << ToString(st.failureDomain) << "\",\"" << ToString(st.failureReason) << "\","
+         << st.skippedSteps.size() << "," << st.wipeCount << ","
+         << (st.sessionStartTs ? GetMSTimeDiffToNow(st.sessionStartTs) : 0) << ",\"" << CsvEscape(terminalReason)
+         << "\"\n";
+    g_telemetry.Push(DungeonLeadKernel::TelemetryFile::Runs, line.str());
 }
 
 void DungeonLead::RecordDebug(PlayerbotAI* /*botAI*/, std::string const& line)
 {
-    std::string const ts = FormatLogTimestamp();
+    g_telemetry.Push(DungeonLeadKernel::TelemetryFile::Debug, FormatLogTimestamp() + " " + line + "\n");
+}
 
-    std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
-    FILE* f = OpenPersistent("DungeonLeadDebug.log", g_debugLogFile);
-    if (!f)
+void DungeonLead::FlushTelemetry(bool force)
+{
+    static uint32 lastFlushTs = 0;
+    if (!force && lastFlushTs && GetMSTimeDiffToNow(lastFlushTs) < 2000 && g_telemetry.Size() < 1000)
         return;
-    fprintf(f, "%s %s\n", ts.c_str(), line.c_str());
-    fflush(f);
+    lastFlushTs = getMSTime();
+
+    uint64 dropped = 0;
+    std::vector<DungeonLeadKernel::TelemetryLine> const lines = g_telemetry.Drain(dropped);
+    if (lines.empty() && !dropped)
+        return;
+
+    static bool sessionsHeader = false, runsHeader = false;
+    FILE* sessions = OpenPersistent("DungeonLeadSessions.csv", g_sessionsLogFile);
+    FILE* runs = OpenPersistent("DungeonLeadRuns.csv", g_runsLogFile);
+    FILE* debug = OpenPersistent("DungeonLeadDebug.log", g_debugLogFile);
+    if (sessions)
+        EnsureHeader(sessions, sessionsHeader,
+                     "timestamp,run_id,player,lfg_id,dungeon,tank,group_members,event,detail,outcome,"
+                     "failure_domain,failure_reason,map_id,instance_id,state,step,pack_id\n");
+    if (runs)
+        EnsureHeader(runs, runsHeader,
+                     "ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,"
+                     "skipped_steps,wipes,duration_ms,terminal_reason\n");
+
+    for (DungeonLeadKernel::TelemetryLine const& l : lines)
+    {
+        FILE* f = l.file == DungeonLeadKernel::TelemetryFile::Sessions ? sessions
+                : l.file == DungeonLeadKernel::TelemetryFile::Runs     ? runs
+                                                                       : debug;
+        if (f)
+            fputs(l.text.c_str(), f);
+    }
+    if (dropped)
+    {
+        // a gap in the record is reported, never silent
+        LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] telemetry buffer full - {} line(s) dropped", dropped);
+        if (sessions)
+            fprintf(sessions, "%s,0,\"?\",0,\"?\",\"?\",\"\",\"telemetry_dropped\",\"%llu lines\",\"\",\"\",\"\",0,0,\"\",0,0\n",
+                    FormatLogTimestamp().c_str(), static_cast<unsigned long long>(dropped));
+    }
+    for (FILE* f : {sessions, runs, debug})
+        if (f)
+            fflush(f);
 }
 
 bool DungeonLead::InFiveMan(Player* bot)
@@ -1094,7 +1090,13 @@ void DungeonLead::RequestLeadership(Player* bot, DungeonLeadState& st)
     ++st.leadershipAttempts;
     st.leadershipRequestTs = getMSTime();
     auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), st.leadershipTarget);
-    if (!PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op)))
+    bool const queued = PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
+    if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
+        DungeonLead::RecordEvent(botAI, "leadership_request",
+                                 std::string(st.state == DungeonLeadKernel::LeadState::Stopping ? "handback" : "acquire") +
+                                     " attempt=" + std::to_string(st.leadershipAttempts) +
+                                     " queued=" + (queued ? "1" : "0"));
+    if (!queued)
         LOG_ERROR("playerbots.dungeonlead",
                   "[DungeonLead] {} could not queue leader change (attempt {}, world thread queue full)",
                   bot->GetName(), st.leadershipAttempts);
@@ -1141,6 +1143,9 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
         case DungeonLeadKernel::LeadershipStep::Confirmed:
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} {} confirmed after {} attempt(s) (run={})",
                      bot->GetName(), what, st.leadershipAttempts, st.runId);
+            DungeonLead::RecordEvent(botAI, "leadership_confirmed",
+                                     std::string(starting ? "acquire" : "handback") +
+                                         " attempts=" + std::to_string(st.leadershipAttempts));
             if (starting)
                 ActivateSession(botAI, group,
                                 st.origin == DungeonLeadSessionOrigin::Manual ? botAI->GetMaster() : nullptr,
@@ -1163,14 +1168,17 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
                   bot->GetName(), reason, st.runId);
         st.outcome = DungeonRunOutcome::Failed;
         st.failureDomain = DungeonFailureDomain::PartyCoordination;
-        DungeonLead::RecordEvent(botAI, "start_failed", reason);
+        DungeonLead::RecordEvent(botAI, "leadership_failed", "acquire " + reason);
         DungeonLead::RecordRunSummary(botAI, "leadership_not_acquired");
         if (st.origin == DungeonLeadSessionOrigin::Manual)
             botAI->TellMaster("Dungeon lead: could not take the party lead - not starting");
     }
     else
+    {
         LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} leader handback failed ({}) (run={})",
                   bot->GetName(), reason, st.runId);
+        DungeonLead::RecordEvent(botAI, "leadership_failed", "handback " + reason);
+    }
     sDungeonRouteMgr.ResetState(bot->GetGUID());
 }
 

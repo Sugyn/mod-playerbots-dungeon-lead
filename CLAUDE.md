@@ -2614,14 +2614,36 @@ Remaining:
 
 ## Phase 15 — Telemetry hardening
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): buffered structured telemetry`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 182 checks (6 new TelemetryBuffer cases: capacity, drop
+  count, order/target file, drain resets, accepts again)
+- Live: Wailing Caverns test party (6 min): every row carries map_id/instance_id/state/step/
+  pack_id; 0 dropped lines; the run (start, transitions, fights, post-combat decisions, pulls,
+  packs, leash, CC) reconstructs from DungeonLeadSessions.csv alone.
+
+Notes:
+- `src/DungeonLead/DungeonTelemetryBuffer.h` (dependency-free, tested): producers (bot AI on map
+  threads) only push a formatted line under a short lock - no file I/O, no global lock around
+  I/O any more. `DungeonLead::FlushTelemetry` (world thread, from the module's OnUpdate, ~2 s or
+  when 1000 lines are queued; forced from WorldScript::OnShutdown) writes all three files with
+  one fflush each. Capacity 20000 lines; overflow is logged and written as a telemetry_dropped
+  row. Crash durability: up to ~2 s of lines can be lost (accepted trade-off).
+- Sessions CSV: columns appended at the end (existing positions unchanged; an existing file
+  keeps its old header). Events added: leadership_request / leadership_confirmed /
+  leadership_failed (Phase 1's start_failed renamed to leadership_failed).
+- Event coverage against the plan's list: session start/stop, leadership_*, state_transition,
+  readiness (waiting / post_combat_decision), route (pathing, travel_reached, reached,
+  already_dead, route_*), pull_*, pack_*, recovery_*, wipe_*, checkpoint_restore, boss_prep,
+  boss_combat, run summary per run in DungeonLeadRuns.csv.
+
+Remaining:
+- none
 
 ---
 

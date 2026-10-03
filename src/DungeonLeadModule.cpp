@@ -229,7 +229,12 @@ namespace
     class DungeonLeadWorldScript : public WorldScript
     {
     public:
-        DungeonLeadWorldScript() : WorldScript("DungeonLeadWorldScript", {WORLDHOOK_ON_UPDATE}) {}
+        DungeonLeadWorldScript()
+            : WorldScript("DungeonLeadWorldScript", {WORLDHOOK_ON_UPDATE, WORLDHOOK_ON_SHUTDOWN})
+        {
+        }
+
+        void OnShutdown() override { DungeonLead::FlushTelemetry(/*force*/ true); }
 
         void OnUpdate(uint32 /*diff*/) override
         {
@@ -250,6 +255,7 @@ namespace
             DungeonLead::GuardActiveSessions();
             DungeonLead::CanaryTick();
             DungeonLead::TestBotPoolTick();
+            DungeonLead::FlushTelemetry();
         }
     };
 

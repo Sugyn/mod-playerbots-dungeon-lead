@@ -103,6 +103,10 @@ namespace DungeonLead
     // dependency. Gated behind DungeonLeadState::debugMode, defaulting to
     // AiPlayerbot.DungeonLead.DebugDefault (0 for a fresh checkout of this patch).
     void RecordDebug(PlayerbotAI* botAI, std::string const& line);
+    // Writes buffered telemetry (RecordEvent/RecordRunSummary/RecordDebug only queue lines) to the
+    // files. World thread only: every world tick (self-throttled to ~2 s, sooner if the buffer
+    // fills) and with `force` at shutdown.
+    void FlushTelemetry(bool force = false);
 
     // 2026-09-15 (independent architecture review, DL-006): DungeonLeadSessions.csv is a per-event
     // stream - reconstructing "how many runs actually reached Complete" means grouping potentially

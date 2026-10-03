@@ -36,6 +36,14 @@ the MAJOR bar above is met.
 - Pure navigation waypoints (e.g. the Wailing Caverns bridges) are passed as soon as they are
   reached. They used to wait `StuckSeconds` (45 s) each and end up listed as skipped stops.
 
+### Changed (telemetry)
+- `DungeonLeadSessions.csv` rows get five more columns at the end: `map_id`, `instance_id`,
+  `state`, `step`, `pack_id` (existing columns keep their positions; an existing file keeps its
+  old header). New events: `leadership_request`, `leadership_confirmed`, `leadership_failed`.
+- Telemetry is no longer written to disk from the bots' own AI threads: lines go into a bounded
+  in-memory buffer and are written every ~2 s and at shutdown. If the buffer ever overflows,
+  the number of lost lines is logged and written as a `telemetry_dropped` row.
+
 ### Added
 - Config: `LeadershipAcquireTimeoutSeconds`, `LeadershipReturnTimeoutSeconds` (default 5),
   `LeadershipMaxAttempts` (default 3).
