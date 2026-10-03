@@ -1367,8 +1367,10 @@ void DungeonLead::SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, Dungeon
     DungeonLead::RecordEvent(botAI, "pack_state", line);
 }
 
-void DungeonLead::AdvanceStep(DungeonLeadState& st)
+void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
 {
+    if (confirmed)
+        st.checkpointStep = int32(st.stepIndex);
     if (st.stepIndex < st.visited.size())
         st.visited[st.stepIndex] = 1;
     ++st.stepIndex;
@@ -1397,7 +1399,65 @@ void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, D
         st.failureDomain = domain;
         st.failureReason = reason;
     }
-    AdvanceStep(st);
+    AdvanceStep(st, /*confirmed*/ false);
+}
+
+void DungeonLead::RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st)
+{
+    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
+    uint32 const from = st.stepIndex;
+    uint32 const to = DungeonLeadKernel::ResumeStepAfterWipe(st.checkpointStep, st.stepIndex);
+
+    if (route && to < from)
+    {
+        // Reopen what was only passed over since the checkpoint; drop those from the skipped list
+        // and take back a Partial verdict that only they caused - they get a fresh try.
+        for (uint32 i = to; i < from && i < route->steps.size(); ++i)
+        {
+            if (i < st.visited.size())
+                st.visited[i] = 0;
+            std::string const& name = route->steps[i].boss;
+            st.skippedSteps.erase(std::remove(st.skippedSteps.begin(), st.skippedSteps.end(), name),
+                                  st.skippedSteps.end());
+        }
+        bool mandatoryLeft = false;
+        for (std::string const& name : st.skippedSteps)
+            for (DungeonRouteStep const& s : route->steps)
+                if (s.boss == name && s.IsMandatory())
+                    mandatoryLeft = true;
+        if (st.mandatorySkipped && !mandatoryLeft && st.outcome == DungeonRunOutcome::Partial)
+        {
+            st.outcome = DungeonRunOutcome::Running;
+            st.failureDomain = DungeonFailureDomain::None;
+            st.failureReason = DungeonFailureReason::None;
+        }
+        st.mandatorySkipped = mandatoryLeft;
+        st.stepIndex = to;
+    }
+
+    // Whatever the current step is, look at it afresh: packs reset when the party wipes.
+    st.packId = 0;
+    st.packState = DungeonLeadKernel::PackState::Unknown;
+    st.pullState = DungeonLeadKernel::PullState::None;
+    st.pullStateTs = 0;
+    st.pullAttempts = 0;
+    st.pullOrderRefused = false;
+    st.pullFights = 0;
+    st.pullPackFought = false;
+    st.anchorSet = false;
+    st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
+    st.arrivedTold = false;
+    st.bestDist = 0.f;
+    st.stuckTs = 0;
+    st.stuckAttempts = 0;
+
+    std::string const checkpoint = route && st.checkpointStep >= 0 && size_t(st.checkpointStep) < route->steps.size()
+                                       ? route->steps[st.checkpointStep].boss
+                                       : std::string("none");
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} checkpoint restore: step {} -> {} (checkpoint {})",
+             botAI->GetBot()->GetName(), from, st.stepIndex, checkpoint);
+    DungeonLead::RecordEvent(botAI, "checkpoint_restore", "from=" + std::to_string(from) + " to=" +
+                                                              std::to_string(st.stepIndex) + " checkpoint=" + checkpoint);
 }
 
 bool DungeonLeadNextAction::Execute(Event /*event*/)
@@ -1563,7 +1623,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         DungeonLead::RecordEvent(botAI, "already_dead", step.boss);
         if (step.entry)
             sDungeonRouteMgr.MarkStepKilled(st.instanceId, step.entry);
-        DungeonLead::AdvanceStep(st);
+        DungeonLead::AdvanceStep(st, /*confirmed*/ true);
         return true;
     }
 
@@ -1576,7 +1636,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // typed nodes, path anchors waited StuckSeconds here and then logged "not_found".)
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} passed step {} '{}'", bot->GetName(), step.step, step.boss);
             DungeonLead::RecordEvent(botAI, "travel_reached", step.boss);
-            DungeonLead::AdvanceStep(st);
+            DungeonLead::AdvanceStep(st, /*confirmed*/ true);
             return true;
         }
 

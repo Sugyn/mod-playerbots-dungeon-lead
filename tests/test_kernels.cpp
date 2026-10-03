@@ -602,6 +602,18 @@ namespace
     }
 }
 
+namespace
+{
+    void TestCheckpoint()
+    {
+        Check(ResumeStepAfterWipe(-1, 0) == 0, "no checkpoint, at the start -> start");
+        Check(ResumeStepAfterWipe(-1, 3) == 0, "no checkpoint, steps passed over -> back to the start");
+        Check(ResumeStepAfterWipe(2, 3) == 3, "wiped on the step right after the checkpoint -> stay");
+        Check(ResumeStepAfterWipe(2, 6) == 3, "steps skipped after the checkpoint -> resume right after it");
+        Check(ResumeStepAfterWipe(5, 4) == 4, "never jump ahead of the route");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -614,6 +626,7 @@ int main()
     TestLeash();
     TestTargets();
     TestRecovery();
+    TestCheckpoint();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

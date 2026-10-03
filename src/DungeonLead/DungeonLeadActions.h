@@ -36,7 +36,12 @@ namespace DungeonLead
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
 
     // Route progress, shared by the route walk and the pull controller.
-    void AdvanceStep(DungeonLeadState& st);  // current step done - move on
+    // Current step done - move on. `confirmed`: it was cleared/reached (a wipe checkpoint), not
+    // merely given up on.
+    void AdvanceStep(DungeonLeadState& st, bool confirmed);
+    // After a wipe: resume right after the checkpoint and re-observe everything about the current
+    // step (packs reset when a party wipes). Records "checkpoint_restore".
+    void RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st);
     // Give up on the current step, recorded (never silent): a skipped mandatory step makes the
     // run Partial with the given failure domain/reason.
     void SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,

@@ -138,6 +138,7 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovered from wipe #{} on run={} - resuming",
                      bot->GetName(), st.wipeCount, st.runId);
             DungeonLead::RecordEvent(botAI, "wipe_recovered", "wipe #" + std::to_string(st.wipeCount));
+            DungeonLead::RestoreCheckpoint(botAI, st);
         }
         if (t.next == LeadState::Combat && !st.anchorSet)
         {

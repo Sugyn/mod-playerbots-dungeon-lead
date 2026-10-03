@@ -79,6 +79,9 @@ the MAJOR bar above is met.
   escalates (a bot member is brought to the leader - a real player never is), and after
   `RecoveryEscalationSeconds` more the run is stopped and reported as failed. Logged as
   `recovery_start` / `recovery_escalate` / `recovery_complete` / `recovery_failed`.
+- Wipe checkpoints: the last cleared pack / reached waypoint is a checkpoint. After the tank
+  dies and recovers, the route resumes right after it - anything only skipped since gets
+  another try - and the current pack is looked at afresh (`checkpoint_restore`).
 - Combat leash: where a fight begins becomes its anchor, and the leading tank doesn't chase a
   target that runs more than `CombatLeashRadius` yards from it (logged as `leash_hold`), so a
   fleeing mob can't drag the party into the next pack.

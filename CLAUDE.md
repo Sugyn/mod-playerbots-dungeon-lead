@@ -2513,14 +2513,36 @@ Remaining:
 
 ## Phase 12 — Wipe and checkpoints
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): wipe checkpoints and route reconciliation`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 163 checks (5 new ResumeStepAfterWipe cases: no checkpoint,
+  skipped steps after the checkpoint reopened, never ahead of the route)
+- Live: Wailing Caverns test party with the leader killed 4 min in (harness, not committed):
+  wipe_detected -> wipe_recovery, the healer resurrected the leader 14 s later ->
+  wipe_recovered -> checkpoint_restore (from=0 to=0, no checkpoint before the first boss) ->
+  waiting_ready, route continued at Lady Anacondra.
+
+Notes:
+- Checkpoint = `DungeonLeadState::checkpointStep`, set by `DungeonLead::AdvanceStep(st, true)` only
+  for confirmed milestones (pack cleared - already_dead - and travel node reached); skips call
+  `AdvanceStep(st, false)`. Route-progress field (reset with a new instance).
+- `DungeonLead::RestoreCheckpoint` runs when the brain leaves WipeRecovery: resumes at
+  `ResumeStepAfterWipe(checkpoint, current)`, reopens steps passed over since (visited cleared,
+  removed from the skipped list, a Partial caused only by them is taken back), and resets the
+  current step's pack/pull/target/anchor/arrival/stuck state - packs reset on a wipe, so the
+  world is re-observed. Steps confirmed killed stay skipped via the instance kill memory.
+- Wipe detection and its bounded give-up are the brain's WipeRecovery (Phase 3); regroup after
+  the wipe is the recovery controller (Phase 11).
+- Not live-exercised: a restore that actually rewinds (needs a skip after a checkpoint and then
+  a wipe in the same run) - covered by the kernel tests.
+
+Remaining:
+- none
 
 ---
 

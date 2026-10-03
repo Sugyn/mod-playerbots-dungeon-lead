@@ -847,6 +847,22 @@ namespace DungeonLeadKernel
             default:                             return RecoveryReason::None;
         }
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Wipe checkpoints
+    // ---------------------------------------------------------------------------------------
+    //
+    // The checkpoint is the last step confirmed safe: a pack confirmed cleared or a travel node
+    // reached - never a skip. After a wipe the route resumes right after it, so nothing that was
+    // only passed over (skipped, given up on) before the wipe stays skipped because of it.
+
+    // Step index to resume from after a wipe: the step after the checkpoint (-1 = none yet),
+    // never ahead of where the route already is.
+    inline uint32_t ResumeStepAfterWipe(int32_t checkpointStep, uint32_t currentStep)
+    {
+        uint32_t const afterCheckpoint = checkpointStep < 0 ? 0u : uint32_t(checkpointStep) + 1u;
+        return afterCheckpoint < currentStep ? afterCheckpoint : currentStep;
+    }
 }
 
 #endif
