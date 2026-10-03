@@ -206,7 +206,7 @@ struct DungeonLeadState
     bool doneTold = false;
     uint32 lastWaitLogTs = 0;
     bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
-    std::string spreadOffenderTold;  // name of the last bot we pinged about for GroupTooSpread, "" if none
+    std::string spreadOffenderTold;  // name of the last bot we pinged about for a too-spread group, "" if none
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there

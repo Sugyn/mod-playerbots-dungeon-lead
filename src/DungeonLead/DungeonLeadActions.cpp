@@ -10,6 +10,7 @@
 #include "DungeonLeadConfig.h"
 #include "DungeonLeadCanary.h"
 #include "DungeonLeadKernels.h"
+#include "DungeonPartyState.h"
 
 #include "Creature.h"
 #include "CreatureData.h"
@@ -437,178 +438,7 @@ bool DungeonLead::HasSession(PlayerbotAI* botAI)
 
 bool DungeonLead::GroupInCombat(PlayerbotAI* botAI)
 {
-    Player* bot = botAI->GetBot();
-    Group* group = bot->GetGroup();
-    if (!group)
-        return bot->IsInCombat();
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || !member->IsAlive() || member->GetMap() != bot->GetMap())
-            continue;
-        if (member->IsInCombat())
-            return true;
-    }
-    return false;
-}
-
-bool DungeonLead::GroupResting(PlayerbotAI* botAI)
-{
-    Player* bot = botAI->GetBot();
-    Group* group = bot->GetGroup();
-    if (!group)
-        return false;
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || member == bot || !member->IsAlive() || member->GetMap() != bot->GetMap())
-            continue;
-        // bots sit down to eat/drink; a real player sitting is treated the same (AFK-ish)
-        if (member->IsSitState())
-            return true;
-    }
-    return false;
-}
-
-bool DungeonLead::HealerManaLow(PlayerbotAI* botAI)
-{
-    Unit* healer = botAI->GetAiObjectContext()->GetValue<Unit*>("healer low mana")->Get();
-    if (!healer)
-        return false;
-    return healer->GetPowerPct(POWER_MANA) < float(sDungeonLeadConfig.dungeonLeadHealerManaPct);
-}
-
-// 2026-09-16 (independent architecture review DL-010 - "no explicit pull plan or trustworthy
-// party-readiness contract"): the concrete failure scenario named there - "the healer is dead or
-// on another map and therefore absent from the helper's effective sample" - applies directly to
-// HealerManaLow() above: its "healer low mana" AiObjectContext value comes back null for a dead/
-// off-map healer, and HealerManaLow() then reads that as "not low on mana" (false, i.e. don't
-// block) - the opposite of the truth. This checks group membership directly instead: any member
-// who IS a healer by spec (bySpec=true - see DungeonTestBotPool.cpp's VerifyReady for why the
-// default bySpec=false lags behind a fresh talent change) but is dead or not on this bot's map
-// blocks new pulls, same as MasterUnavailable() already does for the human player. A composition
-// that never had a healer role at all returns false - unchanged, opportunistic behavior for that
-// content, matching the review's own accepted tradeoff ("conservative readiness may reveal
-// existing content that only advances opportunistically").
-bool DungeonLead::HealerUnavailable(PlayerbotAI* botAI)
-{
-    Player* bot = botAI->GetBot();
-    Group* group = bot->GetGroup();
-    if (!group)
-        return false;
-
-    // Facts only here; the decision is DungeonLeadKernel::EvaluateHealer (unit-tested in tests/).
-    // A ghost is DeathState::Dead, so IsAlive() is false for it as for a corpse.
-    std::vector<DungeonLeadKernel::MemberFacts> facts;
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member)
-            continue;
-        DungeonLeadKernel::MemberFacts f;
-        f.isHealer = PlayerbotAI::IsHeal(member, /*bySpec*/ true);
-        f.alive = member->IsAlive();
-        f.sameMap = member->GetMap() == bot->GetMap();
-        facts.push_back(f);
-    }
-    return DungeonLeadKernel::EvaluateHealer(facts) == DungeonLeadKernel::HealerAvailability::Unavailable;
-}
-
-// 2026-10-03 (audit AUDIT-004 - "follower death is not a party-readiness condition"): only the
-// leader's own death (via GuardActiveSessions' wipe detection) and the healer's specifically
-// (HealerUnavailable() above) blocked pulls/walking - a dead DPS/non-healer follower did not, so
-// the leader could keep pulling and walking with the party down a member. Mirrors
-// MasterUnavailable()'s own reasoning below: a dead member still needs to release/res/run back
-// before the run should continue without them, not just be left behind.
-bool DungeonLead::FollowerDead(PlayerbotAI* botAI)
-{
-    Player* bot = botAI->GetBot();
-    Group* group = bot->GetGroup();
-    if (!group)
-        return false;
-
-    Player* master = botAI->GetMaster();
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || member == bot || member == master)
-            continue;  // the leader's own death and the real player's are handled elsewhere
-        if (!member->IsAlive())
-            return true;
-    }
-    return false;
-}
-
-// The real player is part of the run contract (see the architecture roadmap's L0 closeout): dead,
-// disconnected, or no longer in the group at all must block new pulls and route advancement, not
-// just "wait for them to catch up" the way a merely-far-away-but-fine player does. A dead player
-// still needs to release/res/run back before the dungeon should continue without them.
-bool DungeonLead::MasterUnavailable(PlayerbotAI* botAI)
-{
-    Player* bot = botAI->GetBot();
-    Player* master = botAI->GetMaster();
-    if (!master || master == bot)
-        return false;  // no real player assigned as master - nothing to block on
-    if (!master->IsInWorld() || !master->GetSession())
-        return true;  // logged off / disconnected mid-session
-    if (!master->IsAlive())
-        return true;
-    if (Group* group = bot->GetGroup())
-        if (!group->IsMember(master->GetGUID()))
-            return true;  // left the party entirely
-    return false;
-}
-
-bool DungeonLead::MasterTooFar(PlayerbotAI* botAI)
-{
-    Player* bot = botAI->GetBot();
-    Player* master = botAI->GetMaster();
-    if (!master || master == bot || !master->IsAlive())
-        return false;
-    // left the instance/teleported away/logged off elsewhere entirely - that is "too far" by any
-    // reasonable reading of a leash, not an exemption from it (a same-map-only check let the bot
-    // wander off freely the instant the real player wasn't literally on the same map anymore)
-    if (master->GetMap() != bot->GetMap())
-        return true;
-    return bot->GetDistance(master) > sDungeonLeadConfig.dungeonLeadLeash;
-}
-
-// The farthest-behind group member past the spread threshold, if any - named so isUseful() can
-// tell the player WHO it's waiting for, not just that the group is "too spread" (a silent block
-// with no obvious cause was reported during live testing: the tank was actually correctly waiting
-// on one specific bot the whole time, but nothing in chat said so).
-Player* DungeonLead::FindSpreadMember(PlayerbotAI* botAI)
-{
-    Player* bot = botAI->GetBot();
-    float const threshold = sDungeonLeadConfig.dungeonLeadLeash * 1.5f;
-
-    Group* group = bot->GetGroup();
-    if (!group)
-        return nullptr;
-
-    Player* worst = nullptr;
-    float worstDist = threshold;
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || member == bot || !member->IsAlive() || member->GetMap() != bot->GetMap())
-            continue;
-        float d = bot->GetDistance(member);
-        if (d > worstDist)
-        {
-            worstDist = d;
-            worst = member;
-        }
-    }
-    return worst;
-}
-
-bool DungeonLead::GroupTooSpread(PlayerbotAI* botAI)
-{
-    // never run away from the real player
-    return MasterTooFar(botAI) || FindSpreadMember(botAI) != nullptr;
+    return DungeonLeadKernel::AnyInCombat(DungeonPartyState::Evaluate(botAI).facts);
 }
 
 Creature* DungeonLead::FindBossNear(PlayerbotAI* botAI, float range)
@@ -1422,7 +1252,9 @@ bool DungeonLeadNextAction::isUseful()
 
     // "waiting for you": a one-shot chat ping on the transition into master-too-far, not spammed
     // every tick, and cleared as soon as the player is back in range.
-    bool masterTooFar = DungeonLead::MasterTooFar(botAI);
+    DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
+    DungeonLeadKernel::ReadinessPolicy const policy = DungeonPartyState::Policy();
+    bool masterTooFar = DungeonLeadKernel::MasterTooFar(party.facts, policy);
     if (masterTooFar && !st.farFromMasterTold)
     {
         st.farFromMasterTold = true;
@@ -1434,7 +1266,8 @@ bool DungeonLeadNextAction::isUseful()
     // Same one-shot idea for a specific bot falling behind: "group too spread" alone gave no way
     // to tell WHO the group was actually waiting on (found during live testing - the tank was
     // correctly waiting the whole time on one bot stuck on terrain, but nothing in chat said so).
-    Player* spreadMember = masterTooFar ? nullptr : DungeonLead::FindSpreadMember(botAI);
+    Player* spreadMember =
+        masterTooFar ? nullptr : party.Member(DungeonLeadKernel::FindSpreadMember(party.facts, policy));
     std::string const spreadName = spreadMember ? spreadMember->GetName() : std::string();
     if (spreadMember && st.spreadOffenderTold != spreadName)
     {
@@ -1444,27 +1277,12 @@ bool DungeonLeadNextAction::isUseful()
     else if (!spreadMember)
         st.spreadOffenderTold.clear();
 
-    char const* wait = nullptr;
+    DungeonLeadKernel::Readiness const ready =
+        DungeonLeadKernel::EvaluateReadiness(party.facts, policy, DungeonLeadKernel::ReadyPurpose::Walk);
+    char const* wait = ready.status == DungeonLeadKernel::ReadyStatus::Ready ? nullptr : DungeonLeadKernel::ToString(ready.status);
     std::string waitDetail;
-    if (DungeonLead::MasterUnavailable(botAI))
-        wait = "master dead/disconnected/left the party";
-    else if (DungeonLead::HealerUnavailable(botAI))
-        wait = "healer dead or not in the instance";
-    else if (DungeonLead::FollowerDead(botAI))
-        wait = "party member dead";
-    else if (DungeonLead::GroupInCombat(botAI))
-        wait = "group in combat";
-    else if (DungeonLead::GroupResting(botAI))
-        wait = "someone is eating/drinking";
-    else if (DungeonLead::HealerManaLow(botAI))
-        wait = "healer low on mana";
-    else if (masterTooFar)
-        wait = "waiting for you, master too far";
-    else if (spreadMember)
-    {
-        wait = "group too spread";
-        waitDetail = spreadName;
-    }
+    if (Player* offender = party.Member(ready.offender))
+        waitDetail = offender->GetName();
 
     if (wait)
     {

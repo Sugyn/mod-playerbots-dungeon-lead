@@ -115,10 +115,122 @@ namespace
     }
 }
 
+namespace
+{
+    // leader (tank) + master (player, dps) + healer + 2 dps, all alive, together, rested
+    PartyFacts Party()
+    {
+        PartyFacts f;
+        f.hasGroup = true;
+        f.master.assigned = true;
+        f.master.online = true;
+        f.master.alive = true;
+        f.master.inGroup = true;
+        f.master.sameMap = true;
+        f.master.distance = 10.0f;
+        for (int i = 0; i < 5; ++i)
+        {
+            PartyMemberFacts m;
+            m.isSelf = i == 0;
+            m.isMaster = i == 1;
+            m.isHealerBySpec = m.isHealerRole = i == 2;
+            m.alive = true;
+            m.sameMap = true;
+            m.distance = i == 0 ? 0.0f : 10.0f;
+            f.members.push_back(m);
+        }
+        return f;
+    }
+
+    ReadinessPolicy const kReady{20.0f, 60.0f, 1.5f};
+
+    ReadyStatus Walk(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Walk).status; }
+    ReadyStatus Pull(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Pull).status; }
+
+    void TestReadiness()
+    {
+        Check(Walk(Party()) == ReadyStatus::Ready, "healthy party -> Ready");
+
+        PartyFacts f = Party();
+        f.master.alive = false;
+        Check(Walk(f) == ReadyStatus::MasterUnavailable, "master dead -> MasterUnavailable");
+        f = Party();
+        f.master.online = false;
+        Check(Pull(f) == ReadyStatus::MasterUnavailable, "master offline blocks pulls too");
+        f = Party();
+        f.master.inGroup = false;
+        Check(Walk(f) == ReadyStatus::MasterUnavailable, "master left group -> MasterUnavailable");
+
+        f = Party();
+        f.members[2].alive = false;
+        Check(Walk(f) == ReadyStatus::HealerUnavailable, "healer dead -> HealerUnavailable");
+        f = Party();
+        f.members[2].sameMap = false;
+        Check(Pull(f) == ReadyStatus::HealerUnavailable, "healer on another map blocks pulls");
+        f = Party();
+        f.members[2].manaPct = 10.0f;
+        Check(Walk(f) == ReadyStatus::LowHealerMana, "healer low mana -> LowHealerMana");
+        f.members[2].gameMaster = true;
+        Check(Walk(f) == ReadyStatus::Ready, "GM healer's mana ignored (as upstream)");
+
+        f = Party();
+        f.members[3].alive = false;
+        Readiness r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::MemberDead && r.offender == 3, "dps dead -> MemberDead, names who");
+
+        f = Party();
+        f.members[4].inCombat = true;
+        Check(Walk(f) == ReadyStatus::PartyInCombat, "member in combat stops the walk");
+        Check(Pull(f) == ReadyStatus::Ready, "member in combat does not block pulls");
+        f.members[4].sameMap = false;
+        Check(Walk(f) == ReadyStatus::Ready, "off-map member's combat is not ours");
+
+        f = Party();
+        f.members[3].sitting = true;
+        Check(Walk(f) == ReadyStatus::Drinking, "member drinking -> Drinking");
+        f = Party();
+        f.members[0].sitting = true;
+        Check(Walk(f) == ReadyStatus::Ready, "leader's own sitting is not a wait");
+
+        f = Party();
+        f.master.distance = 61.0f;
+        Check(Walk(f) == ReadyStatus::MasterTooFar, "master beyond leash -> MasterTooFar");
+        f = Party();
+        f.master.sameMap = false;
+        Check(Pull(f) == ReadyStatus::MasterTooFar, "master off-map blocks pulls");
+
+        f = Party();
+        f.members[4].distance = 95.0f;
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::Fragmented && r.offender == 4, "member beyond leash*1.5 -> Fragmented, names who");
+        f.members[4].distance = 89.0f;
+        Check(Walk(f) == ReadyStatus::Ready, "member inside leash*1.5 -> Ready");
+
+        // priority: the most fundamental problem is reported first
+        f = Party();
+        f.master.alive = false;
+        f.members[2].alive = false;
+        Check(Walk(f) == ReadyStatus::MasterUnavailable, "master problem reported before healer");
+
+        // bot-only (canary) party: no master assigned
+        f = Party();
+        f.master = MasterFacts();
+        f.members[1].isMaster = false;
+        Check(Walk(f) == ReadyStatus::Ready, "no master assigned -> Ready");
+
+        // no group at all
+        PartyFacts solo;
+        solo.selfInCombat = true;
+        Check(Walk(solo) == ReadyStatus::PartyInCombat, "solo in combat -> walk waits");
+        Check(Pull(solo) == ReadyStatus::Ready, "solo -> pulls allowed");
+    }
+}
+
 int main()
 {
     TestLeadership();
     TestHealer();
+    TestReadiness();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

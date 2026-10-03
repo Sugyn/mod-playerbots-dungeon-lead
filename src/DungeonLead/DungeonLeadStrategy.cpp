@@ -10,6 +10,7 @@
 
 #include "Action.h"
 #include "DungeonLeadActions.h"
+#include "DungeonPartyState.h"
 #include "Playerbots.h"
 
 void DungeonLeadStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
@@ -43,24 +44,15 @@ float DungeonLeadMultiplier::GetValue(Action* action)
 
     if (sDungeonRouteMgr.State(botAI->GetBot()->GetGUID()).paused)
         return 0.0f;  // "startdungeon pause": no new pulls either, not just no walking
-    if (DungeonLead::MasterUnavailable(botAI))
-        return 0.0f;  // dead/disconnected/left the party: no new pulls until the run has a player again
-    if (DungeonLead::HealerManaLow(botAI) || DungeonLead::GroupResting(botAI))
-        return 0.0f;
-    // 2026-09-16 (DL-010): HealerManaLow() above can't see a dead/off-map healer at all (its
-    // underlying lookup comes back null, read as "fine") - this catches that case directly.
-    if (DungeonLead::HealerUnavailable(botAI))
-        return 0.0f;
-    // 2026-10-03 (audit AUDIT-004): same gap as above, for any other party member - a dead
-    // non-healer follower didn't block anything on its own.
-    if (DungeonLead::FollowerDead(botAI))
-        return 0.0f;
-    if (isWalk && DungeonLead::GroupInCombat(botAI))
-        return 0.0f;
-    // isUseful() stops the ROUTE WALK for these, but "grind"'s own pull actions aren't gated by
-    // it at all - without this, the tank could stand still waiting for the player yet still open
-    // a brand new fight the moment something wandered into range, which is the opposite of "wait"
-    if (DungeonLead::MasterTooFar(botAI) || DungeonLead::GroupTooSpread(botAI))
+    // One readiness path for pulls and the walk alike (DungeonPartyState). Pulls ignore "group in
+    // combat" - finishing a fight is the class AI's job - while the walk waits for it to end.
+    // isUseful() also stops the route walk on these, but "grind"'s own pull actions aren't gated
+    // by it at all - without this the tank could stand still waiting yet open a brand new fight
+    // the moment something wandered into range.
+    DungeonPartySnapshot const snap = DungeonPartyState::Evaluate(botAI);
+    if (DungeonPartyState::Readiness(snap, isWalk ? DungeonLeadKernel::ReadyPurpose::Walk
+                                                  : DungeonLeadKernel::ReadyPurpose::Pull)
+            .status != DungeonLeadKernel::ReadyStatus::Ready)
         return 0.0f;
 
     return 1.0f;

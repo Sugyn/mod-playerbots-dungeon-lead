@@ -29,7 +29,12 @@ the MAJOR bar above is met.
 ### Added
 - Config: `LeadershipAcquireTimeoutSeconds`, `LeadershipReturnTimeoutSeconds` (default 5),
   `LeadershipMaxAttempts` (default 3).
-- `tools/run_tests.sh`: unit tests for the leadership and healer-readiness decisions.
+- `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
+
+### Changed
+- Party readiness (player, healer, deaths, combat, drinking, healer mana, leash, spread) is
+  checked in one place for both pulling and walking, so the two can no longer disagree. The
+  healer mana check reads the party directly instead of mod-playerbots' cached value.
 
 ## [0.10.0-alpha] - 2026-10-03
 

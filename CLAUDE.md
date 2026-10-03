@@ -2152,14 +2152,32 @@ Remaining:
 
 ## Phase 2 — DungeonPartyState
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`refactor(dungeon-lead): single party readiness snapshot`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, CMake reconfigured for the new .cpp, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 46 checks (22 new readiness cases: each status, walk vs
+  pull, priority order, no master, no group, offender index)
+- Live: temporary server-only harness (not committed): Evaluate() on a real 2-bot group read
+  self/healer/alive/map/mana/distance correctly, 3650 yd member -> Fragmented. Removed after.
+
+Notes:
+- `src/DungeonLead/DungeonPartyState.{h,cpp}` gathers `DungeonLeadKernel::PartyFacts`;
+  `DungeonLeadKernel::EvaluateReadiness` decides (`ReadyStatus`, offender index).
+- `DungeonLeadNextAction::isUseful` (walk) and `DungeonLeadMultiplier` (pull + walk) both use
+  it; the old per-check helpers (MasterUnavailable, HealerUnavailable, FollowerDead,
+  GroupResting, HealerManaLow, MasterTooFar, FindSpreadMember, GroupTooSpread) are gone.
+  `GroupInCombat` remains as a thin wrapper for the canary.
+- Healer mana now read directly (lowest living healer-role member, GMs ignored, leader
+  excluded) - same rule as mod-playerbots' "healer low mana" value, without its cache.
+- Not modelled yet (no behavior existed for them): MemberMissing, DifferentMap for non-healers,
+  Resurrection in progress.
+
+Remaining:
+- none
 
 ---
 
