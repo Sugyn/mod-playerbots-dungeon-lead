@@ -117,6 +117,24 @@ namespace
     // files (they're never on the hot path - one line per key event, not per tick).
     std::mutex g_dungeonLeadLogMutex;
 
+    // 2026-10-03 (audit AUDIT-006 - "synchronous file I/O is in the hot path and uses a global
+    // mutex"): fopen+fclose on every single write was avoidable overhead that only shows up under
+    // scale (e.g. the 49-parallel-session test - ADR-003), since these throttled "waiting" events
+    // alone fire at most once per bot per 10s. Each file is now opened once, on first write, and
+    // kept open for the life of the process - appending was already the mode, so nothing else
+    // about on-disk behavior changes. Still fflush()ed after every write (under the same mutex),
+    // so durability on a crash is unchanged; only the repeated open/close syscalls are gone.
+    FILE* OpenPersistent(char const* path, FILE*& handle)
+    {
+        if (!handle)
+            handle = fopen(path, "a");
+        return handle;
+    }
+
+    FILE* g_sessionsLogFile = nullptr;
+    FILE* g_runsLogFile = nullptr;
+    FILE* g_debugLogFile = nullptr;
+
     // Session correlation id: every telemetry row from one "startdungeon" run carries the same
     // value, so a bug report's CSV rows (which interleave every dungeon-lead bot on the whole
     // server) can be grouped back into one run without guessing from timestamps.
@@ -315,7 +333,7 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
 
     std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
     static bool headerWritten = false;
-    FILE* f = fopen("DungeonLeadSessions.csv", "a");
+    FILE* f = OpenPersistent("DungeonLeadSessions.csv", g_sessionsLogFile);
     if (!f)
         return;
     if (!headerWritten)
@@ -333,7 +351,6 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
             static_cast<unsigned long long>(runId), masterName.c_str(), lfgId, dungeonName.c_str(), botName.c_str(),
             members.c_str(), eventEsc.c_str(), detailEsc.c_str(), outcome, failureDomain, failureReason);
     fflush(f);
-    fclose(f);
 }
 
 void DungeonLead::RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason)
@@ -372,7 +389,7 @@ void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName,
 
     std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
     static bool headerWritten = false;
-    FILE* f = fopen("DungeonLeadRuns.csv", "a");
+    FILE* f = OpenPersistent("DungeonLeadRuns.csv", g_runsLogFile);
     if (!f)
         return;
     if (!headerWritten)
@@ -387,7 +404,6 @@ void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName,
             static_cast<unsigned long long>(runId), botName.c_str(), lfgId, dungeonName.c_str(), origin,
             outcome, failureDomain, failureReason, skipped, wipes, durationMs, reasonEsc.c_str());
     fflush(f);
-    fclose(f);
 }
 
 void DungeonLead::RecordDebug(PlayerbotAI* /*botAI*/, std::string const& line)
@@ -395,12 +411,11 @@ void DungeonLead::RecordDebug(PlayerbotAI* /*botAI*/, std::string const& line)
     std::string const ts = FormatLogTimestamp();
 
     std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
-    FILE* f = fopen("DungeonLeadDebug.log", "a");
+    FILE* f = OpenPersistent("DungeonLeadDebug.log", g_debugLogFile);
     if (!f)
         return;
     fprintf(f, "%s %s\n", ts.c_str(), line.c_str());
     fflush(f);
-    fclose(f);
 }
 
 bool DungeonLead::InFiveMan(Player* bot)
@@ -490,6 +505,31 @@ bool DungeonLead::HealerUnavailable(PlayerbotAI* botAI)
 
     }
     return healerInRoster;  // had a healer role, none of them qualify right now
+}
+
+// 2026-10-03 (audit AUDIT-004 - "follower death is not a party-readiness condition"): only the
+// leader's own death (via GuardActiveSessions' wipe detection) and the healer's specifically
+// (HealerUnavailable() above) blocked pulls/walking - a dead DPS/non-healer follower did not, so
+// the leader could keep pulling and walking with the party down a member. Mirrors
+// MasterUnavailable()'s own reasoning below: a dead member still needs to release/res/run back
+// before the run should continue without them, not just be left behind.
+bool DungeonLead::FollowerDead(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    Group* group = bot->GetGroup();
+    if (!group)
+        return false;
+
+    Player* master = botAI->GetMaster();
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member == bot || member == master)
+            continue;  // the leader's own death and the real player's are handled elsewhere
+        if (!member->IsAlive())
+            return true;
+    }
+    return false;
 }
 
 // The real player is part of the run contract (see the architecture roadmap's L0 closeout): dead,
@@ -1287,14 +1327,6 @@ bool DungeonLeadNextAction::isUseful()
         {
             st.lastWaitLogTs = now;
 
-            // DIAGNOSTIC (temporary): DungeonLeadDebug.log has stayed 0 bytes all session despite
-            // DebugDefault=1 and RecordEvent (CSV) firing correctly from this same throttled block
-            // - meaning either st.debugMode isn't actually true at this point, or RecordDebug's
-            // fopen is silently failing. This unconditional line (not gated on debugMode) settles
-            // which, directly from the next test run, instead of guessing further. Remove once
-            // the debug log is confirmed working again.
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} debugMode={} runId={}", bot->GetName(),
-                     st.debugMode, st.runId);
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} waiting: {}{}{}", bot->GetName(), wait,
                      waitDetail.empty() ? "" : " - ", waitDetail);
             DungeonLead::RecordEvent(botAI, "waiting", waitDetail.empty() ? wait : std::string(wait) + " - " + waitDetail);
@@ -1526,7 +1558,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                 report << " | duration " << (durationMs / 60000) << "m" << ((durationMs / 1000) % 60) << "s"
                        << " | skipped " << st.skippedSteps.size()
                        << " | manual interventions " << st.manualInterventions
-                       << " (deaths/wipes not tracked yet)";
+                       << " | wipes " << st.wipeCount;
                 botAI->TellMasterNoFacing(report);
                 DungeonLead::RecordEvent(botAI, "test_result",
                     std::string(ToString(st.outcome)) + " duration_ms=" + std::to_string(durationMs) +

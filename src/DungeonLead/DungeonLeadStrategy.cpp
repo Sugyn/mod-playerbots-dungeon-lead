@@ -51,6 +51,10 @@ float DungeonLeadMultiplier::GetValue(Action* action)
     // underlying lookup comes back null, read as "fine") - this catches that case directly.
     if (DungeonLead::HealerUnavailable(botAI))
         return 0.0f;
+    // 2026-10-03 (audit AUDIT-004): same gap as above, for any other party member - a dead
+    // non-healer follower didn't block anything on its own.
+    if (DungeonLead::FollowerDead(botAI))
+        return 0.0f;
     if (isWalk && DungeonLead::GroupInCombat(botAI))
         return 0.0f;
     // isUseful() stops the ROUTE WALK for these, but "grind"'s own pull actions aren't gated by

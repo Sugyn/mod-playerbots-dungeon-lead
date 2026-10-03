@@ -146,6 +146,12 @@ void DungeonRouteMgr::MarkStepKilled(uint32 instanceId, uint32 entry)
     killedByInstance[instanceId].insert(entry);
 }
 
+void DungeonRouteMgr::ClearInstance(uint32 instanceId)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    killedByInstance.erase(instanceId);
+}
+
 char const* ToString(DungeonRunOutcome v)
 {
     switch (v)

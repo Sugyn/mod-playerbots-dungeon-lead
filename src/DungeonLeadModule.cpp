@@ -34,6 +34,7 @@
 #include "DungeonLeadOverrides.h"
 #include "HunterAiObjectContext.h"
 #include "MageAiObjectContext.h"
+#include "Map.h"
 #include "PaladinAiObjectContext.h"
 #include "PassThroughStrategy.h"
 #include "Playerbots.h"
@@ -252,9 +253,27 @@ namespace
         }
     };
 
+    // DungeonRouteMgr::killedByInstance (per-instance "already killed" memory, see its own comment)
+    // had no lifecycle cleanup - it only ever grew for as long as the process ran. AllMapScript's
+    // OnDestroyMap fires for every map/instance the core tears down, dungeon-lead's or not, which
+    // is exactly when that instance's kill memory can never be read again - a stock AzerothCore
+    // hook, no mod-playerbots involvement at all.
+    class DungeonLeadMapScript : public AllMapScript
+    {
+    public:
+        DungeonLeadMapScript() : AllMapScript("DungeonLeadMapScript", {ALLMAPHOOK_ON_DESTROY_MAP}) {}
+
+        void OnDestroyMap(Map* map) override
+        {
+            if (map)
+                sDungeonRouteMgr.ClearInstance(map->GetInstanceId());
+        }
+    };
+
 }  // namespace
 
 void AddDungeonLeadScripts()
 {
     new DungeonLeadWorldScript();
+    new DungeonLeadMapScript();
 }

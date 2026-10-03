@@ -272,10 +272,8 @@ struct DungeonLeadState
 
     // "startdungeon test" (L1.3 first live smoke-test command): reports a structured RunResult
     // summary once the run reaches a terminal outcome, instead of just the normal chat lines.
-    // Deliberately does NOT track deaths/wipes yet - no death/wipe detection exists anywhere in
-    // dungeon-lead today, and inventing one just to fill in a report field would be exactly the
-    // kind of "new recovery behavior added only to support telemetry" the roadmap says not to do.
-    // What's reported is only what's already cheaply and honestly known.
+    // Wipes are reported via wipeCount above (added by DL-013, after this comment was first
+    // written - it used to say deaths/wipes weren't tracked at all, which stopped being true).
     bool testMode = false;
     uint32 testStartTs = 0;
     uint32 manualInterventions = 0;  // pause/continue/reset invoked mid-test - not a clean smoke run
@@ -350,6 +348,11 @@ public:
     // restart also resets the instance's own creature respawns for a fresh instance anyway).
     bool IsStepKilled(uint32 instanceId, uint32 entry);
     void MarkStepKilled(uint32 instanceId, uint32 entry);
+
+    // Drops one instance's kill memory outright - called when that instance is actually destroyed
+    // (every dungeon-lead session in it is long over by then), so this map doesn't otherwise grow
+    // for as long as the process runs. Harmless to call for an instance id that was never marked.
+    void ClearInstance(uint32 instanceId);
 
 private:
     void EnsureLoaded();

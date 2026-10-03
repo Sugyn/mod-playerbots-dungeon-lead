@@ -37,6 +37,12 @@ namespace DungeonLead
     // them is currently dead or on a different map - a composition that never had a healer role
     // at all returns false, same opportunistic behavior as before this existed.
     bool HealerUnavailable(PlayerbotAI* botAI);
+    // 2026-10-03 (audit AUDIT-004 - "follower death is not a party-readiness condition"): a dead
+    // non-healer party member (the leader's own death and the healer's specifically were already
+    // covered) did not block new pulls/walking on its own - the leader could keep advancing with
+    // the party down a member. Mirrors MasterUnavailable()'s reasoning: a dead member still needs
+    // to release/res/run back before the run should continue without them.
+    bool FollowerDead(PlayerbotAI* botAI);
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
     void CheckCcMark(PlayerbotAI* botAI);
 
