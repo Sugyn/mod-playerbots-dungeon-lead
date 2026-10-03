@@ -53,14 +53,22 @@ The bot reports what it's doing in chat and, at the end, whether the route actua
 was partial — don't take "done" at face value without checking which one it said. Leaving the
 instance stops the mode automatically.
 
-It only starts once the tank is actually group leader (it retries the leader change a few times
-and gives up if it doesn't happen), and `stopdungeon` likewise checks that leadership really went
-back to you.
+How it runs:
 
-It holds off pulling/walking on while: the real player is dead/disconnected/out of the group, the
-group is in combat, the healer is dead, out of the instance, low on mana or drinking, another party
-member is dead, or the player has fallen more than `AiPlayerbot.DungeonLead.Leash` yards behind
-(config, default 60).
+- It only starts once the tank is actually group leader, and `stopdungeon` checks leadership
+  really went back to you (both retried a few times, then given up on and reported).
+- Between fights it waits until the party is ready: you alive and within `Leash` (60 yd), the
+  healer alive and in the instance with mana, nobody dead, drinking or below half health, and
+  the party together (`PartySoftRange`/`PartyHardRange`).
+- It pulls one pack at a time: skull on the main target, cross on the second, moon on something
+  to crowd-control, then opens the fight. A pull that doesn't take is retried, then the pack is
+  skipped and reported. It doesn't chase runners away from the fight (`CombatLeashRadius`).
+- If something won't sort itself out (a straggler, a lost or dead member) it tries to fix it -
+  walks back, waits for a resurrection, brings a *bot* member over - and stops the run after a
+  few minutes rather than waiting forever. You are never teleported.
+- After a tank death it resumes from the last cleared pack.
+
+`startdungeon status` shows the current state, objective, pack and pull.
 
 ## Debugging / reporting a bug
 
@@ -85,8 +93,8 @@ are for reproducible bugs only.
 - GM diagnostic commands from the pre-module patch (`testbotpool`, `lfgstate`, `pathcheck`,
   `pathcheckfrom`, `tpbot`) aren't ported to this module's `.dungeonlead` command root yet — only
   `canarytest` is.
-- A full live run through the module itself (not just that it registers correctly) isn't
-  confirmed yet.
+- Live-tested with a bot-only test party in Wailing Caverns up to Lord Cobrahn so far; a run
+  with a real player in the group hasn't been done since these changes.
 - Optional advanced features, off by default: **AutoBot Canary** (auto-starts on bot-only groups
   that queue on their own) and **DungeonTestBotPool** (deterministic tank/healer test bots on
   demand, not yet reachable via a command in this module).

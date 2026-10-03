@@ -343,6 +343,14 @@ namespace
 
         Check(!IsActive(LeadState::Starting) && !IsActive(LeadState::Stopping) && IsActive(LeadState::Combat),
               "Starting/Stopping are not active states");
+        Check(StateAllowsNewPull(LeadState::Travelling) && StateAllowsNewPull(LeadState::BossPrep) &&
+                  StateAllowsNewPull(LeadState::Combat),
+              "working the route or fighting -> a fight may be opened");
+        Check(!StateAllowsNewPull(LeadState::WaitingReady) && !StateAllowsNewPull(LeadState::PostCombat) &&
+                  !StateAllowsNewPull(LeadState::Recovery) && !StateAllowsNewPull(LeadState::WipeRecovery) &&
+                  !StateAllowsNewPull(LeadState::Completing) && !StateAllowsNewPull(LeadState::Starting) &&
+                  !StateAllowsNewPull(LeadState::Stopping),
+              "waiting, recovering, wiped, done or not active -> no new fight");
 
         // boss flow: MovingToPull -> BossPrep -> BossCombat -> PostCombat
         f = Active(LeadState::Travelling);

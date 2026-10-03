@@ -66,23 +66,20 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         return 0.0f;
     }
 
-    bool isPull = name == "attack anything" || name == "pull my target" || name == "pull rti target";
-    bool isWalk = name == "dungeon lead next";
-    if (!isPull && !isWalk)
+    // Walking on is the brain's decision alone (the route walk runs only in Travelling). What is
+    // gated here is "grind"'s own pull actions, which nothing else would stop: the tank could be
+    // holding for the party yet open a fight the moment something wandered into range. They follow
+    // the brain's state (no new fight while waiting, recovering, ...) and the pull readiness.
+    bool const isPull = name == "attack anything" || name == "pull my target" || name == "pull rti target";
+    if (!isPull)
         return 1.0f;
 
-    if (sDungeonRouteMgr.State(botAI->GetBot()->GetGUID()).paused)
-        return 0.0f;  // "startdungeon pause": no new pulls either, not just no walking
-    // One readiness path for pulls and the walk alike (DungeonPartyState). Pulls ignore "group in
-    // combat" - finishing a fight is the class AI's job - while the walk waits for it to end.
-    // isUseful() also stops the route walk on these, but "grind"'s own pull actions aren't gated
-    // by it at all - without this the tank could stand still waiting yet open a brand new fight
-    // the moment something wandered into range.
-    DungeonPartySnapshot const snap = DungeonPartyState::Evaluate(botAI);
-    if (DungeonPartyState::Readiness(snap, isWalk ? DungeonLeadKernel::ReadyPurpose::Walk
-                                                  : DungeonLeadKernel::ReadyPurpose::Pull)
-            .status != DungeonLeadKernel::ReadyStatus::Ready)
+    DungeonLeadState const& st = sDungeonRouteMgr.State(botAI->GetBot()->GetGUID());
+    if (st.paused || !DungeonLeadKernel::StateAllowsNewPull(st.state))
         return 0.0f;
-
+    DungeonPartySnapshot const snap = DungeonPartyState::Evaluate(botAI);
+    if (DungeonPartyState::Readiness(snap, DungeonLeadKernel::ReadyPurpose::Pull).status !=
+        DungeonLeadKernel::ReadyStatus::Ready)
+        return 0.0f;
     return 1.0f;
 }

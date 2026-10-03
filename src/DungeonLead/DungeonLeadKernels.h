@@ -408,6 +408,25 @@ namespace DungeonLeadKernel
     // DecideActive below.
     inline bool IsActive(LeadState s) { return s != LeadState::Starting && s != LeadState::Stopping; }
 
+    // Whether the brain's current state allows a fight to be opened (grind's opportunistic pulls
+    // and the pull controller's own): only while working the route or already fighting - never
+    // while waiting, recovering, after a wipe, done, or outside an active session.
+    inline bool StateAllowsNewPull(LeadState s)
+    {
+        switch (s)
+        {
+            case LeadState::Travelling:
+            case LeadState::PrePull:
+            case LeadState::Pulling:
+            case LeadState::BossPrep:
+            case LeadState::Combat:
+            case LeadState::BossCombat:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     enum class TransitionReason : uint8_t
     {
         SessionStart,

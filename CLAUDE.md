@@ -2649,15 +2649,68 @@ Remaining:
 
 ## Phase 16 — Cleanup
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`refactor(dungeon-lead): one leader decision engine`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 184 checks (StateAllowsNewPull)
+- Live: Wailing Caverns test party (10 min) after the change: fights opened normally, Lady
+  Anacondra and Kresh cleared, no skips, no failed recovery.
+
+Notes:
+- Removed the last duplicate decision: DungeonLeadMultiplier no longer gates the route walk
+  (the brain decides walking - Travelling only). It now only gates the class AI's own moves:
+  the chase leash, and grind's opportunistic pulls by the brain state
+  (`DungeonLeadKernel::StateAllowsNewPull`) plus pull readiness.
+- Earlier phases already removed: the per-check readiness helpers (Phase 2), the lifecycle
+  flag and death timestamp (folded into the brain state, Phase 3), the walk action's private
+  MarkVisited/SetPackState and pull marking (Phases 6/9), the boss-only mark logic (Phase 9),
+  per-write file I/O under a global mutex (Phase 15). An audit of DungeonLeadState found no
+  unused fields; stale names (GroupTooSpread, HealerManaLow, tankDeathTs, MarkVisited,
+  FindCcCandidate, FollowerDead) no longer appear outside history notes.
+- README "how it runs" rewritten for the current behavior (kept short).
+
+Remaining:
+- none
 
 ---
+
+## Definition of done - status (2026-10-03)
+
+Autonomous trash leadership (section 37):
+1. leadership acquisition confirmed - yes (Phase 1, live)
+2. leadership return confirmed or failed safely - yes (Phase 1, live)
+3. party readiness centralized - yes (Phase 2)
+4. healer unavailability blocks new pulls - yes (Phases 1/2)
+5. state machine authoritative - yes (Phases 3/16)
+6. route objectives typed - yes (Phase 4)
+7. current pack explicit - yes (Phase 5)
+8. pull lifecycle explicit - yes (Phase 6)
+9. pull failure enters recovery - bounded retry, then the pack is skipped and recorded
+   (pull_failed/pack_skipped, Partial for a boss); not routed through the party recovery
+   controller (that one is for party problems) - judged sufficient: never silent, bounded
+10. combat anchor exists - yes (Phase 7)
+11. leash prevents unsafe chain pull - yes (Phase 7, live leash_hold)
+12. route does not advance during unresolved combat - yes (walk only in Travelling)
+13. pack completion confirmed - yes (Phase 5)
+14. post-combat gate exists - yes (Phase 10)
+15. dead members trigger recovery - yes (Phase 11)
+16. wipe triggers checkpoint logic - yes (Phase 12, live)
+17. checkpoint restoration works - yes for the live path (no rewind needed); rewind kernel-tested
+18. test-party startup deterministic - yes (Phase 13, live)
+19. telemetry explains state transitions - yes (Phase 15)
+20. no competing module used - yes
+21. no duplicate active leader engine - yes (Phase 16)
+
+Project (section 38) - open items:
+- Only Wailing Caverns exercised live (bot-only test party, up to Lord Cobrahn). Other
+  dungeons have route data but no live run; a run with a real player in the group hasn't been
+  done since these phases.
+- Boss foundation is generic (boss home position + leash, upstream tank face); no per-boss data.
+- Doors/gated bosses are still not waited for.
+- Commits are local; not pushed (left for the user).
 
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS

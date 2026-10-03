@@ -25,8 +25,8 @@ public:
     void InitMultipliers(std::vector<Multiplier*>& multipliers) override;
 };
 
-// Holds the leader back (no new pulls, no walking on) while the healer is low on mana / someone is
-// drinking, and never walks on while anyone in the group is still fighting.
+// Gates the class AI's own movement/pulls by the session: no chasing beyond the combat leash, and
+// no opportunistic pull ("grind") unless the brain's state and the party's pull readiness allow it.
 class DungeonLeadMultiplier : public Multiplier
 {
 public:
