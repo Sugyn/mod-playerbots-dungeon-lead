@@ -461,6 +461,29 @@ namespace DungeonLeadKernel
     }
 
     // ---------------------------------------------------------------------------------------
+    // Combat anchor and leash
+    // ---------------------------------------------------------------------------------------
+    //
+    // When a fight starts the leader's position becomes the combat anchor. While the fight lasts
+    // the tank may move freely around it, but it does not chase a target that has left the leash
+    // radius around the anchor - a fleeing mob must not drag the party into the next pack.
+
+    struct LeashFacts
+    {
+        bool anchorSet = false;
+        bool inCombat = false;
+        bool hasTarget = false;
+        float targetDistFromAnchor = 0.0f;
+    };
+
+    inline bool ChaseAllowed(LeashFacts const& f, float leashRadius)
+    {
+        if (!f.anchorSet || !f.inCombat || !f.hasTarget)
+            return true;
+        return f.targetDistFromAnchor <= leashRadius;
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Pull lifecycle (DungeonPullController) for the current Pull/Boss pack
     // ---------------------------------------------------------------------------------------
     //

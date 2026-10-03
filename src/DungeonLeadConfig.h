@@ -57,6 +57,8 @@ public:
     uint32 dungeonLeadPullInitiateTimeoutSeconds;
     uint32 dungeonLeadPullEstablishTimeoutSeconds;
     uint32 dungeonLeadPullMaxAttempts;
+    // Combat leash: the tank does not chase a target farther than this from where the fight began.
+    float dungeonLeadCombatLeashRadius;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -99,6 +101,7 @@ private:
         dungeonLeadPullInitiateTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds", 10, 1, 30);
         dungeonLeadPullEstablishTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds", 8, 1, 60);
         dungeonLeadPullMaxAttempts = Bounded("AiPlayerbot.DungeonLead.PullMaxAttempts", 2, 1, 5);
+        dungeonLeadCombatLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.CombatLeashRadius", 30, 10, 80));
     }
 };
 

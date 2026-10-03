@@ -199,6 +199,11 @@ struct DungeonLeadState
     uint32 pullStateTs = 0;          // getMSTime() of the last pull state change
     uint8 pullAttempts = 0;          // pulls initiated on the current pack
     bool pullOrderRefused = false;   // upstream's Attack() refused the current attempt's order
+    // Combat anchor: where the current fight began (set by DungeonLeadBrain on entering Combat,
+    // cleared once the session walks on). The tank does not chase beyond CombatLeashRadius of it.
+    bool anchorSet = false;
+    float anchorX = 0.f, anchorY = 0.f, anchorZ = 0.f;
+    uint32 lastLeashLogTs = 0;
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
     // revive from corpse. Exactly one step of it is impossible in a dungeon: releasing inside an
@@ -303,6 +308,7 @@ struct DungeonLeadState
         pullStateTs = 0;
         pullAttempts = 0;
         pullOrderRefused = false;
+        anchorSet = false;
         visited.clear();
         skippedSteps.clear();
         mandatorySkipped = false;

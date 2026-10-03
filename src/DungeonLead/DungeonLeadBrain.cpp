@@ -124,7 +124,19 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
                      bot->GetName(), st.wipeCount, st.runId);
             DungeonLead::RecordEvent(botAI, "wipe_recovered", "wipe #" + std::to_string(st.wipeCount));
         }
-        TransitionTo(botAI, st, t.next, t.reason);
+        if (t.next == LeadState::Combat && !st.anchorSet)
+        {
+            st.anchorSet = true;
+            st.anchorX = bot->GetPositionX();
+            st.anchorY = bot->GetPositionY();
+            st.anchorZ = bot->GetPositionZ();
+        }
+        else if (t.next == LeadState::Travelling)
+            st.anchorSet = false;  // walking on - the next fight gets its own anchor
+        TransitionTo(botAI, st, t.next, t.reason,
+                     t.next == LeadState::Combat ? "anchor=(" + std::to_string(int(st.anchorX)) + "," +
+                                                       std::to_string(int(st.anchorY)) + ")"
+                                                 : std::string());
     }
 
     if (st.state != LeadState::WipeRecovery)

@@ -427,6 +427,29 @@ namespace
     }
 }
 
+namespace
+{
+    void TestLeash()
+    {
+        LeashFacts f;
+        f.anchorSet = true;
+        f.inCombat = true;
+        f.hasTarget = true;
+        f.targetDistFromAnchor = 20.0f;
+        Check(ChaseAllowed(f, 30.0f), "target inside leash -> chase allowed");
+        f.targetDistFromAnchor = 45.0f;
+        Check(!ChaseAllowed(f, 30.0f), "fleeing target beyond leash -> no chase");
+        f.inCombat = false;
+        Check(ChaseAllowed(f, 30.0f), "out of combat the leash does not apply");
+        f.inCombat = true;
+        f.anchorSet = false;
+        Check(ChaseAllowed(f, 30.0f), "no anchor (no fight began yet) -> no leash");
+        f.anchorSet = true;
+        f.hasTarget = false;
+        Check(ChaseAllowed(f, 30.0f), "no target -> nothing to judge");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -436,6 +459,7 @@ int main()
     TestRouteTypes();
     TestPack();
     TestPull();
+    TestLeash();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

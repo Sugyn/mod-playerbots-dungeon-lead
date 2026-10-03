@@ -2332,14 +2332,33 @@ Remaining:
 
 ## Phase 7 — Combat anchor and leash
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): combat anchor and chase leash`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 110 checks (5 new ChaseAllowed cases)
+- Live: in-dungeon test party in Wailing Caverns (prepared test bots): every fight logged its
+  anchor in the state_transition into combat; `leash_hold Kresh dist=55` when Kresh swam off -
+  the tank stayed, Kresh was pulled and killed properly afterwards.
+
+Notes:
+- Anchor = leader position when the brain enters Combat (session fields anchorSet/anchorX/Y/Z,
+  route progress; cleared when the session walks on). No route data has tank positions yet;
+  the engagement position is the validated equivalent.
+- Containment is compatible with class AI: the leader's DungeonLeadMultiplier (present in its
+  combat engine) returns 0 for upstream "reach melee"/"reach spell" when the action's target is
+  beyond CombatLeashRadius of the anchor. The tank keeps fighting whatever comes back to it.
+- Route movement during unresolved combat was already suppressed by the brain (walk only in
+  Travelling); with the leash a fleeing mob can no longer drag the tank into the next pack.
+- No active "return to anchor" move: issuing movement from outside the class AI fights its own
+  positioning; not chasing is the safe containment.
+- Config: CombatLeashRadius 30 (10-80).
+
+Remaining:
+- none
 
 ---
 

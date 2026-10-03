@@ -10,6 +10,8 @@
 
 #include "Action.h"
 #include "DungeonLeadActions.h"
+#include "DungeonLeadConfig.h"
+#include "Timer.h"
 #include "DungeonPartyState.h"
 #include "Playerbots.h"
 
@@ -37,6 +39,32 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         return 1.0f;
 
     std::string const name = action->getName();
+
+    // Combat leash: don't chase a target that has left the area the fight began in.
+    if (name == "reach melee" || name == "reach spell")
+    {
+        Player* bot = botAI->GetBot();
+        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+        Unit* target = action->GetTarget();
+        DungeonLeadKernel::LeashFacts leash;
+        leash.anchorSet = st.anchorSet;
+        leash.inCombat = bot->IsInCombat();
+        leash.hasTarget = target != nullptr;
+        if (target)
+            leash.targetDistFromAnchor = target->GetExactDist(st.anchorX, st.anchorY, st.anchorZ);
+        if (DungeonLeadKernel::ChaseAllowed(leash, sDungeonLeadConfig.dungeonLeadCombatLeashRadius))
+            return 1.0f;
+        if (!st.lastLeashLogTs || GetMSTimeDiffToNow(st.lastLeashLogTs) > 5000)
+        {
+            st.lastLeashLogTs = getMSTime();
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} leash: not chasing {} ({:.0f} yd from the combat anchor)",
+                     bot->GetName(), target->GetName(), leash.targetDistFromAnchor);
+            DungeonLead::RecordEvent(botAI, "leash_hold",
+                                     target->GetName() + " dist=" + std::to_string(int(leash.targetDistFromAnchor)));
+        }
+        return 0.0f;
+    }
+
     bool isPull = name == "attack anything" || name == "pull my target" || name == "pull rti target";
     bool isWalk = name == "dungeon lead next";
     if (!isPull && !isWalk)

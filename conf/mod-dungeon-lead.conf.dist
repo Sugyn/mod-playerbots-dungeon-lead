@@ -155,3 +155,11 @@ AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds = 8
 #        Default:     2
 
 AiPlayerbot.DungeonLead.PullMaxAttempts = 2
+
+#    AiPlayerbot.DungeonLead.CombatLeashRadius
+#        Description: During a fight the leading tank does not chase a target that is more than
+#                      this many yards from where the fight began (a fleeing mob must not pull
+#                      the party into the next pack). Range 10-80.
+#        Default:     30
+
+AiPlayerbot.DungeonLead.CombatLeashRadius = 30

@@ -33,6 +33,7 @@ the MAJOR bar above is met.
   `LeadershipMaxAttempts` (default 3).
 - Config: `PullRange` (30), `PullInitiateTimeoutSeconds` (10), `PullEstablishTimeoutSeconds` (8),
   `PullMaxAttempts` (2).
+- Config: `CombatLeashRadius` (30).
 - `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
 
 ### Changed
@@ -52,6 +53,9 @@ the MAJOR bar above is met.
   pack, it marks the target with the skull and starts the attack (the class AI does the
   fighting). A pull that doesn't start or doesn't stick within its timeouts is retried, then
   the pack is skipped and reported (`pull_failed`, `pack_skipped`) - never silently passed.
+- Combat leash: where a fight begins becomes its anchor, and the leading tank doesn't chase a
+  target that runs more than `CombatLeashRadius` yards from it (logged as `leash_hold`), so a
+  fleeing mob can't drag the party into the next pack.
 
 ## [0.10.0-alpha] - 2026-10-03
 
