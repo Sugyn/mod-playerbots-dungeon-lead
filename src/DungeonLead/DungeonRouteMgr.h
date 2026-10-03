@@ -198,6 +198,7 @@ struct DungeonLeadState
     DungeonLeadKernel::PullState pullState = DungeonLeadKernel::PullState::None;  // DungeonPullController
     uint32 pullStateTs = 0;          // getMSTime() of the last pull state change
     uint8 pullAttempts = 0;          // pulls initiated on the current pack
+    bool pullOrderRefused = false;   // upstream's Attack() refused the current attempt's order
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
     // revive from corpse. Exactly one step of it is impossible in a dungeon: releasing inside an
@@ -301,6 +302,7 @@ struct DungeonLeadState
         pullState = DungeonLeadKernel::PullState::None;
         pullStateTs = 0;
         pullAttempts = 0;
+        pullOrderRefused = false;
         visited.clear();
         skippedSteps.clear();
         mandatorySkipped = false;

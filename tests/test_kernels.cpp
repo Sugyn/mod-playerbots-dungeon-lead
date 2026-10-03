@@ -383,6 +383,11 @@ namespace
         f = Pull(PullState::Initiating);
         f.msInState = 5000;
         Check(DecidePull(f, kPull) == PullState::Failed, "no combat within initiate timeout -> Failed");
+        f = Pull(PullState::Initiating);
+        f.orderRefused = true;
+        Check(DecidePull(f, kPull) == PullState::Failed, "attack order refused (e.g. no line of sight) -> Failed at once");
+        f.packEngaged = true;
+        Check(DecidePull(f, kPull) == PullState::Establishing, "refused, but the pack engaged anyway -> Establishing");
         f = Pull(PullState::Establishing);
         f.leaderInCombat = true;
         f.msInState = 8000;

@@ -92,6 +92,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                    DungeonLeadKernel::ReadyStatus::Ready;
     f.targetMarked = IsPackMember(pack, skull);
     f.leaderInCombat = bot->IsInCombat();
+    f.orderRefused = st.pullOrderRefused;
     f.attempts = st.pullAttempts;
 
     DungeonLeadKernel::PullPolicy policy;
@@ -118,10 +119,19 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
             if (changed)
             {
                 ++st.pullAttempts;
-                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pulling #{} {} (attempt {})", bot->GetName(),
-                         pack.id, pack.name, st.pullAttempts);
-                DungeonLead::RecordEvent(botAI, "pull_start", pack.name + " attempt=" + std::to_string(st.pullAttempts));
-                botAI->DoSpecificAction("attack rti target", Event(), /*silent*/ true);
+                bool const ordered = botAI->DoSpecificAction("attack rti target", Event(), /*silent*/ true);
+                st.pullOrderRefused = !ordered;
+                // What the attack order saw - upstream's Attack() refuses silently (line of sight,
+                // friendly, dead, ...), so record the facts it checks next to whether it took.
+                std::string detail = pack.name + " attempt=" + std::to_string(st.pullAttempts) +
+                                     " order=" + (ordered ? "accepted" : "refused");
+                if (target)
+                    detail += " dist=" + std::to_string(int(bot->GetDistance(target))) +
+                              " los=" + std::to_string(bot->IsWithinLOSInMap(target)) +
+                              " attackable=" + std::to_string(bot->IsValidAttackTarget(target)) +
+                              " skull=" + std::to_string(f.targetMarked);
+                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pulling #{} {}", bot->GetName(), pack.id, detail);
+                DungeonLead::RecordEvent(botAI, "pull_start", detail);
             }
             break;
         case PullState::Established:

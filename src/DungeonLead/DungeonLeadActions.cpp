@@ -1381,6 +1381,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st)
     st.pullState = DungeonLeadKernel::PullState::None;
     st.pullStateTs = 0;
     st.pullAttempts = 0;
+    st.pullOrderRefused = false;
 }
 
 void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,

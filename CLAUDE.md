@@ -2286,7 +2286,7 @@ Remaining:
 
 ## Phase 6 — DungeonPullController
 
-Status: DONE (2026-10-03) - live-verified in the open world only, see Notes
+Status: DONE (2026-10-03)
 
 Commit:
 `feat(dungeon-lead): pull controller with bounded retries`
@@ -2318,13 +2318,15 @@ Notes:
 - PullInitiateTimeoutSeconds default 10 (not 5): the live test needed 4.0 s from 26 yd, plus
   the 2 s controller tick. Config: PullRange 30, PullInitiateTimeoutSeconds 10,
   PullEstablishTimeoutSeconds 8, PullMaxAttempts 2.
-- NOT live-verified inside a dungeon: the server's bot population had no idle level-matched
-  healer for a test party (same blocker as earlier self-tests). To verify when possible:
-  `.dungeonlead canarytest 1` and look for pull_state / pull_established in
-  DungeonLeadSessions.csv.
+- In-dungeon live run (2026-10-03, prepared test bots via DungeonTestBotPool - Acquire*TestBot
+  logs in offline characters, so no idle online healer is needed): Lord Cobrahn pulled by the
+  controller, initiating->established in 2 s, cleared. Lady Anacondra: the order was refused
+  (`dist=0 los=0`) because the test party is teleported onto her own route coordinates; follow-up
+  fix `fix(dungeon-lead): fail a refused pull order at once` records the refusal facts in
+  pull_start and fails the attempt immediately instead of waiting the 10 s timeout.
 
 Remaining:
-- in-dungeon live verification (environment-limited, see Notes)
+- none
 
 ---
 

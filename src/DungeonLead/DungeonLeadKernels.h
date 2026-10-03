@@ -506,6 +506,7 @@ namespace DungeonLeadKernel
         bool partyReady = false;    // EvaluateReadiness(..., Pull) == Ready
         bool targetMarked = false;  // skull is on a living member of the pack
         bool leaderInCombat = false;
+        bool orderRefused = false;  // the attack order for this attempt was not accepted
         uint8_t attempts = 0;       // pulls initiated so far for this pack
     };
 
@@ -533,6 +534,8 @@ namespace DungeonLeadKernel
             case PullState::Initiating:
                 if (f.leaderInCombat || f.packEngaged)
                     return PullState::Establishing;
+                if (f.orderRefused)
+                    return PullState::Failed;  // nothing is coming of it - don't wait out the timeout
                 return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Initiating;
             case PullState::Establishing:
                 return f.msInState >= p.establishTimeoutMs ? PullState::Failed : PullState::Establishing;
