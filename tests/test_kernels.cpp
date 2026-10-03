@@ -614,6 +614,36 @@ namespace
     }
 }
 
+namespace
+{
+    AssemblyMember Here()
+    {
+        AssemblyMember m;
+        m.online = m.alive = m.onMap = m.sameInstance = true;
+        m.distanceToTank = 5.0f;
+        return m;
+    }
+
+    void TestAssembly()
+    {
+        std::vector<AssemblyMember> party(5, Here());
+        Check(DecideAssembly(party, 0, 30.0f, 180000) == AssemblyStep::Start, "everyone here -> start");
+        party[3].onMap = false;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "teleport requested, not landed -> wait");
+        party[3].onMap = true;
+        party[3].sameInstance = false;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "landed in another instance -> wait");
+        party[3].sameInstance = true;
+        party[3].distanceToTank = 80.0f;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "not gathered near the tank -> wait");
+        party[3].distanceToTank = 5.0f;
+        party[1].alive = false;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "dead member -> wait");
+        Check(DecideAssembly(party, 180000, 30.0f, 180000) == AssemblyStep::Abort, "never assembled -> abort, not a partial start");
+        Check(DecideAssembly({}, 0, 30.0f, 180000) == AssemblyStep::Wait, "no members -> never a start");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -627,6 +657,7 @@ int main()
     TestTargets();
     TestRecovery();
     TestCheckpoint();
+    TestAssembly();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

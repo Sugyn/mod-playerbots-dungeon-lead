@@ -2548,14 +2548,33 @@ Remaining:
 
 ## Phase 13 — Test party synchronization
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): start test parties only once assembled`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 170 checks (7 new DecideAssembly cases: requested-not-landed,
+  wrong instance, not gathered, dead member, timeout -> abort, never a partial/empty start)
+- Live: the exact failure from the Phase 11 run (test characters logged in inside an old
+  instance; the session started, the party left to re-enter, the session stopped as "left
+  instance") reproduced on purpose: all five left, re-entered instance 1 together, gathered ->
+  "party of Farancano assembled ... after 21551 ms - StartSession=true", then an ordinary 8 min
+  run. A first attempt aborted at once because a tank in a cross-map teleport is briefly out of
+  the world (FindPlayer = null); fixed with FindConnectedPlayer + "in transit = not there yet".
+
+Notes:
+- `DungeonLeadKernel::DecideAssembly` / `MemberAssembled`: online, alive, on the dungeon map,
+  in the tank's instance, within 30 yd of the tank; Wait / Start / Abort (3 min timeout).
+- `RunTestParty` registers a pending start instead of calling StartSession; `TestBotPoolTick`
+  (3 s) evaluates and starts it. Releasing a bot drops its pending party. Pending parties count
+  in `ActiveCanaryCount()` (via `PendingTestPartyCount()`), so the concurrency cap holds.
+- The existing teleport machinery (leader first, followers after it lands, exit-then-enter,
+  retries) is unchanged; this phase only stops the session from starting before it worked.
+
+Remaining:
+- none
 
 ---
 

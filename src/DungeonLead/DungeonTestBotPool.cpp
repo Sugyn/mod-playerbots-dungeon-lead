@@ -223,6 +223,22 @@ namespace
     constexpr uint32 TELEPORT_CHECK_GRACE_MS = 8000;
     constexpr uint8 TELEPORT_MAX_RETRIES = 3;
 
+    // Session start waits until the party has actually assembled (DungeonLeadKernel::
+    // DecideAssembly): everyone alive, on the dungeon map, in the tank's instance, within this
+    // range of the tank. A party that never gets there is given up on, not started half-present.
+    constexpr float ASSEMBLY_GATHER_RANGE = 30.0f;
+    constexpr uint32 ASSEMBLY_TIMEOUT_MS = 3 * MINUTE * IN_MILLISECONDS;
+
+    struct PendingStart
+    {
+        ObjectGuid tank;
+        std::vector<ObjectGuid> members;  // tank included
+        uint32 mapId = 0;
+        uint32 lfgId = 0;
+        uint32 since = 0;
+    };
+    std::vector<PendingStart> g_pendingStarts;
+
     // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
     // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
     bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage)
@@ -445,6 +461,62 @@ void DungeonLead::TestBotPoolTick()
                  lease.name, lease.entryMapId, bot->GetMapId(), lease.teleportRetries, TELEPORT_MAX_RETRIES);
         bot->TeleportTo(lease.entryMapId, lease.entryX, lease.entryY, lease.entryZ, 0.0f);
     }
+
+    // Start each formed party's session once it has genuinely assembled (or give up on it).
+    for (auto it = g_pendingStarts.begin(); it != g_pendingStarts.end();)
+    {
+        // FindConnectedPlayer: a player in the middle of a cross-map teleport is briefly out of the
+        // world (FindPlayer returns nothing) - that is "not there yet", not "gone".
+        Player* tank = ObjectAccessor::FindConnectedPlayer(it->tank);
+        if (tank && !tank->IsInWorld())
+            tank = nullptr;
+        std::vector<DungeonLeadKernel::AssemblyMember> facts;
+        std::string missing;
+        for (ObjectGuid const& guid : it->members)
+        {
+            Player* m = ObjectAccessor::FindConnectedPlayer(guid);
+            DungeonLeadKernel::AssemblyMember f;
+            f.online = m && m->IsInWorld();
+            f.alive = m && m->IsAlive();
+            f.onMap = m && m->GetMapId() == it->mapId;
+            f.sameInstance = m && tank && m->GetInstanceId() == tank->GetInstanceId();
+            f.distanceToTank = (m && tank && m->GetMap() == tank->GetMap()) ? m->GetDistance(tank) : 1e9f;
+            if (!DungeonLeadKernel::MemberAssembled(f, ASSEMBLY_GATHER_RANGE))
+                missing += (missing.empty() ? "" : ",") + (m ? m->GetName() : std::to_string(guid.GetCounter()));
+            facts.push_back(f);
+        }
+
+        // A tank in transit counts as a member not there yet (its own facts say so).
+        DungeonLeadKernel::AssemblyStep const step = DungeonLeadKernel::DecideAssembly(
+            facts, GetMSTimeDiffToNow(it->since), ASSEMBLY_GATHER_RANGE, ASSEMBLY_TIMEOUT_MS);
+        if (step == DungeonLeadKernel::AssemblyStep::Wait)
+        {
+            ++it;
+            continue;
+        }
+        if (step == DungeonLeadKernel::AssemblyStep::Start && tank)
+        {
+            PlayerbotAI* tankAI = GET_PLAYERBOT_AI(tank);
+            Group* group = tank->GetGroup();
+            bool const ok = tankAI && group &&
+                            DungeonLead::StartSession(tankAI, group, DungeonLeadSessionOrigin::AutoCanary,
+                                                      /*master*/ nullptr, /*testMode*/ true);
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead][TestBotPool] party of {} assembled in map {} instance {} after {} ms - StartSession={}",
+                     tank->GetName(), it->mapId, tank->GetInstanceId(), GetMSTimeDiffToNow(it->since), ok);
+        }
+        else
+            LOG_ERROR("playerbots.dungeonlead",
+                      "[DungeonLead][TestBotPool] party of {} never assembled within {} s (missing: {}) - not started",
+                      tank ? tank->GetName() : std::to_string(it->tank.GetCounter()), ASSEMBLY_TIMEOUT_MS / 1000,
+                      missing);
+        it = g_pendingStarts.erase(it);
+    }
+}
+
+uint32 DungeonLead::PendingTestPartyCount()
+{
+    return uint32(g_pendingStarts.size());
 }
 
 bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage)
@@ -628,21 +700,28 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
             lease.entryFollowLeader = isTank ? ObjectGuid::Empty : tank.bot->GetGUID();
         }
 
-        bool const ok = DungeonLead::StartSession(tank.botAI, group, DungeonLeadSessionOrigin::AutoCanary,
-                                                    /*master*/ nullptr, /*testMode*/ true);
-        if (ok)
-            ++started;
+        // The session starts from TestBotPoolTick() once the party has really assembled inside -
+        // a requested teleport is not an arrival (see PendingStart).
+        PendingStart pending;
+        pending.tank = tank.bot->GetGUID();
+        for (Candidate* c : members)
+            pending.members.push_back(c->bot->GetGUID());
+        pending.mapId = route->mapId;
+        pending.lfgId = lfgId;
+        pending.since = getMSTime();
+        g_pendingStarts.push_back(pending);
+        ++started;
 
         out << "Party " << (p + 1) << " (tank " << tank.bot->GetName() << ", " << members.size()
-            << " members): " << (ok ? "started" : "StartSession refused");
+            << " members): assembling, the session starts once everyone is inside";
 
         LOG_INFO("playerbots.dungeonlead",
-                 "[DungeonLead][TestBotPool] direct-formed party {} for lfg {} at map {} ({}, {}, {}), tank={}, StartSession={}",
-                 p + 1, lfgId, route->mapId, entrance->x, entrance->y, entrance->z, tank.bot->GetName(), ok);
+                 "[DungeonLead][TestBotPool] direct-formed party {} for lfg {} at map {} ({}, {}, {}), tank={} - assembling",
+                 p + 1, lfgId, route->mapId, entrance->x, entrance->y, entrance->z, tank.bot->GetName());
     }
 
     return "Formed " + std::to_string(parties) + " part" + (parties == 1 ? "y" : "ies") +
-           ", started " + std::to_string(started) + ": " + out.str() +
+           ", " + std::to_string(started) + " assembling: " + out.str() +
            (pacedDown ? " (MaxPartiesPerRun=" + std::to_string(maxPerRun) +
                         " reached - more idle leases were available; run again to admit more)"
                       : "");
@@ -685,6 +764,16 @@ std::string DungeonLead::ReleaseTestBot(std::string const& botName)
         }
         sRandomPlayerbotMgr.LogoutPlayerBot(it->guid);
     }
+
+    // A party this bot was assembling for can no longer start.
+    ObjectGuid const released = it->guid;
+    g_pendingStarts.erase(std::remove_if(g_pendingStarts.begin(), g_pendingStarts.end(),
+                                         [&](PendingStart const& p)
+                                         {
+                                             return std::find(p.members.begin(), p.members.end(), released) !=
+                                                    p.members.end();
+                                         }),
+                          g_pendingStarts.end());
 
     std::string const result = "Released " + it->name;
     g_leases.erase(it);

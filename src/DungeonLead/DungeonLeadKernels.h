@@ -863,6 +863,45 @@ namespace DungeonLeadKernel
         uint32_t const afterCheckpoint = checkpointStep < 0 ? 0u : uint32_t(checkpointStep) + 1u;
         return afterCheckpoint < currentStep ? afterCheckpoint : currentStep;
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Test-party assembly (DungeonTestBotPool): start only once the party is really there
+    // ---------------------------------------------------------------------------------------
+    //
+    // A requested teleport is not an arrival. A test session starts only when every member is
+    // confirmed alive, on the dungeon map, in the tank's instance and gathered near the tank.
+
+    struct AssemblyMember
+    {
+        bool online = false;
+        bool alive = false;
+        bool onMap = false;         // on the dungeon's map
+        bool sameInstance = false;  // in the tank's instance
+        float distanceToTank = 0.0f;
+    };
+
+    inline bool MemberAssembled(AssemblyMember const& m, float gatherRange)
+    {
+        return m.online && m.alive && m.onMap && m.sameInstance && m.distanceToTank <= gatherRange;
+    }
+
+    enum class AssemblyStep : uint8_t
+    {
+        Wait,
+        Start,
+        Abort,  // never assembled within the timeout - don't start a half-there party
+    };
+
+    inline AssemblyStep DecideAssembly(std::vector<AssemblyMember> const& members, uint32_t msWaiting,
+                                       float gatherRange, uint32_t timeoutMs)
+    {
+        bool all = !members.empty();
+        for (AssemblyMember const& m : members)
+            all = all && MemberAssembled(m, gatherRange);
+        if (all)
+            return AssemblyStep::Start;
+        return msWaiting >= timeoutMs ? AssemblyStep::Abort : AssemblyStep::Wait;
+    }
 }
 
 #endif

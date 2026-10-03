@@ -81,9 +81,10 @@ namespace DungeonLead
     // player-initiated LFG run on this server left several bots stranded outside the instance).
     // Instead builds the Group object itself (Group::Create()+GroupMgr::AddGroup(), one tank + one
     // healer + up to three dps per party, never a tank-less/healer-less one), teleports every member
-    // to the dungeon route's own entrance coordinates (DungeonRouteMgr), and calls
-    // DungeonLead::StartSession() directly - no dependency on CanaryTick() spotting anything for
-    // this path. Independent of CanaryEnabled/CanaryAllowedLfgIds (those gate the passive/
+    // to the dungeon's entrance (DungeonRouteMgr::GetEntrance), and starts the session itself
+    // once the party has genuinely assembled inside - checked every TestBotPoolTick(): everyone
+    // alive, on the map, in the tank's instance, near the tank (DungeonLeadKernel::DecideAssembly;
+    // given up after 3 minutes). No dependency on CanaryTick() spotting anything for this path. Independent of CanaryEnabled/CanaryAllowedLfgIds (those gate the passive/
     // LFG-triggered paths only; this is its own explicit on-demand entrypoint) but still respects
     // the shared AiPlayerbot.DungeonLead.CanaryMaxConcurrent budget (via
     // DungeonLead::ActiveCanaryCount(), the same accounting TriggerTargetedTest() uses) - forms as
@@ -91,6 +92,10 @@ namespace DungeonLead
     // every bot used into a party to `Leased`. Returns a summary of how many parties were formed and
     // started, or an explanation if there weren't enough idle tank+healer leases to form even one.
     std::string RunTestParty(uint32 lfgId);
+
+    // Parties formed by RunTestParty() still assembling (session not started yet). Counted in the
+    // shared canary concurrency budget like a running session.
+    uint32 PendingTestPartyCount();
 
     // Human-readable dump of every currently-tracked lease and its state.
     std::string TestBotPoolStatus();

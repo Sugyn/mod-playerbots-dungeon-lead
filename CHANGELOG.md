@@ -30,6 +30,9 @@ the MAJOR bar above is met.
   first boss - test parties used to arrive on top of Lady Anacondra with no line of sight to her.
 - The "stuck on the way to a stop" give-up only counts walking time. It used to keep counting
   through fights and skipped Lady Anacondra after three minutes of clearing her trash.
+- Test parties start their session only once every member is actually inside, in the same
+  instance, gathered by the tank - not as soon as the teleports were requested. A party that
+  never assembles within 3 minutes is reported and not started.
 - Pure navigation waypoints (e.g. the Wailing Caverns bridges) are passed as soon as they are
   reached. They used to wait `StuckSeconds` (45 s) each and end up listed as skipped stops.
 

@@ -10,6 +10,7 @@
 #include "DungeonLeadConfig.h"
 #include "DungeonLeadActions.h"
 #include "DungeonRouteMgr.h"
+#include "DungeonTestBotPool.h"
 
 #include "DBCStores.h"
 #include "Group.h"
@@ -276,7 +277,7 @@ uint32 DungeonLead::ActiveCanaryCount()
                 if (sDungeonRouteMgr.State(guid).origin == DungeonLeadSessionOrigin::AutoCanary)
                     ++n;
     }
-    return n;
+    return n + DungeonLead::PendingTestPartyCount();  // a party still assembling holds its slot too
 }
 
 std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint32 groups)
