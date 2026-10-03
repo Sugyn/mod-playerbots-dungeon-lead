@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this patch, by version and date. Format is [Keep a Changelog](https://keepachangelog.com/).
+All notable changes to this project, by version and date. Format is [Keep a Changelog](https://keepachangelog.com/).
 
 ### Versioning
 
@@ -17,6 +17,28 @@ non-event dungeons live-verified, only minor gaps (e.g. door/gate handling) rema
 the MAJOR bar above is met.
 
 ## [Unreleased]
+
+## [0.10.0-alpha] - 2026-10-03
+
+### Changed — ⚠ Breaking: install method
+- **Converted from a patch against mod-playerbots to a standalone AzerothCore module.** Install
+  is now "clone into `modules/`, reconfigure, build" instead of `git apply` — see README "Install".
+  No more pinned-commit drift, no more `upstream-compat.yml` (removed, nothing left for it to
+  check). Business logic in `src/DungeonLead/` is unchanged byte-for-byte except its config reads,
+  redirected from mod-playerbots' own `PlayerbotAIConfig` to this module's own `DungeonLeadConfig`
+  (same keys, same defaults, read independently via `sConfigMgr`).
+- The two points that changed *existing* mod-playerbots behavior (the "leader" formation, the
+  dungeon hand-back bypass) are now a subclass + registry-overwrite (see `DungeonLeadOverrides.h`)
+  instead of edited mod-playerbots source — see README "How this works without patching
+  mod-playerbots" and [ADR-004](docs/architecture/adr-004-patch-to-module-migration.md).
+- `mod-playerbots-dungeon-lead.patch` and the old `src/DungeonLead/` patch-era mirror are removed
+  from the working tree — recoverable from this repo's git history if ever needed, and the
+  pre-migration patch-based state remains intact on the server it was developed against.
+
+### Known gap in this release
+- GM diagnostic commands from the patch era (`testbotpool`, `lfgstate`, `pathcheck`,
+  `pathcheckfrom`, `tpbot`) are not yet ported to the module's own `.dungeonlead` command root.
+- A full live end-to-end run through the module is not yet confirmed (registration is).
 
 ## [0.9.0-alpha] - 2026-10-02
 

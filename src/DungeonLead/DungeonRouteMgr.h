@@ -202,10 +202,26 @@ struct DungeonLeadState
     // wipe with no other cause of death (corpse run, resurrection, external Stop()) would
     // otherwise occupy the session - and a CanaryMaxConcurrent slot - forever with no telemetry at
     // all. GuardActiveSessions() uses this to give up (Stop() with reason "wipe") after
-    // StuckSeconds of being dead - the same honest-failure-instead-of-silent-hang shape as DL-016,
-    // not an attempt at the review's actual recovery model (no corpse release, resurrection,
-    // regroup, or resume-after-recovery here).
+    // WipeRecoverySeconds of being dead - the same honest-failure-instead-of-silent-hang shape as
+    // DL-016. Upstream's own BOT_STATE_DEAD engine does the actual corpse release / corpse run /
+    // resurrect; this window only has to be long enough not to cut that off (45s was not - see
+    // GuardActiveSessions()). No regroup or resume-after-recovery is driven from here, and only
+    // the leader's death is tracked, not the followers'.
     uint32 tankDeathTs = 0;
+    // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
+    // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
+    // revive from corpse. Exactly one step of it is impossible in a dungeon: releasing inside an
+    // instance with no graveyard of its own (Wailing Caverns has none) drops the ghost at the
+    // nearest OUTDOOR graveyard - measured 2697 yards away, on a different map - and
+    // FindCorpseAction's MoveTo() to the corpse's map can never path there. The bot then stands
+    // on that graveyard indefinitely; the spirit-healer fallback did not fire either (observed
+    // dead and motionless for 8+ minutes). Teleporting the ghost back onto the instance map was
+    // verified by hand to fix it outright: the bot resurrected by itself within 20 seconds.
+    // recoveryTs throttles those teleports so a member who dies repeatedly can't be yanked every
+    // tick; wipeCount is how many times the leader has died this run, reported in the run summary
+    // so a "completed" result can never hide that it took several wipes to get there.
+    uint32 recoveryTs = 0;
+    uint32 wipeCount = 0;
     std::vector<uint8> visited;
     std::vector<std::string> skippedSteps;  // bosses skipped (stuck/not-found) - reported at "route complete"
     bool mandatorySkipped = false;  // true if any of the above was IsMandatory() - run outcome PARTIAL, not COMPLETE

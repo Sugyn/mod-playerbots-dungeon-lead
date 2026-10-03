@@ -42,5 +42,22 @@ bool DungeonLeadBossNearTrigger::IsActive()
 
 bool DungeonLeadLeftInstanceTrigger::IsActive()
 {
-    return DungeonLead::IsOn(botAI) && !DungeonLead::InFiveMan(bot);
+    if (!DungeonLead::IsOn(botAI) || DungeonLead::InFiveMan(bot))
+        return false;
+
+    // 2026-09-16 (DL-013): being outside the dungeon while DEAD is a wipe in progress, not an
+    // abandoned run. A dungeon with no graveyard of its own releases the ghost to the nearest
+    // outdoor graveyard, so every single wipe puts the leader out here for a few seconds - and
+    // this trigger fires at relevance 9.0, which used to stop the session before
+    // RecoverStrandedMembers() had any chance to teleport it back. Observed live: a run ended
+    // with "STOP - auto (left instance) ... pos=(-592.6,-2523.5,91.8)", which is the Crossroads
+    // graveyard, seconds after the tank died.
+    //
+    // Hanging forever is not the risk here: GuardActiveSessions() independently fails the run
+    // once the leader has been dead for WipeRecoverySeconds, so an unrecoverable wipe still ends,
+    // just as a wipe rather than as a mislabelled "left instance".
+    if (!bot->IsAlive())
+        return false;
+
+    return true;
 }

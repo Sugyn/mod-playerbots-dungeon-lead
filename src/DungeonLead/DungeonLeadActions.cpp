@@ -7,6 +7,7 @@
  */
 
 #include "DungeonLeadActions.h"
+#include "DungeonLeadConfig.h"
 #include "DungeonLeadCanary.h"
 
 #include "Creature.h"
@@ -45,6 +46,10 @@ namespace
     constexpr float kBossSearchRange = 60.0f;
     constexpr float kCcSearchRange = 40.0f;
     constexpr float kCreatureProbeRange = 150.0f;
+    // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
+    // member dying repeatedly isn't yanked every tick, short enough that a real wipe is back on
+    // its feet well inside WipeRecoverySeconds.
+    constexpr uint32 kRecoveryRetrySeconds = 15;
 
     Unit* IconUnit(PlayerbotAI* botAI, Group* group, uint8 index)
     {
@@ -360,6 +365,10 @@ void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName,
     size_t const skipped = st.skippedSteps.size();
     uint32 const durationMs = st.sessionStartTs ? GetMSTimeDiffToNow(st.sessionStartTs) : 0;
     char const* origin = ToString(st.origin);
+    // 2026-09-16 (DL-013): how many times the leader died this run. Recorded because a run can now
+    // recover from a wipe and carry on, so "completed" on its own would otherwise quietly cover up
+    // a party that only got there on its third attempt.
+    uint32 const wipes = st.wipeCount;
 
     std::lock_guard<std::mutex> lock(g_dungeonLeadLogMutex);
     static bool headerWritten = false;
@@ -371,12 +380,12 @@ void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName,
         fseek(f, 0, SEEK_END);
         if (ftell(f) == 0)
             fprintf(f, "ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,"
-                       "skipped_steps,duration_ms,terminal_reason\n");
+                       "skipped_steps,wipes,duration_ms,terminal_reason\n");
         headerWritten = true;
     }
-    fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%zu,%u,\"%s\"\n", ts.c_str(),
+    fprintf(f, "%s,%llu,\"%s\",%u,\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%zu,%u,%u,\"%s\"\n", ts.c_str(),
             static_cast<unsigned long long>(runId), botName.c_str(), lfgId, dungeonName.c_str(), origin,
-            outcome, failureDomain, failureReason, skipped, durationMs, reasonEsc.c_str());
+            outcome, failureDomain, failureReason, skipped, wipes, durationMs, reasonEsc.c_str());
     fflush(f);
     fclose(f);
 }
@@ -447,7 +456,7 @@ bool DungeonLead::HealerManaLow(PlayerbotAI* botAI)
     Unit* healer = botAI->GetAiObjectContext()->GetValue<Unit*>("healer low mana")->Get();
     if (!healer)
         return false;
-    return healer->GetPowerPct(POWER_MANA) < float(sPlayerbotAIConfig.dungeonLeadHealerManaPct);
+    return healer->GetPowerPct(POWER_MANA) < float(sDungeonLeadConfig.dungeonLeadHealerManaPct);
 }
 
 // 2026-09-16 (independent architecture review DL-010 - "no explicit pull plan or trustworthy
@@ -478,6 +487,7 @@ bool DungeonLead::HealerUnavailable(PlayerbotAI* botAI)
         healerInRoster = true;
         if (member->IsAlive() && member->GetMap() == bot->GetMap())
             return false;  // at least one healer is up and present - not blocked
+
     }
     return healerInRoster;  // had a healer role, none of them qualify right now
 }
@@ -513,7 +523,7 @@ bool DungeonLead::MasterTooFar(PlayerbotAI* botAI)
     // wander off freely the instant the real player wasn't literally on the same map anymore)
     if (master->GetMap() != bot->GetMap())
         return true;
-    return bot->GetDistance(master) > sPlayerbotAIConfig.dungeonLeadLeash;
+    return bot->GetDistance(master) > sDungeonLeadConfig.dungeonLeadLeash;
 }
 
 // The farthest-behind group member past the spread threshold, if any - named so isUseful() can
@@ -523,7 +533,7 @@ bool DungeonLead::MasterTooFar(PlayerbotAI* botAI)
 Player* DungeonLead::FindSpreadMember(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
-    float const threshold = sPlayerbotAIConfig.dungeonLeadLeash * 1.5f;
+    float const threshold = sDungeonLeadConfig.dungeonLeadLeash * 1.5f;
 
     Group* group = bot->GetGroup();
     if (!group)
@@ -635,10 +645,10 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     // of the pull) would hold the grace window open forever under the combat-aware wait below,
     // permanently excluding it from normal DPS targeting for no reason - worse than the original
     // "released too early" bug this was meant to fix.
-    if (GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sPlayerbotAIConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS)
+    if (GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS)
     {
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed within the absolute ceiling ({}s since marked), releasing mark",
-                 bot->GetName(), c->GetName(), sPlayerbotAIConfig.dungeonLeadCcAbsoluteTimeoutSeconds);
+                 bot->GetName(), c->GetName(), sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds);
         DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
         if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
             group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
@@ -670,7 +680,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         return;
     }
 
-    if (getMSTime() - st.ccMarkedTs < sPlayerbotAIConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS)
+    if (getMSTime() - st.ccMarkedTs < sDungeonLeadConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS)
         return;  // still within the grace window, give the CC class a chance to act
 
     // nobody managed to land CC on it (no CC-capable class in the group, spell unusable on this
@@ -731,6 +741,77 @@ std::string DungeonLead::DiagnosePath(Player* bot, float dx, float dy, float dz)
     return out.str();
 }
 
+// 2026-09-16 (independent architecture review DL-013, the recovery half): put any party member
+// that death has stranded on a different map back onto the instance map, at the route's entrance.
+//
+// Why this is all that's needed: upstream mod-playerbots already implements death recovery in
+// full, on its own engine (BOT_STATE_DEAD, installed unconditionally by
+// AiFactory::AddDefaultDeadStrategies, triggering auto release -> find corpse ->
+// revive from corpse). Nothing in Dungeon Lead blocks it. It has exactly one step it physically
+// cannot perform: a dungeon with no graveyard of its own - Wailing Caverns has none - releases the
+// ghost to the nearest outdoor graveyard, which is on another map, and FindCorpseAction's
+// MoveTo() towards the corpse cannot path across maps. Measured on a live stranded tank: 2697
+// yards away, canReach=0, still dead and motionless 8 minutes later, with the spirit-healer
+// fallback never firing either. Teleporting that ghost back onto the instance map was verified by
+// hand to resolve it completely - the bot resurrected by itself within 20 seconds. So this does
+// the one impossible step and lets upstream do the rest; it deliberately does not reimplement
+// release, corpse-running or resurrection.
+//
+// The entrance is the aim point rather than the place of death: it is a known-walkable step
+// (the same one RunTestParty teleports parties to), it has no mobs standing on it, and a corpse
+// run from there is an ordinary same-map run that works. recoveryTs throttles this so a member
+// dying over and over cannot be teleported every single tick.
+void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& st)
+{
+    Player* leader = botAI ? botAI->GetBot() : nullptr;
+    if (!leader || !st.mapId)
+        return;
+
+    Group* group = leader->GetGroup();
+    if (!group)
+        return;
+
+    if (st.recoveryTs && GetMSTimeDiffToNow(st.recoveryTs) < kRecoveryRetrySeconds * IN_MILLISECONDS)
+        return;
+
+    DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(st.lfgId);
+    if (!route)
+        return;
+    DungeonRouteStep const* entrance = nullptr;
+    for (DungeonRouteStep const& step : route->steps)
+    {
+        if (step.IsWalkable())
+        {
+            entrance = &step;
+            break;
+        }
+    }
+    if (!entrance)
+        return;
+
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || !member->IsInWorld())
+            continue;
+        // Only the stranded dead. A living member outside the instance is a different problem
+        // (never entered, or walked out) and is not this function's business; a dead member still
+        // inside can reach its own corpse unaided, which is exactly what we want it to do.
+        if (member->IsAlive() || member->GetMapId() == st.mapId)
+            continue;
+
+        LOG_INFO("playerbots.dungeonlead",
+                 "[DungeonLead] {} died and was released to map {} - returning it to the map {} entrance "
+                 "so it can reach its corpse (run={})",
+                 member->GetName(), member->GetMapId(), st.mapId, st.runId);
+        DungeonLead::RecordEvent(botAI, "wipe_recovery_teleport", member->GetName());
+
+        member->GetMotionMaster()->Clear();
+        member->TeleportTo(st.mapId, entrance->x, entrance->y, entrance->z, member->GetOrientation());
+        st.recoveryTs = getMSTime();
+    }
+}
+
 void DungeonLead::GuardActiveSessions()
 {
     // Called every world tick from PlayerbotsWorldScript::OnUpdate - throttle internally so the
@@ -789,38 +870,102 @@ void DungeonLead::GuardActiveSessions()
         // so nothing else in this codebase would ever notice a wipe, let alone recover from one -
         // found live tonight, watching a run where the tank died fighting Lady Anacondra and the
         // session just sat there afterward. Give up honestly (Stop(), outcome=Partial,
-        // Combat/PartyWipe) after StuckSeconds of being dead, same shape as DL-016's stuck-alive
-        // fix, rather than occupying the session (and a CanaryMaxConcurrent slot) forever. This is
-        // NOT the review's actual recovery model - no corpse release, resurrection, regroup, or
-        // resume; a resurrected tank within the grace window is simply left running as if nothing
-        // happened, same as before this change.
+        // Combat/PartyWipe) once the grace window expires, same shape as DL-016's stuck-alive fix,
+        // rather than occupying the session (and a CanaryMaxConcurrent slot) forever.
+        //
+        // 2026-09-16: the grace window is its own WipeRecoverySeconds (default 300) rather than the
+        // 45s StuckSeconds it originally borrowed, because 45s demonstrably cut recovery off before
+        // it could finish. Upstream mod-playerbots already implements the whole recovery chain and
+        // nothing here blocks it: BOT_STATE_DEAD is a separate engine from the BOT_STATE_NON_COMBAT
+        // one holding "dungeon lead", the bot switches to it automatically on death, and
+        // AiFactory::AddDefaultDeadStrategies always installs "dead" - whose triggers are
+        // auto release -> find corpse -> revive from corpse, plus accept/self resurrect. What that
+        // needs is *time*: a corpse run from the instance graveyard back to the boss, on top of
+        // AzerothCore's own corpse reclaim delay, does not fit in 45 seconds. Measured live on
+        // 2026-09-16 (run 1876500886323200): tank died 16:01:48, this gave up 16:02:34, and the bot
+        // was found alive on its own feet shortly after - i.e. the session was abandoned while the
+        // recovery it was waiting for was still in progress. Still NOT the review's full recovery
+        // model: no regroup or resume is driven from here, and a tank that resurrects inside the
+        // window is simply left running as if nothing happened. It only stops cutting the recovery
+        // short. Follower deaths are still not tracked at all (only the leader's).
         DungeonLeadState& st = sDungeonRouteMgr.State(guid);
+
+        // Latch which dungeon this session is actually in, as soon as the leader is standing in
+        // one. st.mapId is otherwise only set by ResolveRoute(), which runs from the route-walk
+        // action - and that action is deliberately suppressed while the party is in combat. A
+        // party that wipes on the first pull therefore never reaches it, leaving st.mapId at 0
+        // with nothing for the recovery below to compare against. Measured live: the tank died on
+        // Lady Anacondra with stMap=0, so RecoverStrandedMembers() returned immediately and the
+        // wipe recovery could not run at all. ResolveRoute() still owns the value afterwards - it
+        // re-derives map and instance together on its first pass regardless of what is here.
+        if (!st.mapId && bot->IsAlive() && DungeonLead::InFiveMan(bot))
+        {
+            st.mapId = bot->GetMapId();
+            st.instanceId = bot->GetInstanceId();
+        }
+
+        // Pull every party member - leader included - back onto the instance map if death has
+        // stranded them outside it. See DungeonLeadState::recoveryTs for the measurements behind
+        // this; the short version is that upstream's own recovery chain is fine except for one
+        // step it cannot perform (pathing to a corpse on another map), and putting the ghost back
+        // on the right map is enough for it to finish on its own. We deliberately aim at the
+        // route's entrance rather than where the member died: the entrance is a known-walkable,
+        // mob-free spot, and a corpse run from there is an ordinary same-map run that works.
+        DungeonLead::RecoverStrandedMembers(botAI, st);
+
         if (!bot->IsAlive())
         {
             if (!st.tankDeathTs)
             {
                 st.tankDeathTs = now;
-                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} died while leading (run={}) - "
-                         "giving it {}s to release/resurrect before giving up", bot->GetName(), st.runId,
-                         sPlayerbotAIConfig.dungeonLeadStuckSeconds);
-                DungeonLead::RecordEvent(botAI, "wipe_detected", "");
+                ++st.wipeCount;
+                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} died while leading (run={}, wipe #{}) - "
+                         "recovering, {}s before giving up", bot->GetName(), st.runId, st.wipeCount,
+                         sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds);
+                DungeonLead::RecordEvent(botAI, "wipe_detected", "wipe #" + std::to_string(st.wipeCount));
             }
-            else if (GetMSTimeDiffToNow(st.tankDeathTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+            // Two independent ways a run ends here. Too many wipes means the party simply cannot
+            // do this dungeon, and no amount of further recovery will change that - stop rather
+            // than loop forever. The timeout is the other one: recovery didn't take, for whatever
+            // reason, and the session must not hang waiting on it.
+            else if (sDungeonLeadConfig.dungeonLeadMaxWipesPerRun &&
+                     st.wipeCount > sDungeonLeadConfig.dungeonLeadMaxWipesPerRun)
             {
                 LOG_INFO("playerbots.dungeonlead",
-                         "[DungeonLead] {} still dead {}s into leading run={} - giving up (wipe)",
-                         bot->GetName(), sPlayerbotAIConfig.dungeonLeadStuckSeconds, st.runId);
+                         "[DungeonLead] {} wiped {} times on run={} (limit {}) - giving up",
+                         bot->GetName(), st.wipeCount, st.runId,
+                         sDungeonLeadConfig.dungeonLeadMaxWipesPerRun);
                 st.outcome = DungeonRunOutcome::Partial;
                 st.failureDomain = DungeonFailureDomain::Combat;
                 st.failureReason = DungeonFailureReason::PartyWipe;
-                DungeonLead::RecordEvent(botAI, "wipe_giveup", "");
+                DungeonLead::RecordEvent(botAI, "wipe_giveup", "wipe limit reached");
+                DungeonLead::RecordRunSummary(botAI, "wipe");
+                DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
+            }
+            else if (GetMSTimeDiffToNow(st.tankDeathTs) >=
+                     sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds * IN_MILLISECONDS)
+            {
+                LOG_INFO("playerbots.dungeonlead",
+                         "[DungeonLead] {} still dead {}s into leading run={} - giving up (wipe)",
+                         bot->GetName(), sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds, st.runId);
+                st.outcome = DungeonRunOutcome::Partial;
+                st.failureDomain = DungeonFailureDomain::Combat;
+                st.failureReason = DungeonFailureReason::PartyWipe;
+                DungeonLead::RecordEvent(botAI, "wipe_giveup", "recovery timed out");
                 DungeonLead::RecordRunSummary(botAI, "wipe");
                 DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
             }
             continue;  // dead either way this tick - nothing below applies to a corpse
         }
         if (st.tankDeathTs)
-            st.tankDeathTs = 0;  // resurrected inside the grace window - back to normal, no giveup
+        {
+            // Back on its feet - resume the route from wherever it had got to. wipeCount is
+            // deliberately NOT cleared: it is the run's honest tally, reported at the end.
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovered from wipe #{} on run={} - resuming",
+                     bot->GetName(), st.wipeCount, st.runId);
+            DungeonLead::RecordEvent(botAI, "wipe_recovered", "wipe #" + std::to_string(st.wipeCount));
+            st.tankDeathTs = 0;
+        }
 
         // Observability only - the reapply below is unconditional regardless of this check (a
         // FOLLOWER-only wipe wouldn't show up here at all, see below), but logging specifically
@@ -1029,7 +1174,7 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
     sDungeonRouteMgr.ResetState(bot->GetGUID());
     {
         DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
-        st.debugMode = sPlayerbotAIConfig.dungeonLeadDebugDefault;
+        st.debugMode = sDungeonLeadConfig.dungeonLeadDebugDefault;
         st.memberSnapshots = std::move(snapshots);
         st.leaderSnapshot = leaderSnap;
         st.hasLeaderSnapshot = true;
@@ -1280,6 +1425,7 @@ void DungeonLeadNextAction::MarkVisited(DungeonLeadState& st)
 bool DungeonLeadNextAction::Execute(Event /*event*/)
 {
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+
     DungeonRoute const* route = ResolveRoute(st);
     if (!route)
     {
@@ -1304,7 +1450,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // "optional content" in the sense SkipOptional means (skip a boss/mob nobody needs to
         // fight), so it must not be deletable by that same switch.
         bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
-                    (s.kind == DungeonRouteKind::Optional && !s.IsPathAnchor() && sPlayerbotAIConfig.dungeonLeadSkipOptional) ||
+                    (s.kind == DungeonRouteKind::Optional && !s.IsPathAnchor() && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
                     (s.entry && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;
@@ -1465,7 +1611,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     }
 
     float dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
-    if (dist <= sPlayerbotAIConfig.dungeonLeadArriveDistance)
+    if (dist <= sDungeonLeadConfig.dungeonLeadArriveDistance)
     {
         // Arriving next to a still-alive boss is NOT the same as completing this stop - a pull can
         // still evade, wipe, or just not happen this tick. Hold here (isUseful() already blocks
@@ -1483,7 +1629,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
             DungeonLead::RecordEvent(botAI, "reached", step.boss);
         }
-        else if (GetMSTimeDiffToNow(st.arrivedTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+        else if (GetMSTimeDiffToNow(st.arrivedTs) >= sDungeonLeadConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
         {
             // 2026-09-15 (independent architecture review DL-016 - "required interactions and
             // scripted events have no executor"): this used to require found.empty() too, so a
@@ -1579,7 +1725,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         st.stuckAttempts = 0;
     }
     else if (++st.stuckAttempts >= 5 && st.stuckTs &&
-             GetMSTimeDiffToNow(st.stuckTs) >= sPlayerbotAIConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+             GetMSTimeDiffToNow(st.stuckTs) >= sDungeonLeadConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
     {
         std::ostringstream out;
         out << "Dungeon lead: can't reach " << step.boss << ", skipping";
@@ -1748,7 +1894,7 @@ bool DungeonLeadMarkAction::Execute(Event /*event*/)
         changed = true;
     }
 
-    if (sPlayerbotAIConfig.dungeonLeadMarkCc)
+    if (sDungeonLeadConfig.dungeonLeadMarkCc)
     {
         Unit* moon = IconUnit(botAI, group, RtiTargetValue::moonIndex);
         if (!moon || !moon->IsAlive())

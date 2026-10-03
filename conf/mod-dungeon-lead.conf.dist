@@ -1,0 +1,108 @@
+[worldserver]
+
+########################################
+# DUNGEON LEAD SETTINGS
+########################################
+#
+#    AiPlayerbot.DungeonLead.HealerManaPct
+#        Description: Below this healer mana %, the leader holds position instead of pulling/walking on.
+#        Default:     20
+
+AiPlayerbot.DungeonLead.HealerManaPct = 20
+
+#    AiPlayerbot.DungeonLead.Leash
+#        Description: Yards from the real player before the leader stops and waits.
+#        Default:     60
+
+AiPlayerbot.DungeonLead.Leash = 60
+
+#    AiPlayerbot.DungeonLead.ArriveDistance
+#        Description: Yards counted as "arrived" at a route step.
+#        Default:     8
+
+AiPlayerbot.DungeonLead.ArriveDistance = 8
+
+#    AiPlayerbot.DungeonLead.StuckSeconds
+#        Description: Seconds with no progress toward a step before it's skipped (never teleported to).
+#        Default:     45
+
+AiPlayerbot.DungeonLead.StuckSeconds = 45
+
+#    AiPlayerbot.DungeonLead.CcTimeoutSeconds
+#        Description: Combat-aware grace window before a moon-marked CC candidate nobody is
+#                      crowd-controlling is released back into normal targeting.
+#        Default:     10
+
+AiPlayerbot.DungeonLead.CcTimeoutSeconds = 10
+
+#    AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds
+#        Description: Absolute ceiling on the above, regardless of whether the candidate ever
+#                      entered combat.
+#        Default:     45
+
+AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds = 45
+
+#    AiPlayerbot.DungeonLead.WipeRecoverySeconds
+#        Description: Seconds to wait after a wipe before attempting to recover/continue.
+#        Default:     300
+
+AiPlayerbot.DungeonLead.WipeRecoverySeconds = 300
+
+#    AiPlayerbot.DungeonLead.MaxWipesPerRun
+#        Description: How many wipes one run tolerates before giving up. 0 = unlimited.
+#        Default:     3
+
+AiPlayerbot.DungeonLead.MaxWipesPerRun = 3
+
+#    AiPlayerbot.DungeonLead.SkipOptional
+#        Description: Skip optional route steps entirely instead of attempting them.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.SkipOptional = 0
+
+#    AiPlayerbot.DungeonLead.MarkCc
+#        Description: Mark a CC candidate with a moon icon near each boss pull.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.MarkCc = 1
+
+#    AiPlayerbot.DungeonLead.DebugDefault
+#        Description: Default state of the per-session "startdungeon debug" verbose log.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.DebugDefault = 0
+
+########################################
+# AUTOBOT CANARY (unattended testing - off by default)
+########################################
+#
+#    AiPlayerbot.DungeonLead.CanaryEnabled
+#        Description: Auto-start dungeon-lead on bot-only groups that queue for an allowed dungeon.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.CanaryEnabled = 0
+
+#    AiPlayerbot.DungeonLead.CanaryAllowedLfgIds
+#        Description: Comma-separated LFG dungeon ids the canary is allowed to act on. Empty = none.
+#        Default:     ""
+
+AiPlayerbot.DungeonLead.CanaryAllowedLfgIds =
+
+#    AiPlayerbot.DungeonLead.CanaryMaxConcurrent
+#        Description: Max simultaneous canary/test-bot-pool sessions sharing one concurrency budget.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.CanaryMaxConcurrent = 1
+
+#    AiPlayerbot.DungeonLead.CanaryTimeoutMinutes
+#        Description: Force-stop a canary session that never reaches a terminal outcome.
+#        Default:     45
+
+AiPlayerbot.DungeonLead.CanaryTimeoutMinutes = 45
+
+#    AiPlayerbot.DungeonLead.MaxPartiesPerRun
+#        Description: Cap on parties formed by one DungeonTestBotPool "run" call, to avoid a
+#                      same-tick login/group/teleport burst.
+#        Default:     5
+
+AiPlayerbot.DungeonLead.MaxPartiesPerRun = 5

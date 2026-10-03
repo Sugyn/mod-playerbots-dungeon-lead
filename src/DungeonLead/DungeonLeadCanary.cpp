@@ -7,6 +7,7 @@
  */
 
 #include "DungeonLeadCanary.h"
+#include "DungeonLeadConfig.h"
 #include "DungeonLeadActions.h"
 #include "DungeonRouteMgr.h"
 
@@ -96,9 +97,9 @@ uint32 DungeonLead::CanarySupervisorTick()
 
         Group* group = bot->GetGroup();
         bool const realPlayerJoined = group && GroupHasRealPlayer(group);
-        bool const timedOut = sPlayerbotAIConfig.dungeonLeadCanaryTimeoutMinutes > 0 &&
+        bool const timedOut = sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes > 0 &&
             GetMSTimeDiffToNow(st.sessionStartTs) >=
-                sPlayerbotAIConfig.dungeonLeadCanaryTimeoutMinutes * MINUTE * IN_MILLISECONDS;
+                sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes * MINUTE * IN_MILLISECONDS;
 
         if (!realPlayerJoined && !timedOut)
             continue;
@@ -119,13 +120,13 @@ uint32 DungeonLead::CanarySupervisorTick()
 // only creation is conditional now, see CanarySupervisorTick() above.
 void DungeonLead::MaybeStartCanary(uint32 activeCanaryCount)
 {
-    if (!sPlayerbotAIConfig.dungeonLeadCanaryEnabled)
+    if (!sDungeonLeadConfig.dungeonLeadCanaryEnabled)
         return;
 
-    if (activeCanaryCount >= sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent)
+    if (activeCanaryCount >= sDungeonLeadConfig.dungeonLeadCanaryMaxConcurrent)
         return;
 
-    std::unordered_set<uint32> const allowed = ParseAllowedLfgIds(sPlayerbotAIConfig.dungeonLeadCanaryAllowedLfgIds);
+    std::unordered_set<uint32> const allowed = ParseAllowedLfgIds(sDungeonLeadConfig.dungeonLeadCanaryAllowedLfgIds);
     if (allowed.empty())
         return;  // safe default: nothing allowlisted, nothing ever auto-starts
 
@@ -278,10 +279,10 @@ uint32 DungeonLead::ActiveCanaryCount()
 
 std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint32 groups)
 {
-    if (!sPlayerbotAIConfig.dungeonLeadCanaryEnabled)
+    if (!sDungeonLeadConfig.dungeonLeadCanaryEnabled)
         return "AutoBot Canary is disabled (AiPlayerbot.DungeonLead.CanaryEnabled = 0)";
 
-    std::unordered_set<uint32> const allowed = ParseAllowedLfgIds(sPlayerbotAIConfig.dungeonLeadCanaryAllowedLfgIds);
+    std::unordered_set<uint32> const allowed = ParseAllowedLfgIds(sDungeonLeadConfig.dungeonLeadCanaryAllowedLfgIds);
     if (!allowed.count(lfgId))
         return "lfg id " + std::to_string(lfgId) + " is not in AiPlayerbot.DungeonLead.CanaryAllowedLfgIds";
 
@@ -290,7 +291,7 @@ std::string DungeonLead::TriggerTargetedTest(Player* master, uint32 lfgId, uint3
         return "Unknown LFG dungeon id " + std::to_string(lfgId);
 
     uint32 const activeNow = DungeonLead::ActiveCanaryCount();
-    uint32 const cap = sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent;
+    uint32 const cap = sDungeonLeadConfig.dungeonLeadCanaryMaxConcurrent;
     if (activeNow >= cap)
         return "AiPlayerbot.DungeonLead.CanaryMaxConcurrent (" + std::to_string(cap) +
                ") already reached (" + std::to_string(activeNow) + " running) - nothing queued";

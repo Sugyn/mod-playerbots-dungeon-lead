@@ -56,6 +56,13 @@ namespace DungeonLead
     // to any particular bot's own Strategy/Engine state (which is exactly what can get wiped).
     void GuardActiveSessions();
 
+    // Teleports party members whom death has stranded on another map back to the instance
+    // entrance, so upstream's own corpse-run/resurrect chain can finish - it handles everything
+    // except pathing to a corpse across a map boundary, which is what releasing inside a
+    // graveyard-less dungeon forces it to attempt. See the definition for the measurements.
+    // Called from GuardActiveSessions() on every tick of an active session.
+    void RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& st);
+
     // Shared session-start logic behind both the "startdungeon" chat command and the AutoBot
     // Canary controller (DungeonLeadCanary.h) - leadership takeover, follower snapshot, strategy
     // application, state reset, the star icon, logging. Callers do their OWN preconditions first

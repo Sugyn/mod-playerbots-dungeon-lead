@@ -9,10 +9,12 @@
 #include "DungeonTestBotPool.h"
 #include "DungeonLeadActions.h"
 #include "DungeonLeadCanary.h"
+#include "DungeonLeadConfig.h"
 
 #include "DatabaseEnv.h"
 #include "Group.h"
 #include "GroupMgr.h"
+#include "InstanceSaveMgr.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
@@ -67,6 +69,33 @@ namespace
         uint32 entryMapId = 0;
         float entryX = 0.f, entryY = 0.f, entryZ = 0.f;
         uint8 teleportRetries = 0;
+
+        // 2026-09-17: who this bot has to follow into the dungeon, empty for the leader itself.
+        //
+        // Teleporting the whole party in one loop put every member in its OWN instance of the same
+        // map - measured live: healer on map=43 instance=1 while the leader sat on map=43
+        // instance=6, five separate copies of Wailing Caverns that can never meet. TeleportTo()
+        // takes no instance id (only a newInstance bool), so the instance a player lands in is
+        // decided by the group's instance binding - and that binding does not exist until the
+        // first member has actually entered. Teleporting everyone simultaneously means nobody has
+        // it yet, so each one creates a fresh instance.
+        //
+        // So the leader goes in alone, and everyone else waits here until it has genuinely landed
+        // (TestBotPoolTick below); by then the binding exists and they follow it into the same
+        // instance. This also has to be checked on arrival, not just on departure - see the
+        // instance comparison in the straggler check, which used to compare map ids only and
+        // therefore called a bot in the wrong instance "arrived".
+        ObjectGuid entryFollowLeader;
+
+        // 2026-09-17: set while this bot still has to LEAVE the dungeon before it can enter the
+        // right copy of it. TeleportTo() into the map a player is already standing on does not
+        // move them between instances - AzerothCore treats it as movement within the map, which is
+        // why LFGMgr passes newInstance=(mapid == player->GetMapId()). Measured after the unbind
+        // fix was in place: the log said "Thyleae following Farancano into map 43 instance 6" and
+        // Thyleae stayed in instance 1, because it had never left map 43 since the previous run.
+        // So anyone already inside is sent out via TeleportToEntryPoint() first, and only enters
+        // once they are genuinely on another map.
+        bool entryNeedsExit = false;
     };
 
     // Session-scoped, in-memory - resets on restart, same as every other Dungeon Lead session
@@ -316,8 +345,86 @@ void DungeonLead::TestBotPoolTick()
         if (!bot || !bot->IsInWorld())
             continue;  // logged out mid-run or similar - nothing this tick can do about that
 
+        // Still on the way out of the dungeon - wait until the bot is genuinely on another map,
+        // because entering from inside does not move it between instances. See
+        // TestBotLease::entryNeedsExit.
+        if (lease.entryNeedsExit)
+        {
+            if (bot->GetMapId() == lease.entryMapId)
+                continue;  // hasn't left yet
+
+            lease.entryNeedsExit = false;
+            lease.stateTs = now;
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} left the dungeon (now map {}) - ready to enter",
+                     lease.name, bot->GetMapId());
+            if (!lease.entryFollowLeader)  // the leader goes straight back in; followers wait for it
+                bot->TeleportTo(lease.entryMapId, lease.entryX, lease.entryY, lease.entryZ, 0.0f);
+            continue;
+        }
+
+        // Followers hold here until the leader is genuinely inside, so that the group's instance
+        // binding exists before they teleport - otherwise each of them lands in a fresh instance
+        // of its own. See TestBotLease::entryFollowLeader.
+        Player* entryLeader = lease.entryFollowLeader ? ObjectAccessor::FindPlayer(lease.entryFollowLeader) : nullptr;
+        if (lease.entryFollowLeader)
+        {
+            // The leader's own lease still tracking an entry means it hasn't finished arriving
+            // (it may be on the way out, or back in but unconfirmed). Following it while it is
+            // still standing in its OLD instance would put everyone right back where we started,
+            // so wait for its entry to be closed out before moving.
+            bool leaderStillEntering = false;
+            for (TestBotLease const& other : g_leases)
+                if (other.guid == lease.entryFollowLeader && other.entryMapId != 0)
+                {
+                    leaderStillEntering = true;
+                    break;
+                }
+            if (leaderStillEntering)
+                continue;
+
+            if (!entryLeader || entryLeader->GetMapId() != lease.entryMapId)
+            {
+                // Leader gone (logged out / released) - stop waiting on it and go in alone rather
+                // than sit here forever; a lone bot in the wrong instance is at least visible to
+                // the checks downstream, an eternally-pending lease is not.
+                if (!entryLeader && GetMSTimeDiffToNow(lease.stateTs) > TELEPORT_CHECK_GRACE_MS * 4)
+                    lease.entryFollowLeader.Clear();
+                continue;
+            }
+
+            lease.entryFollowLeader.Clear();
+            lease.stateTs = now;
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead][TestBotPool] {} following {} into map {} instance {}",
+                     lease.name, entryLeader->GetName(), lease.entryMapId, entryLeader->GetInstanceId());
+            bot->TeleportTo(lease.entryMapId, lease.entryX, lease.entryY, lease.entryZ, 0.0f);
+            continue;
+        }
+
+        // Arrival means the right map AND the leader's own instance. Comparing map ids alone
+        // reported a bot sitting in a separate copy of the dungeon as "arrived", which is how five
+        // bots ended up in five instances with nothing noticing.
         if (bot->GetMapId() == lease.entryMapId)
         {
+            if (entryLeader && entryLeader->GetInstanceId() != bot->GetInstanceId())
+            {
+                if (lease.teleportRetries < TELEPORT_MAX_RETRIES)
+                {
+                    ++lease.teleportRetries;
+                    lease.stateTs = now;
+                    LOG_INFO("playerbots.dungeonlead",
+                             "[DungeonLead][TestBotPool] {} landed in instance {} but {} is in {} - retry {}/{}",
+                             lease.name, bot->GetInstanceId(), entryLeader->GetName(),
+                             entryLeader->GetInstanceId(), lease.teleportRetries, TELEPORT_MAX_RETRIES);
+                    bot->TeleportTo(lease.entryMapId, lease.entryX, lease.entryY, lease.entryZ, 0.0f);
+                    continue;
+                }
+                LOG_ERROR("playerbots.dungeonlead",
+                          "[DungeonLead][TestBotPool] {} stuck in instance {} while {} is in {} after {} retries "
+                          "- party is split across instances",
+                          lease.name, bot->GetInstanceId(), entryLeader->GetName(),
+                          entryLeader->GetInstanceId(), TELEPORT_MAX_RETRIES);
+            }
             lease.entryMapId = 0;  // arrived - stop tracking
             continue;
         }
@@ -439,7 +546,7 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
     // caller already decided "yes, start here" - see its own doc comment), so every path that can
     // start an AutoCanary session has to check it. Forms as many parties as fit, never more.
     uint32 const activeNow = DungeonLead::ActiveCanaryCount();
-    uint32 const cap = sPlayerbotAIConfig.dungeonLeadCanaryMaxConcurrent;
+    uint32 const cap = sDungeonLeadConfig.dungeonLeadCanaryMaxConcurrent;
     if (activeNow >= cap)
     {
         return "AiPlayerbot.DungeonLead.CanaryMaxConcurrent (" + std::to_string(cap) +
@@ -454,7 +561,7 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
     // review's full gradual-admission scheduler (that needs a tick-based queue), but a hard per-
     // call ceiling: ramping past MaxPartiesPerRun (default 5) requires separate, deliberately
     // spaced-out "run" calls rather than one big same-tick spike.
-    uint32 const maxPerRun = sPlayerbotAIConfig.dungeonLeadMaxPartiesPerRun;
+    uint32 const maxPerRun = sDungeonLeadConfig.dungeonLeadMaxPartiesPerRun;
     bool const pacedDown = maxPerRun && parties > maxPerRun;
     if (pacedDown)
         parties = maxPerRun;
@@ -480,10 +587,38 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
         for (size_t m = 1; m < members.size(); ++m)
             group->AddMember(members[m]->bot);
 
+        // The tank goes in first and alone. Everyone else is left pending and follows from
+        // TestBotPoolTick() once the tank has actually landed - teleporting the whole party at
+        // once gave every member its own instance of the dungeon, because the group's instance
+        // binding (which is what makes them land together) does not exist until someone is
+        // already inside. See TestBotLease::entryFollowLeader for the measurements.
         for (Candidate* c : members)
         {
-            c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, 0.0f);
+            bool const isTank = c == &tank;
+
+            // Drop any personal save this bot still holds for this dungeon before it goes in.
+            // Without this the group's instance binding is irrelevant: AzerothCore honours the
+            // player's OWN bind first, so a bot that ran this dungeon on a previous test lands
+            // back in ITS old instance no matter where the rest of the party is. Measured live
+            // after the follow-the-leader fix below was already working - the log said
+            // "Thyleae following Farancano into map 43 instance 6" and Thyleae still arrived in
+            // instance 1, which is its bind from an earlier run. These are throwaway test
+            // characters doing a fresh run every time, so there is never anything worth keeping
+            // in an old save; this is the same thing ".instance unbind" does by hand.
+            for (uint8 diff = 0; diff < MAX_DIFFICULTY; ++diff)
+                sInstanceSaveMgr->PlayerUnbindInstance(c->bot->GetGUID(), route->mapId, Difficulty(diff),
+                                                       /*deleteFromDB*/ true, c->bot);
+
+            // Anyone left inside this dungeon from an earlier run has to come out before it can go
+            // back into the right copy - see TestBotLease::entryNeedsExit.
+            bool const needsExit = c->bot->GetMapId() == route->mapId;
+            if (needsExit)
+                c->bot->TeleportToEntryPoint();
+            else if (isTank)
+                c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, 0.0f);
+
             TestBotLease& lease = g_leases[c->leaseIdx];
+            lease.entryNeedsExit = needsExit;
             lease.state = TestBotLeaseState::Leased;
             lease.stateTs = getMSTime();
             // See the struct comment: this TeleportTo() is fire-and-forget and can silently not
@@ -494,6 +629,7 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
             lease.entryY = entrance->y;
             lease.entryZ = entrance->z;
             lease.teleportRetries = 0;
+            lease.entryFollowLeader = isTank ? ObjectGuid::Empty : tank.bot->GetGUID();
         }
 
         bool const ok = DungeonLead::StartSession(tank.botAI, group, DungeonLeadSessionOrigin::AutoCanary,

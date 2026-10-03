@@ -10,6 +10,10 @@ other bots follow *it* instead of the player, it walks the boss route, decides w
 target (skull) and a CC target (moon), and paces the group by healer mana and group spread — while the real player
 in the group simply rides along (or fights, without having to give any orders).
 
+This is a genuine AzerothCore **module** (drop it into `modules/`, like any other) — not a patch
+against mod-playerbots' own source. See "How this works without patching mod-playerbots" below for
+why that distinction matters and how it's done.
+
 Route data is included for every 5-man LFD entry in Vanilla, The Burning Crusade (normal + heroic) and Wrath of
 the Lich King (normal + heroic) that has one to give — see "Testing status" below for exactly which dungeons have
 actually been run end-to-end versus which only have unverified route data so far. Raids are explicitly excluded.
@@ -25,15 +29,18 @@ enforces the logs above).
 ## Prerequisites
 
 - **AzerothCore** with **mod-playerbots** already built and working (bots can be added to a group and fight).
-  This patch was written and tested against mod-playerbots `master` @ `037c014` — API it relies on
+  This module was written and tested against mod-playerbots `master` @ `037c014` — the API it relies on
   (`MovementAction`/`NewRpgBaseAction`, `FormationValue`, `RtiTargetValue`, `PlayerbotOperations::GroupSetLeaderOperation`,
-  `Map::IsNonRaidDungeon`) is fairly stable but not guaranteed identical on a much older or newer checkout.
+  `Map::IsNonRaidDungeon`) is fairly stable but not guaranteed identical on a much older or newer checkout. Unlike a
+  patch, this module is **not pinned to that commit in a way that can go stale and silently break** — see "How this
+  works without patching mod-playerbots" below for exactly what *would* break it and how you'd find out (a compile
+  error, not a quiet runtime bug).
 - **mmaps generated** for the continents/instances you want to use this in. Without mmaps, `PathGenerator`-based
   movement (which this entire feature is built on) silently fails or produces nonsense paths — if bots won't move
   or wander into walls, check mmaps before opening an issue here.
-- A working **`acore_playerbots`** database connection (the module's own requirement; this patch adds one table to it).
-- **Re-run CMake**, not just `make` — the module globs its source tree at configure time, so a fresh
-  `src/Ai/Base/DungeonLead/` directory won't be picked up by an existing build cache.
+- A working **`acore_playerbots`** database connection (the module's own requirement; this module adds one table to it).
+- **Re-run CMake**, not just `make`, after first adding this module — AzerothCore's module system globs `modules/`
+  at configure time, so a fresh module directory won't be picked up by an existing build cache.
 - Route positions (`data/dungeon_routes.csv` → `sql/playerbots_dungeon_route.sql`) were resolved against a
   standard/Blizzlike-ish AzerothCore world database. A heavily customized world DB (moved spawns, different
   creature entries for the same boss) may need positions re-resolved — see `tools/resolve_routes.py`.
@@ -96,8 +103,8 @@ replies `Dungeon lead debug activated, file is being saved to DungeonLeadDebug.l
 and starts writing one verbose line per wait/decision (position, current step, whether it's moving, in combat,
 distance to master, distance to every group member). Reproduce the issue, then whisper `startdungeon debug` again — it
 replies `Dungeon lead debug stopped, file is saved to DungeonLeadDebug.log (same folder as Playerbots.log)`. This is
-off by default for a fresh checkout of this patch (`AiPlayerbot.DungeonLead.DebugDefault = 0` in
-`playerbots.conf.dist`), so nobody pays for the verbose logging unless they explicitly ask for it.
+off by default for a fresh checkout of this module (`AiPlayerbot.DungeonLead.DebugDefault = 0` in
+`conf/mod-dungeon-lead.conf.dist`), so nobody pays for the verbose logging unless they explicitly ask for it.
 
 To report a bug: reproduce it with `startdungeon debug` on, then attach both `DungeonLeadSessions.csv` (or just the
 relevant rows) and `DungeonLeadDebug.log` to a GitHub issue on this repo. That's far more useful than a description
@@ -186,8 +193,14 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 | path | content |
 |------|---------|
-| `mod-playerbots-dungeon-lead.patch` | full `git diff` against upstream `master` (`037c014`) — 12 new files + 14 touched |
-| `src/DungeonLead/` | the new sources on their own (`src/Ai/Base/DungeonLead/` in the module) |
+| `src/mod_dungeon_lead_loader.cpp` | module entry point AzerothCore's build system calls at startup |
+| `src/DungeonLeadAccess.h` | the private-registry access technique (see below) that lets this register into mod-playerbots without editing it |
+| `src/DungeonLeadConfig.h` | own config reader (`AiPlayerbot.DungeonLead.*`) — doesn't touch mod-playerbots' `PlayerbotAIConfig` |
+| `src/DungeonLeadModule.cpp` | registers everything (strategy/actions/triggers/value) into mod-playerbots' shared registries, plus the world-tick reconciliation hook |
+| `src/DungeonLeadOverrides.h` | the two behavior-override points (the `leader` formation, the dungeon hand-back bypass) |
+| `src/DungeonLeadCommandScript.cpp` | GM commands under `.dungeonlead` |
+| `src/DungeonLead/` | the actual dungeon-lead logic (route following, pacing, marking, canary/test-bot-pool) — portable, doesn't know or care that it's running as a module |
+| `conf/mod-dungeon-lead.conf.dist` | config defaults, merged automatically by AzerothCore's module system |
 | `sql/playerbots_dungeon_route.sql` | route table for the `acore_playerbots` database (408 steps, 96 LFD entries incl. heroics) |
 | `data/routes.tsv` | hand-authored boss order per LFD entry with source per dungeon (Classic-era wiki / Icy Veins Classic / Wowhead TBC) |
 | `data/dungeon_routes.csv` / `.md` | resolved routes (creature entry + spawn position from the world DB) |
@@ -216,59 +229,45 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 ## Install
 
-This isn't a standalone module you clone into `modules/` - it's a patch on top of an existing
-`modules/mod-playerbots` checkout you already have built and working (see Prerequisites above).
+This **is** a standalone AzerothCore module — clone or copy this repo's contents directly into
+`modules/mod-dungeon-lead/` inside your AzerothCore checkout, next to `modules/mod-playerbots`.
 
-1. Apply the patch inside `modules/mod-playerbots`: `git apply /path/to/mod-playerbots-dungeon-lead.patch`
-2. Re-run CMake and rebuild + install `worldserver`
-3. Load the route data: `mysql acore_playerbots < sql/playerbots_dungeon_route.sql`
-4. Restart `worldserver`
+1. `git clone https://github.com/Sugyn/mod-playerbots-dungeon-lead.git modules/mod-dungeon-lead`
+2. Re-run CMake (`cmake ..` in your build directory) — AzerothCore's module system globs `modules/` at
+   *configure* time, so a fresh module directory won't be picked up by an existing build cache until you do.
+3. Build + install `worldserver` as usual.
+4. Load the route data: `mysql acore_playerbots < sql/playerbots_dungeon_route.sql`
+5. Restart `worldserver`.
 
-Notes:
-- Re-running CMake itself (not just the build) matters here - the module finds its own source files
-  at *configure* time, so skipping straight to a build after adding new files silently leaves them out.
-- `src/DungeonLead/` in this repo mirrors the same code for browsing/diffing outside a checkout - applying
-  it by hand instead of via the patch means also redoing the registration lines it touches elsewhere
-  (`ChatActionContext.h`, `ChatTriggerContext.h`, `PlayerbotAIConfig.h/.cpp`, `Script/Playerbots.cpp`).
-  Only worth it if `git apply` genuinely won't work for you - e.g. your mod-playerbots checkout has
-  drifted far enough from `037c014` (see Prerequisites) that the patch no longer applies cleanly;
-  `.github/workflows/upstream-compat.yml` checks for exactly that weekly against upstream `master`.
+That's it — nothing to apply, nothing to re-apply after a mod-playerbots update, no pinned-commit
+drift to track. Config (below) is entirely optional, with sensible defaults.
 
-### Maintainer workflow: updating for a new mod-playerbots release
+### How this works without patching mod-playerbots
 
-`mod-playerbots-dungeon-lead.patch` is *generated*, not hand-written. Until 2026-09-15 it was
-produced by diffing a live mod-playerbots checkout's uncommitted working-tree changes against the
-pinned base commit - which meant "mod-playerbots ships a new commit" had no better answer than
-manually re-deriving that flat diff by hand, file by file. There was no git history to rebase.
+mod-playerbots has no public plugin API for adding new Strategies/Actions/Triggers — its shared
+registries are private static members, populated once at startup by hardcoded functions. This
+module reaches them using a well-defined (if unusual) piece of standard C++: the
+explicit-instantiation access technique ([temp.explicit] / [class.access.general] in the C++
+standard), which legally exposes the address of a private static member without `#define private
+public` or any other undefined behavior — see `src/DungeonLeadAccess.h`. Two places
+(`FormationValue::Load()` for the "leader" formation, and `UnknownDungeonTrigger::IsActive()` for
+the dungeon hand-back bypass) needed to change *existing* behavior rather than just add something
+new — both targets are `virtual`, so a small subclass plus registering our version under
+mod-playerbots' own registry key (our registration simply runs *after* its own, which the registry
+supports) reaches both without editing a single mod-playerbots source file — see
+`src/DungeonLeadOverrides.h`.
 
-The actual source of truth is now a `dungeon-lead` branch, committed on top of the pinned base
-commit in a mod-playerbots checkout (not published to a public fork as of this writing - ask
-whoever last regenerated the patch for access to that checkout, or recreate the branch yourself
-from this repo's `src/DungeonLead/` + the patch's non-DungeonLead hunks applied by hand once).
-
-To pick up a new upstream mod-playerbots release:
-
-```sh
-cd modules/mod-playerbots          # the checkout that has the dungeon-lead branch
-git checkout dungeon-lead
-git fetch origin
-git rebase origin/master           # resolve any real conflicts here, with normal git tooling -
-                                    # this is the whole point: git's own 3-way merge on the 14
-                                    # touched files, instead of a flat patch silently going stale
-git diff origin/master..dungeon-lead > /path/to/dungeon-lead-repo/mod-playerbots-dungeon-lead.patch
-```
-
-Then, from that same checkout, re-sync this repo's standalone mirror (`src/DungeonLead/` here
-should always be byte-identical to `src/Ai/Base/DungeonLead/` in the checkout - diff them as part
-of the same update, don't just trust the patch), update the README's pinned-base-commit references
-and this table's file/line counts, run `tools/validate_routes.py`, and grep the regenerated patch
-for anything host/credential-specific before committing (see `CHANGELOG.md`'s existing practice).
+The practical upshot: if a future mod-playerbots release renames one of the handful of
+symbols/keys this module touches, the build **fails to compile** — loud, at build time,
+immediately attributable — instead of silently drifting out of sync the way a pinned-commit patch
+can. See [ADR-004](docs/architecture/adr-004-patch-to-module-migration.md) for the full design,
+including a real bug this migration found and fixed along the way.
 
 ### Configuration (all optional - sensible defaults, nothing here is required to install)
 
-Add any of these to your deployed `playerbots.conf` (next to your other `AiPlayerbot.*` settings,
-typically `env/dist/etc/modules/playerbots.conf`), then `.reload config` in-game or restart -
-defaults shown, only set the ones you actually want to change:
+Ships its own `conf/mod-dungeon-lead.conf.dist` (merged automatically by AzerothCore's module
+system) — copy the keys you want to change into your deployed config, same as any other module,
+then `.reload config` in-game or restart:
 
 - Route-following behavior: `AiPlayerbot.DungeonLead.HealerManaPct = 20`, `.Leash = 60`,
   `.ArriveDistance = 8`, `.StuckSeconds = 45`, `.SkipOptional = 0`, `.MarkCc = 1`.
@@ -294,13 +293,18 @@ leading.
 
 ## DungeonTestBotPool (deterministic test bots, Phase 1)
 
-`.playerbots testbotpool acquire tank|healer [level]` / `status` / `release <name>` — reserves an
-idle character from the server's existing AddClass bot pool, logs it in independently of any real
-player session, forces a Tank or Healer spec + matching gear, and verifies the role at runtime
-before calling it `Ready`. Useful when the general bot population doesn't happen to have an idle
-tank/healer of the right level available (e.g. right after a restart). See
+`acquire tank|healer [level]` / `status` / `release <name>` — reserves an idle character from the
+server's existing AddClass bot pool, logs it in independently of any real player session, forces a
+Tank or Healer spec + matching gear, and verifies the role at runtime before calling it `Ready`.
+Useful when the general bot population doesn't happen to have an idle tank/healer of the right
+level available (e.g. right after a restart). See
 [ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md) for the full design, what was
 rejected first, and an upstream classification bug this work found and fixed along the way.
+
+**Not yet reachable via a command in this module** — only `.dungeonlead canarytest` has been
+ported so far (see [ADR-004](docs/architecture/adr-004-patch-to-module-migration.md) "Known
+gaps"); the `DungeonTestBotPool` functions themselves are ported and working, just not yet wired
+to a `.dungeonlead testbotpool` command.
 
 ## Known limits / next steps
 
@@ -309,12 +313,19 @@ rejected first, and an upstream classification bug this work found and fixed alo
 - Multi-wing dungeons are identified by LFD id; walking in on foot picks the wing whose first stop is nearest.
 - Boss order was verified against 3.3.x-era sources; the few judgement calls (Stockade order, Sunken Temple troll
   order, BRD Prison order) are documented in `data/routes.tsv`.
+- GM diagnostic commands from the pre-module patch (`testbotpool`, `lfgstate`, `pathcheck`,
+  `pathcheckfrom`, `tpbot`) are not yet ported to this module's `.dungeonlead` command root — see
+  [ADR-004](docs/architecture/adr-004-patch-to-module-migration.md) "Known gaps".
+- A full live end-to-end run through the module (not just registration) is not yet confirmed — see
+  ADR-004 "Verification".
 
 See `docs/architecture/` for design notes: [ADR-001](docs/architecture/adr-001-l1.4-capability-scenarios.md)
 (L1.4 capability-scenario testing framework - proposed, not yet built),
 [ADR-002](docs/architecture/adr-002-autobot-canary.md) (AutoBot Canary - stage 0/1 implemented,
-later stages proposed), and [ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)
-(DungeonTestBotPool - Phase 1 implemented and verified live, later phases proposed).
+later stages proposed), [ADR-003](docs/architecture/adr-003-dungeon-test-bot-pool.md)
+(DungeonTestBotPool - Phase 1 implemented and verified live, later phases proposed), and
+[ADR-004](docs/architecture/adr-004-patch-to-module-migration.md) (why and how this moved from a
+patch to a standalone module).
 
 ## License
 
