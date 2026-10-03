@@ -37,13 +37,23 @@ DungeonLeadObjective DungeonLeadBrain::CurrentObjective(DungeonLeadState const& 
         return o;
     o.valid = true;
 
-    DungeonRouteStep const* step = nullptr;
     if (st.state == LeadState::WipeRecovery)
     {
-        step = route->RecoveryPoint();
+        // stranded members are brought back to the entrance (RecoverStrandedMembers)
+        DungeonRouteMgr::Entrance e;
         o.type = DungeonRouteNodeType::Recovery;
+        o.name = "entrance";
+        if (sDungeonRouteMgr.GetEntrance(*route, e))
+        {
+            o.x = e.x;
+            o.y = e.y;
+            o.z = e.z;
+        }
+        return o;
     }
-    else if (st.state != LeadState::Completing && st.stepIndex < route->steps.size())
+
+    DungeonRouteStep const* step = nullptr;
+    if (st.state != LeadState::Completing && st.stepIndex < route->steps.size())
     {
         step = &route->steps[st.stepIndex];
         o.type = step->NodeType();

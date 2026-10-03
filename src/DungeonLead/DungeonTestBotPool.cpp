@@ -471,8 +471,8 @@ bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::stri
 // This version bypasses LFG entirely. It already knows exactly which bots it wants together (the
 // leases themselves), so it forms the Group object directly (Group::Create() + GroupMgr::AddGroup(),
 // the exact sequence GroupHandler.cpp uses for a real party invite) and teleports every member
-// straight to the dungeon's own entrance coordinates (the first walkable step of the hand-authored
-// route - see DungeonRouteMgr), then calls DungeonLead::StartSession() itself instead of waiting for
+// straight to the dungeon's entrance (DungeonRouteMgr::GetEntrance - the map's entrance teleport
+// target, falling back to the first walkable route step), then calls DungeonLead::StartSession() itself instead of waiting for
 // CanaryTick() to spot an LFG-formed group. Same role-scarcity discipline as TriggerTargetedTest():
 // never forms a tank-less or healer-less party.
 std::string DungeonLead::RunTestParty(uint32 lfgId)
@@ -481,17 +481,13 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
     if (!route)
         return "No route data for lfgId " + std::to_string(lfgId) + " - can't determine entrance coordinates.";
 
-    DungeonRouteStep const* entrance = nullptr;
-    for (DungeonRouteStep const& step : route->steps)
-    {
-        if (step.IsWalkable())
-        {
-            entrance = &step;
-            break;
-        }
-    }
-    if (!entrance)
-        return "Route for lfgId " + std::to_string(lfgId) + " has no walkable step to use as an entrance.";
+    // The real instance entrance (where players arrive), not the first route step - that is
+    // usually the first boss, and arriving on top of it left the tank without line of sight to
+    // it (Lady Anacondra, found in the first in-dungeon pull-controller run).
+    DungeonRouteMgr::Entrance entrancePos;
+    if (!sDungeonRouteMgr.GetEntrance(*route, entrancePos))
+        return "Route for lfgId " + std::to_string(lfgId) + " has no entrance teleport and no walkable step.";
+    DungeonRouteMgr::Entrance const* entrance = &entrancePos;
 
     struct Candidate { size_t leaseIdx; Player* bot; PlayerbotAI* botAI; };
     std::vector<Candidate> tanks, heals, dps;
@@ -615,7 +611,7 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
             if (needsExit)
                 c->bot->TeleportToEntryPoint();
             else if (isTank)
-                c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, 0.0f);
+                c->bot->TeleportTo(route->mapId, entrance->x, entrance->y, entrance->z, entrance->o);
 
             TestBotLease& lease = g_leases[c->leaseIdx];
             lease.entryNeedsExit = needsExit;

@@ -658,8 +658,8 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
     DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(st.lfgId);
     if (!route)
         return;
-    DungeonRouteStep const* entrance = route->RecoveryPoint();
-    if (!entrance)
+    DungeonRouteMgr::Entrance entrance;
+    if (!sDungeonRouteMgr.GetEntrance(*route, entrance))
         return;
 
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
@@ -680,7 +680,7 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
         DungeonLead::RecordEvent(botAI, "wipe_recovery_teleport", member->GetName());
 
         member->GetMotionMaster()->Clear();
-        member->TeleportTo(st.mapId, entrance->x, entrance->y, entrance->z, member->GetOrientation());
+        member->TeleportTo(st.mapId, entrance.x, entrance.y, entrance.z, entrance.o);
         st.recoveryTs = getMSTime();
     }
 }

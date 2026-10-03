@@ -139,8 +139,8 @@ struct DungeonRoute
         return false;
     }
 
-    // Where stranded party members are brought back to: the first walkable step, i.e. the
-    // entrance - known-walkable and mob-free.
+    // First walkable step - the fallback entrance when the map has no entrance teleport (see
+    // DungeonRouteMgr::GetEntrance). Note it is usually the first boss/pack, not a safe spot.
     DungeonRouteStep const* RecoveryPoint() const
     {
         for (DungeonRouteStep const& s : steps)
@@ -353,6 +353,17 @@ public:
     // see that function for why this needs to be unbounded/ongoing rather than a one-shot check.
     std::vector<ObjectGuid> GetActiveSessionGuids();
 
+    // Where a party enters the dungeon: the target of the map's entrance teleport (the spot real
+    // players arrive at), choosing the one nearest the route's first step when a map has several
+    // (Scarlet Monastery, Dire Maul, Maraudon wings). Falls back to the first walkable step.
+    // Used to place test parties and to bring stranded members back. Cached per route.
+    struct Entrance
+    {
+        float x = 0.f, y = 0.f, z = 0.f, o = 0.f;
+        bool fromTrigger = false;
+    };
+    bool GetEntrance(DungeonRoute const& route, Entrance& out);
+
     // Read-only membership test - unlike State(), never creates an entry. True for any lifecycle
     // stage, so "is this bot already busy with a session" includes Starting and Stopping.
     bool HasState(ObjectGuid guid);
@@ -379,6 +390,7 @@ private:
     std::unordered_map<uint32, DungeonRoute> routes;
     std::unordered_map<ObjectGuid, DungeonLeadState> states;
     std::unordered_map<uint32, std::unordered_set<uint32>> killedByInstance;
+    std::unordered_map<uint32, Entrance> entranceByLfg;
 };
 
 #define sDungeonRouteMgr DungeonRouteMgr::instance()

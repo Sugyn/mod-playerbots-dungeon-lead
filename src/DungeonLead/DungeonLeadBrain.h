@@ -36,7 +36,7 @@ struct DungeonLeadObjective
     std::string name;
     float x = 0.f, y = 0.f, z = 0.f;
 
-    std::string Describe() const;  // "boss:Lady Anacondra@3", "end", "none"
+    std::string Describe() const;  // "boss:Lady Anacondra@3", "recovery:entrance@-1", "end", "none"
 };
 
 namespace DungeonLeadBrain

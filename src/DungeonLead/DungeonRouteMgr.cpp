@@ -12,7 +12,10 @@
 #include "DatabaseEnv.h"
 #include "QueryResult.h"  // Field/ResultSet are only forward-declared by DatabaseEnv.h
 
+#include "ObjectMgr.h"
+
 #include <algorithm>
+#include <cmath>
 
 void DungeonRouteMgr::Load()
 {
@@ -110,6 +113,56 @@ void DungeonRouteMgr::ResetRouteProgress(ObjectGuid guid)
     auto it = states.find(guid);
     if (it != states.end())
         it->second.ResetRouteProgress();
+}
+
+bool DungeonRouteMgr::GetEntrance(DungeonRoute const& route, Entrance& out)
+{
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        auto it = entranceByLfg.find(route.lfgId);
+        if (it != entranceByLfg.end())
+        {
+            out = it->second;
+            return true;
+        }
+    }
+
+    DungeonRouteStep const* first = route.RecoveryPoint();
+    Entrance e;
+    float bestDist = -1.f;
+    // The teleport store is only reachable per trigger id; ids are small (WotLK < ~6000) and this
+    // runs once per route, so a bounded scan is fine.
+    for (uint32 id = 1; id < 20000; ++id)
+    {
+        AreaTriggerTeleport const* t = sObjectMgr->GetAreaTriggerTeleport(id);
+        if (!t || t->target_mapId != route.mapId)
+            continue;
+        float const d = first ? std::hypot(t->target_X - first->x, t->target_Y - first->y) : 0.f;
+        if (bestDist < 0.f || d < bestDist)
+        {
+            bestDist = d;
+            e.x = t->target_X;
+            e.y = t->target_Y;
+            e.z = t->target_Z;
+            e.o = t->target_Orientation;
+            e.fromTrigger = true;
+        }
+    }
+    if (!e.fromTrigger)
+    {
+        if (!first)
+            return false;
+        e.x = first->x;
+        e.y = first->y;
+        e.z = first->z;
+    }
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] entrance for lfg {} ({}): ({:.1f},{:.1f},{:.1f}) from {}",
+             route.lfgId, route.name, e.x, e.y, e.z, e.fromTrigger ? "entrance teleport" : "first route step");
+
+    std::lock_guard<std::mutex> lock(mtx);
+    entranceByLfg[route.lfgId] = e;
+    out = e;
+    return true;
 }
 
 bool DungeonRouteMgr::HasState(ObjectGuid guid)

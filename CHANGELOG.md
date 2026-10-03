@@ -25,6 +25,9 @@ the MAJOR bar above is met.
   retry limit, instead of assuming the queued change worked.
 - A dead or out-of-instance healer, or a dead party member, now also stops the route walk with
   a logged wait reason (pulls were already held back).
+- Test parties and stranded (released) party members are placed at the dungeon's real entrance
+  (the map's entrance teleport target) instead of the first route step, which is usually the
+  first boss - test parties used to arrive on top of Lady Anacondra with no line of sight to her.
 - Pure navigation waypoints (e.g. the Wailing Caverns bridges) are passed as soon as they are
   reached. They used to wait `StuckSeconds` (45 s) each and end up listed as skipped stops.
 
