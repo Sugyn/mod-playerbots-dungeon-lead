@@ -63,6 +63,10 @@ public:
     // the leader stops walking too.
     float dungeonLeadPartySoftRange;
     float dungeonLeadPartyHardRange;
+    // Post-combat gate: minimum pause between two fights, and the party health the leader waits
+    // for before walking or pulling on (0 = don't wait for health).
+    uint32 dungeonLeadPostCombatMinSeconds;
+    uint32 dungeonLeadPostCombatMinHealthPct;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -108,6 +112,8 @@ private:
         dungeonLeadCombatLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.CombatLeashRadius", 30, 10, 80));
         dungeonLeadPartySoftRange = float(Bounded("AiPlayerbot.DungeonLead.PartySoftRange", 40, 10, 150));
         dungeonLeadPartyHardRange = float(Bounded("AiPlayerbot.DungeonLead.PartyHardRange", 90, 20, 300));
+        dungeonLeadPostCombatMinSeconds = Bounded("AiPlayerbot.DungeonLead.PostCombatMinSeconds", 3, 0, 30);
+        dungeonLeadPostCombatMinHealthPct = Bounded("AiPlayerbot.DungeonLead.PostCombatMinHealthPct", 50, 0, 100);
         if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
         {
             LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "

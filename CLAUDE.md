@@ -2439,14 +2439,35 @@ Remaining:
 
 ## Phase 10 — Post-combat gate
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): deliberate post-combat gate`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 140 checks (8 new: LowHealth incl. leader, fighting member
+  not gated, threshold 0 = off; PostCombat minimum pause, unexpected combat during it)
+- Live: Wailing Caverns test party, 2 runs: every fight ended in a logged
+  post_combat_decision (pause 4-12 s, lowest health and healer mana recorded). Run 1 found the
+  route walk's stuck detector skipping Lady Anacondra ("stuck 196s") because its timer ran
+  through 3 min of trash fights - fixed in this commit; run 2: Lady Anacondra and Kresh both
+  engaged and cleared, no skips, party on its way to Lord Cobrahn at the cap.
+
+Notes:
+- Brain: PostCombat holds for PostCombatMinSeconds (3) before the readiness decision; unexpected
+  combat during it goes straight back to Combat. Leaving PostCombat records
+  `post_combat_decision` (next state, readiness, lowest health, healer mana, waited ms).
+- Readiness: new ReadyStatus::LowHealth (any living same-map member, leader included, out of
+  combat, below PostCombatMinHealthPct, default 50, 0 = off); blocks walking and pulls.
+  Hostiles / unexpected combat (AnyInCombat), deaths, healer, mana, drinking were already in the
+  readiness path; resurrection in progress = MemberDead (a ghost is dead).
+- On every entry to Travelling the brain resets the walk's stuck baseline (bestDist/stuckTs/
+  stuckAttempts) and the arrival flag, so StuckSeconds measures walking time only.
+- Config: PostCombatMinSeconds 3 (0-30), PostCombatMinHealthPct 50 (0-100).
+
+Remaining:
+- none
 
 ---
 

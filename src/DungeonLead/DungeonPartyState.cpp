@@ -58,6 +58,7 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
         m.inCombat = member->IsInCombat();
         m.sitting = member->IsSitState();
         m.manaPct = member->GetPowerPct(POWER_MANA);
+        m.healthPct = member->GetHealthPct();
         if (m.sameMap)
             m.distance = bot->GetDistance(member);
         f.members.push_back(m);
@@ -73,6 +74,7 @@ DungeonLeadKernel::ReadinessPolicy DungeonPartyState::Policy()
     p.leash = sDungeonLeadConfig.dungeonLeadLeash;
     p.softRange = sDungeonLeadConfig.dungeonLeadPartySoftRange;
     p.hardRange = sDungeonLeadConfig.dungeonLeadPartyHardRange;
+    p.minHealthPct = float(sDungeonLeadConfig.dungeonLeadPostCombatMinHealthPct);
     return p;
 }
 

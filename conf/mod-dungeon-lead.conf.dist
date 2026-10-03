@@ -178,3 +178,17 @@ AiPlayerbot.DungeonLead.PartySoftRange = 40
 #        Default:     90
 
 AiPlayerbot.DungeonLead.PartyHardRange = 90
+
+#    AiPlayerbot.DungeonLead.PostCombatMinSeconds
+#        Description: Shortest pause after a fight before the leader re-checks the party and moves
+#                      on - there is always a deliberate decision between two packs. Range 0-30.
+#        Default:     3
+
+AiPlayerbot.DungeonLead.PostCombatMinSeconds = 3
+
+#    AiPlayerbot.DungeonLead.PostCombatMinHealthPct
+#        Description: Out of combat, the leader waits while anyone in the party (itself included)
+#                      is below this health %. 0 turns the check off. Range 0-100.
+#        Default:     50
+
+AiPlayerbot.DungeonLead.PostCombatMinHealthPct = 50

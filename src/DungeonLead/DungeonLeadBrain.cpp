@@ -17,6 +17,8 @@
 #include "Playerbots.h"
 #include "Timer.h"
 
+#include <algorithm>
+
 using DungeonLeadKernel::LeadState;
 using DungeonLeadKernel::TransitionReason;
 
@@ -111,6 +113,8 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
     f.anyInCombat = DungeonLeadKernel::AnyInCombat(party.facts);
     f.walkReady = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Walk).status ==
                   DungeonLeadKernel::ReadyStatus::Ready;
+    f.msInState = st.stateSinceTs ? GetMSTimeDiffToNow(st.stateSinceTs) : 0;
+    f.postCombatMinMs = sDungeonLeadConfig.dungeonLeadPostCombatMinSeconds * IN_MILLISECONDS;
     f.preparingPull = st.pullState == DungeonLeadKernel::PullState::Marking;
     f.pulling = st.pullState == DungeonLeadKernel::PullState::Initiating ||
                 st.pullState == DungeonLeadKernel::PullState::Establishing;
@@ -142,11 +146,40 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
             st.anchorZ = bot->GetPositionZ();
         }
         else if (t.next == LeadState::Travelling)
+        {
             st.anchorSet = false;  // walking on - the next fight gets its own anchor
-        TransitionTo(botAI, st, t.next, t.reason,
-                     t.next == LeadState::Combat ? "anchor=(" + std::to_string(int(st.anchorX)) + "," +
-                                                       std::to_string(int(st.anchorY)) + ")"
-                                                 : std::string());
+            // Stuck/arrival timers measure walking only: time spent fighting or waiting is not
+            // being stuck (a boss was skipped as "stuck 196s" after 3 minutes of trash fights).
+            st.bestDist = 0.f;
+            st.stuckTs = 0;
+            st.stuckAttempts = 0;
+            st.arrivedTold = false;
+        }
+        std::string detail;
+        if (t.next == LeadState::Combat)
+            detail = "anchor=(" + std::to_string(int(st.anchorX)) + "," + std::to_string(int(st.anchorY)) + ")";
+        else if (st.state == LeadState::PostCombat)
+        {
+            // The decision between two packs, with what it was based on.
+            float lowestHealth = 100.f, healerMana = 100.f;
+            for (DungeonLeadKernel::PartyMemberFacts const& m : party.facts.members)
+            {
+                if (!m.alive)
+                    continue;
+                lowestHealth = std::min(lowestHealth, m.healthPct);
+                if (m.isHealerRole && !m.isSelf)
+                    healerMana = std::min(healerMana, m.manaPct);
+            }
+            DungeonLeadKernel::Readiness const r =
+                DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Walk);
+            detail = std::string("readiness=") + DungeonLeadKernel::ToString(r.status) +
+                     " lowest_health=" + std::to_string(int(lowestHealth)) +
+                     " healer_mana=" + std::to_string(int(healerMana)) +
+                     " waited_ms=" + std::to_string(f.msInState);
+            DungeonLead::RecordEvent(botAI, "post_combat_decision",
+                                     std::string(DungeonLeadKernel::ToString(t.next)) + " " + detail);
+        }
+        TransitionTo(botAI, st, t.next, t.reason, detail);
     }
 
     if (st.state != LeadState::WipeRecovery)

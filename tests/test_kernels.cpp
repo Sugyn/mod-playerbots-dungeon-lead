@@ -193,6 +193,22 @@ namespace
         f.members[0].sitting = true;
         Check(Walk(f) == ReadyStatus::Ready, "leader's own sitting is not a wait");
 
+        // post-combat health gate
+        f = Party();
+        f.members[3].healthPct = 30.0f;
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::LowHealth && r.offender == 3, "member below min health -> LowHealth, names who");
+        Check(Pull(f) == ReadyStatus::LowHealth, "low health holds pulls too");
+        f.members[3].inCombat = true;
+        Check(Pull(f) == ReadyStatus::Ready, "health doesn't gate while that member is still fighting");
+        f = Party();
+        f.members[0].healthPct = 20.0f;
+        Check(Walk(f) == ReadyStatus::LowHealth, "the leader's own health counts");
+        f = Party();
+        f.members[3].healthPct = 30.0f;
+        Check(EvaluateReadiness(f, ReadinessPolicy{20.0f, 60.0f, 40.0f, 90.0f, 0.0f}, ReadyPurpose::Walk).status ==
+                  ReadyStatus::Ready, "minHealthPct 0 turns the check off");
+
         f = Party();
         f.master.distance = 61.0f;
         Check(Walk(f) == ReadyStatus::MasterTooFar, "master beyond leash -> MasterTooFar");
@@ -285,9 +301,18 @@ namespace
         f.current = LeadState::PostCombat;
         Check(DecideActive(f).next == LeadState::PostCombat, "PostCombat holds while not ready");
         f.walkReady = true;
-        Check(DecideActive(f).next == LeadState::Travelling, "PostCombat -> Travelling once ready");
+        f.msInState = 5000;
+        Check(DecideActive(f).next == LeadState::Travelling, "PostCombat -> Travelling once ready (after the pause)");
         f = Active(LeadState::Combat);
         Check(DecideActive(f).next == LeadState::PostCombat, "Combat always passes through PostCombat");
+        f = Active(LeadState::PostCombat);
+        f.msInState = 1000;
+        Check(DecideActive(f).next == LeadState::PostCombat, "PostCombat holds for its minimum pause even when ready");
+        f.msInState = 3000;
+        Check(DecideActive(f).next == LeadState::Travelling, "after the pause, ready -> Travelling");
+        f.msInState = 1000;
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "unexpected combat during the pause -> Combat");
 
         f = Active(LeadState::Combat);
         f.leaderAlive = false;

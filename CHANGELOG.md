@@ -28,6 +28,8 @@ the MAJOR bar above is met.
 - Test parties and stranded (released) party members are placed at the dungeon's real entrance
   (the map's entrance teleport target) instead of the first route step, which is usually the
   first boss - test parties used to arrive on top of Lady Anacondra with no line of sight to her.
+- The "stuck on the way to a stop" give-up only counts walking time. It used to keep counting
+  through fights and skipped Lady Anacondra after three minutes of clearing her trash.
 - Pure navigation waypoints (e.g. the Wailing Caverns bridges) are passed as soon as they are
   reached. They used to wait `StuckSeconds` (45 s) each and end up listed as skipped stops.
 
@@ -38,6 +40,7 @@ the MAJOR bar above is met.
   `PullMaxAttempts` (2).
 - Config: `CombatLeashRadius` (30).
 - Config: `PartySoftRange` (40), `PartyHardRange` (90).
+- Config: `PostCombatMinSeconds` (3), `PostCombatMinHealthPct` (50).
 - `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
 
 ### Changed
@@ -66,6 +69,9 @@ the MAJOR bar above is met.
   elite), cross on the secondary, moon on an elite to crowd-control when there are more than two
   enemies - logged as `target_plan`. Marks follow the plan; a mark placed by a player is never
   moved. This also replaces the old boss-only skull/moon marking.
+- After every fight the leader pauses (`PostCombatMinSeconds`, 3) and re-checks the party before
+  moving on, now including health: it waits while anyone is below `PostCombatMinHealthPct` (50).
+  The decision and what it was based on are logged as `post_combat_decision`.
 - Combat leash: where a fight begins becomes its anchor, and the leading tank doesn't chase a
   target that runs more than `CombatLeashRadius` yards from it (logged as `leash_hold`), so a
   fleeing mob can't drag the party into the next pack.

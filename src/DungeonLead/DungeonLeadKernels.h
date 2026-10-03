@@ -120,6 +120,7 @@ namespace DungeonLeadKernel
         bool inCombat = false;
         bool sitting = false;         // eating/drinking (bots) or sitting (players)
         float manaPct = 100.0f;
+        float healthPct = 100.0f;
         float distance = 0.0f;        // to the leader, only meaningful when sameMap
     };
 
@@ -147,6 +148,7 @@ namespace DungeonLeadKernel
         float leash = 60.0f;          // master farther than this (or off-map) -> wait
         float softRange = 40.0f;      // a member farther than this -> no new pull (PartySoftRange)
         float hardRange = 90.0f;      // a member farther than this -> stop walking too (PartyHardRange)
+        float minHealthPct = 50.0f;   // out of combat, anyone below this -> wait (0 = off)
     };
 
     enum class ReadyPurpose : uint8_t
@@ -164,6 +166,7 @@ namespace DungeonLeadKernel
         MemberDead,         // another party member dead
         PartyInCombat,      // walk only
         Drinking,           // someone (not the leader) sitting
+        LowHealth,          // someone (leader included) below minHealthPct, out of combat
         LowHealerMana,
         MemberLost,         // a living member not on the leader's map, or offline
         MasterTooFar,       // off-map or beyond leash
@@ -181,6 +184,7 @@ namespace DungeonLeadKernel
             case ReadyStatus::MemberDead:        return "party member dead";
             case ReadyStatus::PartyInCombat:     return "group in combat";
             case ReadyStatus::Drinking:          return "someone is eating/drinking";
+            case ReadyStatus::LowHealth:         return "someone is low on health";
             case ReadyStatus::LowHealerMana:     return "healer low on mana";
             case ReadyStatus::MasterTooFar:      return "waiting for you, master too far";
             case ReadyStatus::MemberLost:        return "party member lost (other map or offline)";
@@ -340,6 +344,12 @@ namespace DungeonLeadKernel
             if (m.isHealerRole && !m.gameMaster && m.manaPct < lowestHealerMana)
                 lowestHealerMana = m.manaPct;
         }
+        for (size_t i = 0; i < f.members.size(); ++i)
+        {
+            PartyMemberFacts const& m = f.members[i];
+            if (m.alive && m.sameMap && !m.inCombat && m.healthPct < p.minHealthPct)
+                return {ReadyStatus::LowHealth, int(i)};
+        }
         if (lowestHealerMana < p.healerManaPct)
             return {ReadyStatus::LowHealerMana, -1};
 
@@ -440,6 +450,8 @@ namespace DungeonLeadKernel
         bool walkReady = false;    // EvaluateReadiness(..., Walk) == Ready
         bool preparingPull = false;  // pull controller: Marking
         bool pulling = false;        // pull controller: Initiating / Establishing
+        uint32_t msInState = 0;
+        uint32_t postCombatMinMs = 3000;  // shortest pause between two fights
     };
 
     struct Transition
@@ -461,6 +473,9 @@ namespace DungeonLeadKernel
         if (f.anyInCombat)
             return {LeadState::Combat, TransitionReason::CombatStarted};
         if (f.current == LeadState::Combat)
+            return {LeadState::PostCombat, TransitionReason::CombatEnded};
+        // The deliberate gate between two packs: always a pause, then a full readiness check.
+        if (f.current == LeadState::PostCombat && f.msInState < f.postCombatMinMs)
             return {LeadState::PostCombat, TransitionReason::CombatEnded};
         if (f.paused)
             return {LeadState::WaitingReady, TransitionReason::Paused};
