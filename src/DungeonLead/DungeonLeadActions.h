@@ -25,6 +25,9 @@ namespace DungeonLead
 {
     bool InFiveMan(Player* bot);
     bool IsOn(PlayerbotAI* botAI);
+    // A session exists for this bot in any lifecycle stage (Starting, Active or Stopping) - IsOn()
+    // only becomes true once it is Active. Use this for "is this bot/group already busy".
+    bool HasSession(PlayerbotAI* botAI);
     bool GroupInCombat(PlayerbotAI* botAI);
     bool GroupResting(PlayerbotAI* botAI);
     bool HealerManaLow(PlayerbotAI* botAI);
@@ -77,9 +80,20 @@ namespace DungeonLead
     // has already decided "yes, start here" and `bot` is already in `group`.
     // `master`: who to attribute/notify for a Manual session; pass nullptr for AutoCanary (nothing
     // asked permission, nothing to tell).
+    // Returns true when the session was accepted: Active right away if `bot` already leads the
+    // group, otherwise Starting until GuardActiveSessions() confirms the leadership transfer (or
+    // gives up on it). False only when the bot or another member already has a session.
     bool StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSessionOrigin origin, Player* master,
                        bool testMode = false);
+    // Ends an Active session (restores strategies, marks), then waits in Stopping until the
+    // handback to the master is confirmed. A Starting session is dropped; a Stopping one is left
+    // to finish.
     void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
+
+    // Leadership lifecycle internals, see StartSession()/Stop() and DungeonLeadLifecycle.
+    void ActivateSession(PlayerbotAI* botAI, Group* group, Player* master);
+    void RequestLeadership(Player* bot, DungeonLeadState& st);
+    void ReconcileLeadership(PlayerbotAI* botAI);
     // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
     // event, detail) - see README "Debugging". Not gated behind "startdungeon debug".
     void RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail);

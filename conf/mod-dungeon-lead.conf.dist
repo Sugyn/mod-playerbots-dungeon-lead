@@ -106,3 +106,23 @@ AiPlayerbot.DungeonLead.CanaryTimeoutMinutes = 45
 #        Default:     5
 
 AiPlayerbot.DungeonLead.MaxPartiesPerRun = 5
+
+#    AiPlayerbot.DungeonLead.LeadershipAcquireTimeoutSeconds
+#        Description: How long a session waits to observe the tank as group leader after
+#                      requesting the transfer, before requesting it again. Range 1-60.
+#        Default:     5
+
+AiPlayerbot.DungeonLead.LeadershipAcquireTimeoutSeconds = 5
+
+#    AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds
+#        Description: Same for handing leadership back to the original leader on stop. Range 1-60.
+#        Default:     5
+
+AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds = 5
+
+#    AiPlayerbot.DungeonLead.LeadershipMaxAttempts
+#        Description: Leadership requests per transfer before giving up (start is aborted,
+#                      handback is logged as failed). Range 1-10.
+#        Default:     3
+
+AiPlayerbot.DungeonLead.LeadershipMaxAttempts = 3

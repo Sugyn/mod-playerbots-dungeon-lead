@@ -53,9 +53,14 @@ The bot reports what it's doing in chat and, at the end, whether the route actua
 was partial — don't take "done" at face value without checking which one it said. Leaving the
 instance stops the mode automatically.
 
+It only starts once the tank is actually group leader (it retries the leader change a few times
+and gives up if it doesn't happen), and `stopdungeon` likewise checks that leadership really went
+back to you.
+
 It holds off pulling/walking on while: the real player is dead/disconnected/out of the group, the
-group is in combat, the healer is low on mana or drinking, or the player has fallen more than
-`AiPlayerbot.DungeonLead.Leash` yards behind (config, default 60).
+group is in combat, the healer is dead, out of the instance, low on mana or drinking, another party
+member is dead, or the player has fallen more than `AiPlayerbot.DungeonLead.Leash` yards behind
+(config, default 60).
 
 ## Debugging / reporting a bug
 

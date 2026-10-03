@@ -2121,23 +2121,32 @@ Remaining:
 
 ## Phase 1 — Correctness and lifecycle
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`fix(dungeon-lead): confirm leadership lifecycle`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, clang, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 24 checks (healer alive/dead/ghost/other map/low mana,
+  transfer success, queued never confirms -> retry -> give up, handback enqueue failure,
+  handback retry succeeds, target gone / third party -> abandon)
+- Live: temporary server-only harness (not committed) on a 2-bot group: Starting with
+  IsOn()=false until confirmed, acquire confirmed after 166 ms on attempt 1, handback
+  confirmed after ~2 s on attempt 1. Harness removed and server redeployed clean.
+
+Notes:
+- `DungeonLeadLifecycle {Starting, Active, Stopping}` in `DungeonLeadState`; decisions in
+  `DungeonLeadKernel::DecideLeadership` / `EvaluateHealer` (pure, unit-tested).
+- Starting applies no strategies; give-up drops the session (run row
+  `leadership_not_acquired`). Stopping keeps a minimal entry until handback is observed.
+- `DungeonLead::HasSession()` (any stage) replaces `IsOn()` for "busy" checks.
+- Config: `LeadershipAcquireTimeoutSeconds`, `LeadershipReturnTimeoutSeconds` (5, range 1-60),
+  `LeadershipMaxAttempts` (3, range 1-10).
+- Not exercisable live: queue-full and never-confirming transfers (covered by unit tests only).
 
 Remaining:
-- healer-unavailable readiness integration,
-- Starting state,
-- confirmed leadership acquisition,
-- bounded retry/timeout,
-- Stopping state,
-- confirmed handback,
-- regression/canary coverage.
+- none
 
 ---
 

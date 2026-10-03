@@ -126,6 +126,21 @@ enum class DungeonLeadSessionOrigin : uint8
 
 char const* ToString(DungeonLeadSessionOrigin v);
 
+// Where a session is in its own life. Leadership changes go through mod-playerbots' world-thread
+// queue and land later (or never), so a session is not Active until the tank is actually observed
+// as group leader, and not finished until leadership is observed back with the original owner.
+//   Starting: transfer to the tank requested, not yet observed - no strategies applied yet.
+//   Active:   tank confirmed as leader, dungeon lead running.
+//   Stopping: strategies already restored, waiting to observe the handback.
+enum class DungeonLeadLifecycle : uint8
+{
+    Starting,
+    Active,
+    Stopping
+};
+
+char const* ToString(DungeonLeadLifecycle v);
+
 struct DungeonRoute
 {
     uint32 lfgId = 0;
@@ -231,6 +246,12 @@ struct DungeonLeadState
 
     // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
     uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
+    DungeonLeadLifecycle lifecycle = DungeonLeadLifecycle::Active;
+    // Leadership transfer in flight (Starting: to the tank; Stopping: back to leadershipTarget).
+    ObjectGuid leadershipTarget;   // who must end up leader
+    ObjectGuid leadershipFrom;     // who held it when the transfer was requested
+    uint32 leadershipRequestTs = 0;  // getMSTime() of the last request
+    uint8 leadershipAttempts = 0;    // requests made so far, failed enqueues included
     DungeonLeadSessionOrigin origin = DungeonLeadSessionOrigin::Manual;
     // 2026-09-15 (independent architecture review DL-006 - the one remaining silent exit path: a
     // hard disconnect never runs any Stop() call site at all): every other RecordRunSummary() call
@@ -339,6 +360,10 @@ public:
     // DungeonLead::GuardActiveSessions() to know which bots' strategy state to keep reasserting -
     // see that function for why this needs to be unbounded/ongoing rather than a one-shot check.
     std::vector<ObjectGuid> GetActiveSessionGuids();
+
+    // Read-only membership test - unlike State(), never creates an entry. True for any lifecycle
+    // stage, so "is this bot already busy with a session" includes Starting and Stopping.
+    bool HasState(ObjectGuid guid);
 
     // Per-instance "already killed" memory: survives a per-bot state reset (startdungeon reset, a
     // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never

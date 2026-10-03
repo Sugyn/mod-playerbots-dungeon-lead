@@ -9,6 +9,7 @@
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonLeadCanary.h"
+#include "DungeonLeadKernels.h"
 
 #include "Creature.h"
 #include "CreatureData.h"
@@ -429,6 +430,11 @@ bool DungeonLead::IsOn(PlayerbotAI* botAI)
     return botAI && botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT);
 }
 
+bool DungeonLead::HasSession(PlayerbotAI* botAI)
+{
+    return botAI && sDungeonRouteMgr.HasState(botAI->GetBot()->GetGUID());
+}
+
 bool DungeonLead::GroupInCombat(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
@@ -493,18 +499,21 @@ bool DungeonLead::HealerUnavailable(PlayerbotAI* botAI)
     if (!group)
         return false;
 
-    bool healerInRoster = false;
+    // Facts only here; the decision is DungeonLeadKernel::EvaluateHealer (unit-tested in tests/).
+    // A ghost is DeathState::Dead, so IsAlive() is false for it as for a corpse.
+    std::vector<DungeonLeadKernel::MemberFacts> facts;
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-        if (!member || !PlayerbotAI::IsHeal(member, /*bySpec*/ true))
+        if (!member)
             continue;
-        healerInRoster = true;
-        if (member->IsAlive() && member->GetMap() == bot->GetMap())
-            return false;  // at least one healer is up and present - not blocked
-
+        DungeonLeadKernel::MemberFacts f;
+        f.isHealer = PlayerbotAI::IsHeal(member, /*bySpec*/ true);
+        f.alive = member->IsAlive();
+        f.sameMap = member->GetMap() == bot->GetMap();
+        facts.push_back(f);
     }
-    return healerInRoster;  // had a healer role, none of them qualify right now
+    return DungeonLeadKernel::EvaluateHealer(facts) == DungeonLeadKernel::HealerAvailability::Unavailable;
 }
 
 // 2026-10-03 (audit AUDIT-004 - "follower death is not a party-readiness condition"): only the
@@ -888,6 +897,14 @@ void DungeonLead::GuardActiveSessions()
         if (!bot)
         {
             DungeonLeadState const& goneSt = sDungeonRouteMgr.State(guid);
+            if (goneSt.lifecycle == DungeonLeadLifecycle::Stopping)
+            {
+                // run summary was already written when Stop() ran - only the handback was pending
+                LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} disconnected before the leader "
+                          "handback was confirmed (run={})", goneSt.tankName, goneSt.runId);
+                sDungeonRouteMgr.ResetState(guid);
+                continue;
+            }
             LOG_INFO("playerbots.dungeonlead",
                      "[DungeonLead] {} hard-disconnected while leading (run={}) - closing out the "
                      "session instead of leaving it silently active", goneSt.tankName, goneSt.runId);
@@ -900,6 +917,15 @@ void DungeonLead::GuardActiveSessions()
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
         if (!botAI)
             continue;
+
+        // Starting/Stopping sessions only wait for a leadership change - none of the strategy
+        // reassertion or wipe handling below applies until (or after) the tank actually leads.
+        if (sDungeonRouteMgr.State(guid).lifecycle != DungeonLeadLifecycle::Active)
+        {
+            ReconcileLeadership(botAI);
+            continue;
+        }
+
         Group* group = bot->GetGroup();
         if (!group)
             continue;
@@ -1033,6 +1059,22 @@ void DungeonLead::GuardActiveSessions()
 void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
 {
     Player* bot = botAI->GetBot();
+    if (!sDungeonRouteMgr.HasState(bot->GetGUID()))
+        return;  // nothing to stop - and State() below would otherwise create an entry
+
+    switch (sDungeonRouteMgr.State(bot->GetGUID()).lifecycle)
+    {
+        case DungeonLeadLifecycle::Stopping:
+            return;  // already stopped, handback in flight - GuardActiveSessions() finishes it
+        case DungeonLeadLifecycle::Starting:
+            // nothing applied yet (strategies wait for confirmed leadership), so nothing to restore
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} stopped while still acquiring leadership",
+                     bot->GetName());
+            sDungeonRouteMgr.ResetState(bot->GetGUID());
+            return;
+        case DungeonLeadLifecycle::Active:
+            break;
+    }
 
     // capture what we own BEFORE the state disappears below - ResetState() erases ccGuid/skullGuid/
     // memberSnapshots, and without this a stop while a moon mark was active left that mark
@@ -1044,6 +1086,10 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
     std::vector<DungeonLeadMemberSnapshot> const snapshots = st.memberSnapshots;
     DungeonLeadMemberSnapshot const leaderSnap = st.leaderSnapshot;
     bool const hasLeaderSnap = st.hasLeaderSnapshot;
+    uint64 const runId = st.runId;
+    DungeonLeadSessionOrigin const origin = st.origin;
+    std::string const tankName = st.tankName;
+    ObjectGuid handbackTo;
 
     // Full Reset() rather than just stripping "-dungeon lead,-grind"/"-mark rti": "startdungeon"
     // itself calls Reset() before adding its own strategies, so anything the leader had beyond
@@ -1096,24 +1142,25 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
         Player* master = botAI->GetMaster();
         if (giveLeaderBack && master && master != bot && group->IsMember(master->GetGUID()) &&
             group->GetLeaderGUID() == bot->GetGUID())
-        {
-            auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), master->GetGUID());
-            // 2026-09-15 (independent architecture review, DL-009 - "enqueue success ... [is] not
-            // required before ... committed"): QueueOperation() already LOG_ERRORs internally when
-            // the bounded world-thread queue is full and drops the operation, but the return value
-            // itself used to be discarded here - the leader handback could silently never happen
-            // and nothing downstream would know. Not the review's full fix (no retry, no owned
-            // completion/rollback transaction - this session is finishing regardless of whether the
-            // handback landed), just making the failure visible instead of silent.
-            if (!PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op)))
-                LOG_ERROR("playerbots.dungeonlead",
-                          "[DungeonLead] {} Stop() could not queue leader handback to {} - world "
-                          "thread queue full, master stays non-leader until something else fixes it",
-                          bot->GetName(), master->GetName());
-        }
+            handbackTo = master->GetGUID();
     }
 
     sDungeonRouteMgr.ResetState(bot->GetGUID());
+    if (handbackTo.IsEmpty())
+        return;
+
+    // Queueing the handback is not the handback (audit AUDIT-003): the session stays registered
+    // as Stopping - strategies are already restored above, so nothing else runs for it - until
+    // GuardActiveSessions() observes the original owner as leader again, retrying a bounded
+    // number of times. A failed enqueue counts as an attempt and is retried the same way.
+    DungeonLeadState& stopping = sDungeonRouteMgr.State(bot->GetGUID());
+    stopping.lifecycle = DungeonLeadLifecycle::Stopping;
+    stopping.runId = runId;
+    stopping.origin = origin;
+    stopping.tankName = tankName;
+    stopping.leadershipTarget = handbackTo;
+    stopping.leadershipFrom = bot->GetGUID();
+    RequestLeadership(bot, stopping);
 }
 
 // Shared tail of both "startdungeon" and the AutoBot Canary controller - see the declaration
@@ -1129,10 +1176,10 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
     // "current" strategies are already dungeon-lead's own would capture the WRONG baseline for
     // Stop() to later restore to, silently corrupting the exact-restore guarantee this function
     // otherwise provides. Caller must Stop() (or the run must terminate) before starting again.
-    if (DungeonLead::IsOn(botAI))
+    if (DungeonLead::HasSession(botAI) || DungeonLead::IsOn(botAI))
     {
         LOG_ERROR("playerbots.dungeonlead",
-                   "[DungeonLead] {} StartSession refused - already active (call Stop() first)",
+                   "[DungeonLead] {} StartSession refused - already has a session (call Stop() first)",
                    bot->GetName());
         return false;
     }
@@ -1152,7 +1199,7 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
         if (!member || member == bot)
             continue;
         PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
-        if (memberAI && DungeonLead::IsOn(memberAI))
+        if (memberAI && (DungeonLead::HasSession(memberAI) || DungeonLead::IsOn(memberAI)))
         {
             LOG_ERROR("playerbots.dungeonlead",
                        "[DungeonLead] {} StartSession refused - {} is already leading this group "
@@ -1181,36 +1228,6 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
     // ApplyLeaderFollowerStrategies below makes its first change to the leader's own engine.
     DungeonLeadMemberSnapshot const leaderSnap = SnapshotMember(bot, botAI);
 
-    if (group->GetLeaderGUID() != bot->GetGUID())
-    {
-        // 2026-09-15 (independent architecture review, DL-009 - "the caller gets success
-        // immediately [without] enqueue success ... required before ... a started session are
-        // committed"): this used to queue the leader-change operation and proceed regardless of
-        // whether it was actually accepted. If the bounded world-thread queue was full,
-        // QueueOperation() drops the operation (logging its own error) - `bot` would then never
-        // actually become group leader, while everything below still commits a started session,
-        // applies follower strategies, and reports success. Refuse instead of starting a session
-        // whose leadership change we know for certain never got queued.
-        //
-        // Not the review's full fix: this only catches the enqueue itself failing, not the
-        // operation later being processed-but-rejected on the world thread (e.g. a stale roster),
-        // and there's still no wait for GetLeaderGUID() to actually match before committing state
-        // below - that would need this function to become asynchronous, out of scope here. A
-        // group already led by someone else (GetLeaderGUID() mismatch after a successful enqueue)
-        // remains an open DL-009 gap.
-        auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), bot->GetGUID());
-        if (!PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op)))
-        {
-            LOG_ERROR("playerbots.dungeonlead",
-                      "[DungeonLead] {} StartSession refused - could not queue leader change "
-                      "(world thread queue full), {} would lead a group it was never made leader of",
-                      bot->GetName(), bot->GetName());
-            return false;
-        }
-    }
-
-    ApplyLeaderFollowerStrategies(botAI, group);
-
     sDungeonRouteMgr.ResetState(bot->GetGUID());
     {
         DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
@@ -1228,6 +1245,47 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
             st.testStartTs = getMSTime();
         }
     }
+
+    if (group->GetLeaderGUID() == bot->GetGUID())
+    {
+        ActivateSession(botAI, group, master);
+        return true;
+    }
+
+    // Not leader yet (audit AUDIT-002): a queued GroupSetLeaderOperation is not leadership - it
+    // runs later on the world thread and can be dropped or overtaken. The session waits in
+    // Starting, with no strategies applied, until GuardActiveSessions() observes the tank as
+    // leader; the request is retried a bounded number of times and the start abandoned if it
+    // never lands.
+    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    st.lifecycle = DungeonLeadLifecycle::Starting;
+    st.leadershipTarget = bot->GetGUID();
+    st.leadershipFrom = group->GetLeaderGUID();
+    RequestLeadership(bot, st);
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STARTING by {} origin={} - waiting to become group leader",
+             bot->GetName(), master ? master->GetName() : "canary", ToString(origin));
+    DungeonLead::RecordEvent(botAI, "starting", "origin=" + std::string(ToString(origin)));
+    if (master)
+        botAI->TellMaster("Dungeon lead: taking the lead...");
+    return true;
+}
+
+// Starting -> Active, once the tank is confirmed as group leader (or already was).
+void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* master)
+{
+    Player* bot = botAI->GetBot();
+    DungeonLeadSessionOrigin origin;
+    {
+        DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+        st.lifecycle = DungeonLeadLifecycle::Active;
+        st.leadershipTarget = ObjectGuid::Empty;
+        st.leadershipFrom = ObjectGuid::Empty;
+        st.leadershipRequestTs = 0;
+        st.leadershipAttempts = 0;
+        origin = st.origin;
+    }
+
+    ApplyLeaderFollowerStrategies(botAI, group);
     botAI->Reset();
     ResetPositions(botAI);
     ApplyLeaderFollowerStrategies(botAI, group);  // Reset() above wipes the leader's own strategies again
@@ -1260,7 +1318,92 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
     // could ever detect or heal its own absence) for the actual, unbounded fix: continuously
     // reassert the desired strategy state for every active session for as long as it's active, so
     // this self-heals whenever the external reset actually lands, however long that takes.
-    return true;
+}
+
+// One leadership request. Counted as an attempt whether or not the enqueue itself succeeds - a
+// full queue is just a request that will not be observed, and is retried on the same schedule.
+void DungeonLead::RequestLeadership(Player* bot, DungeonLeadState& st)
+{
+    ++st.leadershipAttempts;
+    st.leadershipRequestTs = getMSTime();
+    auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), st.leadershipTarget);
+    if (!PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op)))
+        LOG_ERROR("playerbots.dungeonlead",
+                  "[DungeonLead] {} could not queue leader change (attempt {}, world thread queue full)",
+                  bot->GetName(), st.leadershipAttempts);
+}
+
+// Drives a Starting or Stopping session to its end: observe the group leader, then confirm,
+// wait, retry or give up. The decision itself is DungeonLeadKernel::DecideLeadership (tests/).
+void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    bool const starting = st.lifecycle == DungeonLeadLifecycle::Starting;
+    Group* group = bot->GetGroup();
+
+    DungeonLeadKernel::LeadershipObservation obs;
+    if (group)
+    {
+        ObjectGuid const leader = group->GetLeaderGUID();
+        obs.targetIsLeader = leader == st.leadershipTarget;
+        obs.targetEligible =
+            ObjectAccessor::FindPlayer(st.leadershipTarget) && group->IsMember(st.leadershipTarget);
+        obs.thirdPartyIsLeader = leader != st.leadershipTarget && leader != st.leadershipFrom;
+    }
+    else
+        obs.targetEligible = false;  // no group left - nothing to lead or hand back
+    obs.msSinceRequest = GetMSTimeDiffToNow(st.leadershipRequestTs);
+    obs.attempts = st.leadershipAttempts;
+
+    DungeonLeadKernel::LeadershipPolicy policy;
+    policy.timeoutMs = (starting ? sDungeonLeadConfig.dungeonLeadLeadershipAcquireTimeoutSeconds
+                                 : sDungeonLeadConfig.dungeonLeadLeadershipReturnTimeoutSeconds) * IN_MILLISECONDS;
+    policy.maxAttempts = uint8(sDungeonLeadConfig.dungeonLeadLeadershipMaxAttempts);
+
+    char const* const what = starting ? "leadership" : "leader handback";
+    switch (DungeonLeadKernel::DecideLeadership(obs, policy))
+    {
+        case DungeonLeadKernel::LeadershipStep::Wait:
+            return;
+        case DungeonLeadKernel::LeadershipStep::Retry:
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} {} not observed after {} ms - retrying ({}/{})",
+                     bot->GetName(), what, obs.msSinceRequest, st.leadershipAttempts + 1, policy.maxAttempts);
+            RequestLeadership(bot, st);
+            return;
+        case DungeonLeadKernel::LeadershipStep::Confirmed:
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} {} confirmed after {} attempt(s) (run={})",
+                     bot->GetName(), what, st.leadershipAttempts, st.runId);
+            if (starting)
+                ActivateSession(botAI, group,
+                                st.origin == DungeonLeadSessionOrigin::Manual ? botAI->GetMaster() : nullptr);
+            else
+                sDungeonRouteMgr.ResetState(bot->GetGUID());
+            return;
+        case DungeonLeadKernel::LeadershipStep::GiveUp:
+        case DungeonLeadKernel::LeadershipStep::Abandon:
+            break;
+    }
+
+    std::string const reason = !obs.targetEligible ? "target no longer in the group"
+                             : obs.thirdPartyIsLeader ? "someone else became leader"
+                             : "not observed after " + std::to_string(st.leadershipAttempts) + " attempt(s)";
+    if (starting)
+    {
+        // Fail safe: no strategies were applied yet, so dropping the session leaves the party as it was.
+        LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} could not become group leader ({}) - not starting (run={})",
+                  bot->GetName(), reason, st.runId);
+        st.outcome = DungeonRunOutcome::Failed;
+        st.failureDomain = DungeonFailureDomain::PartyCoordination;
+        DungeonLead::RecordEvent(botAI, "start_failed", reason);
+        DungeonLead::RecordRunSummary(botAI, "leadership_not_acquired");
+        if (st.origin == DungeonLeadSessionOrigin::Manual)
+            botAI->TellMaster("Dungeon lead: could not take the party lead - not starting");
+    }
+    else
+        LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} leader handback failed ({}) (run={})",
+                  bot->GetName(), reason, st.runId);
+    sDungeonRouteMgr.ResetState(bot->GetGUID());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1305,6 +1448,10 @@ bool DungeonLeadNextAction::isUseful()
     std::string waitDetail;
     if (DungeonLead::MasterUnavailable(botAI))
         wait = "master dead/disconnected/left the party";
+    else if (DungeonLead::HealerUnavailable(botAI))
+        wait = "healer dead or not in the instance";
+    else if (DungeonLead::FollowerDead(botAI))
+        wait = "party member dead";
     else if (DungeonLead::GroupInCombat(botAI))
         wait = "group in combat";
     else if (DungeonLead::GroupResting(botAI))
@@ -2078,7 +2225,11 @@ bool StartDungChatShortcutAction::Execute(Event event)
     // L1.3 first live smoke-test command: same start as plain "startdungeon", just report a
     // structured result once the run reaches a terminal outcome (see the "route complete"/"route
     // PARTIAL" block below) instead of only the normal chat lines.
-    DungeonLead::StartSession(botAI, group, DungeonLeadSessionOrigin::Manual, master, /*testMode*/ sub == "test");
+    if (!DungeonLead::StartSession(botAI, group, DungeonLeadSessionOrigin::Manual, master, /*testMode*/ sub == "test"))
+    {
+        botAI->TellMaster("startdungeon: a dungeon lead session is already running in this group");
+        return false;
+    }
     return true;
 }
 

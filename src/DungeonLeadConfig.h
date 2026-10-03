@@ -17,6 +17,8 @@
 #define MOD_DUNGEONLEAD_CONFIG_H
 
 #include "Config.h"
+#include "Log.h"
+#include <algorithm>
 #include <string>
 
 class DungeonLeadConfig
@@ -44,8 +46,23 @@ public:
     uint32 dungeonLeadCanaryTimeoutMinutes;
     std::string dungeonLeadCanaryAllowedLfgIds;
     uint32 dungeonLeadMaxPartiesPerRun;
+    // Leadership transfer at session start / stop - how long one request may stay unobserved
+    // before it is retried, and how many requests are made before giving up.
+    uint32 dungeonLeadLeadershipAcquireTimeoutSeconds;
+    uint32 dungeonLeadLeadershipReturnTimeoutSeconds;
+    uint32 dungeonLeadLeadershipMaxAttempts;
 
 private:
+    static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
+    {
+        uint32 const v = sConfigMgr->GetOption<uint32>(key, def);
+        uint32 const clamped = std::clamp(v, lo, hi);
+        if (clamped != v)
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} = {} out of range [{}, {}], using {}", key, v, lo, hi,
+                      clamped);
+        return clamped;
+    }
+
     DungeonLeadConfig()
     {
         dungeonLeadHealerManaPct = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.HealerManaPct", 20);
@@ -67,6 +84,11 @@ private:
         dungeonLeadCanaryAllowedLfgIds =
             sConfigMgr->GetOption<std::string>("AiPlayerbot.DungeonLead.CanaryAllowedLfgIds", "");
         dungeonLeadMaxPartiesPerRun = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.MaxPartiesPerRun", 5);
+        dungeonLeadLeadershipAcquireTimeoutSeconds =
+            Bounded("AiPlayerbot.DungeonLead.LeadershipAcquireTimeoutSeconds", 5, 1, 60);
+        dungeonLeadLeadershipReturnTimeoutSeconds =
+            Bounded("AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds", 5, 1, 60);
+        dungeonLeadLeadershipMaxAttempts = Bounded("AiPlayerbot.DungeonLead.LeadershipMaxAttempts", 3, 1, 10);
     }
 };
 

@@ -123,6 +123,12 @@ void DungeonRouteMgr::ResetRouteProgress(ObjectGuid guid)
         it->second.ResetRouteProgress();
 }
 
+bool DungeonRouteMgr::HasState(ObjectGuid guid)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    return states.count(guid) != 0;
+}
+
 std::vector<ObjectGuid> DungeonRouteMgr::GetActiveSessionGuids()
 {
     std::lock_guard<std::mutex> lock(mtx);
@@ -204,6 +210,17 @@ char const* ToString(DungeonLeadSessionOrigin v)
     {
         case DungeonLeadSessionOrigin::Manual:     return "manual";
         case DungeonLeadSessionOrigin::AutoCanary: return "auto_canary";
+    }
+    return "unknown";
+}
+
+char const* ToString(DungeonLeadLifecycle v)
+{
+    switch (v)
+    {
+        case DungeonLeadLifecycle::Starting: return "starting";
+        case DungeonLeadLifecycle::Active:   return "active";
+        case DungeonLeadLifecycle::Stopping: return "stopping";
     }
     return "unknown";
 }

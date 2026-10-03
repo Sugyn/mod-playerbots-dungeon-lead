@@ -94,6 +94,8 @@ uint32 DungeonLead::CanarySupervisorTick()
         if (st.origin != DungeonLeadSessionOrigin::AutoCanary)
             continue;
         ++activeCanaryCount;
+        if (st.lifecycle == DungeonLeadLifecycle::Stopping)
+            continue;  // already stopped, only the leader handback is still being confirmed
 
         Group* group = bot->GetGroup();
         bool const realPlayerJoined = group && GroupHasRealPlayer(group);
@@ -159,7 +161,7 @@ void DungeonLead::MaybeStartCanary(uint32 activeCanaryCount)
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
-            if (member && DungeonLead::IsOn(GET_PLAYERBOT_AI(member)))
+            if (member && DungeonLead::HasSession(GET_PLAYERBOT_AI(member)))
             {
                 alreadyLed = true;
                 break;

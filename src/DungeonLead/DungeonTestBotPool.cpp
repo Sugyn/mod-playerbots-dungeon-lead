@@ -676,7 +676,7 @@ std::string DungeonLead::ReleaseTestBot(std::string const& botName)
     if (Player* bot = ObjectAccessor::FindPlayer(it->guid))
     {
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-        if (botAI && DungeonLead::IsOn(botAI))
+        if (botAI && DungeonLead::HasSession(botAI))
         {
             // 2026-09-15 (independent architecture review DL-006, extended past its original two
             // wired paths after live use exposed the gap directly): releasing a leased tank mid-run

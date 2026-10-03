@@ -18,6 +18,19 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Fixed
+- A session no longer counts as started until the tank is seen as group leader. The leader
+  change is retried and the start abandoned if it never lands, instead of running with the wrong
+  leader. `stopdungeon` waits for leadership to actually return to the player, with the same
+  retry limit, instead of assuming the queued change worked.
+- A dead or out-of-instance healer, or a dead party member, now also stops the route walk with
+  a logged wait reason (pulls were already held back).
+
+### Added
+- Config: `LeadershipAcquireTimeoutSeconds`, `LeadershipReturnTimeoutSeconds` (default 5),
+  `LeadershipMaxAttempts` (default 3).
+- `tools/run_tests.sh`: unit tests for the leadership and healer-readiness decisions.
+
 ## [0.10.0-alpha] - 2026-10-03
 
 ### Changed — ⚠ Breaking: install method
