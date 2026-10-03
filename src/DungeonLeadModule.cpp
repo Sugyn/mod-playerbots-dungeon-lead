@@ -1,5 +1,11 @@
 /*
- * mod-dungeon-lead - DungeonLeadModule.cpp
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ *
+ * DungeonLeadModule.cpp
  *
  * Registers the DungeonLead/ business logic (unchanged from the pre-module patch, only its
  * sPlayerbotAIConfig.dungeonLead* reads redirected to our own DungeonLeadConfig) into

@@ -1,5 +1,11 @@
 /*
- * mod-dungeon-lead - DungeonLeadCommandScript.cpp
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ *
+ * DungeonLeadCommandScript.cpp
  *
  * Own GM command root (`.dungeonlead ...`), separate from mod-playerbots' own `.playerbots ...`
  * table - a fresh CommandScript under a new root needs no edit to PlayerbotCommandScript.cpp

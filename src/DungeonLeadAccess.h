@@ -1,5 +1,11 @@
 /*
- * mod-dungeon-lead (PoC) - DungeonLeadAccess.h
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ *
+ * DungeonLeadAccess.h
  *
  * mod-playerbots exposes no extension seam for new Strategies/Actions/Triggers: the base
  * AiObjectContext's shared registries are PRIVATE static members, populated once at startup by

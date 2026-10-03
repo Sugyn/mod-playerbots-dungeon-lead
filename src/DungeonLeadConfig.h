@@ -1,5 +1,11 @@
 /*
- * mod-dungeon-lead - DungeonLeadConfig.h
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ *
+ * DungeonLeadConfig.h
  *
  * Own config singleton, reading AiPlayerbot.DungeonLead.* directly via sConfigMgr - mirrors
  * PlayerbotAIConfig's own field names/defaults exactly (see mod-playerbots src/PlayerbotAIConfig.h)

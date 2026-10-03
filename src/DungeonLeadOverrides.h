@@ -1,5 +1,11 @@
 /*
- * mod-dungeon-lead - DungeonLeadOverrides.h
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ *
+ * DungeonLeadOverrides.h
  *
  * The two points where the old patch changed EXISTING mod-playerbots behavior rather than
  * adding something new - can't be done via a plain registry append, but both target methods
