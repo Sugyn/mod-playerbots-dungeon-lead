@@ -2364,14 +2364,35 @@ Remaining:
 
 ## Phase 8 — Party cohesion
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): party cohesion levels`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 120 checks (10 new: soft/hard/lost levels, farthest
+  offender, hard beats soft, offline = lost, dead elsewhere = dead not lost, master off-map =
+  MasterTooFar, soft range holds pulls but not walking)
+- Live: Wailing Caverns test party (25 min): a resurrected DPS left 133 yd behind -> walk held
+  as "group too spread - Carineva" (HardStop) for the rest of the run, no pull started.
+
+Notes:
+- `DungeonLeadKernel::EvaluateCohesion` -> {Ok, SoftWarning, HardStop, LostMember} + offender;
+  used by EvaluateReadiness: LostMember -> MemberLost (walk + pull), HardStop -> Fragmented
+  (walk + pull), SoftWarning -> PartySpread (pull only).
+- PartySoftRange 40, PartyHardRange 90 (= the old leash*1.5 spread limit, validated hard >
+  soft). The real player is still held to Leash (60) via MasterTooFar.
+- New member fact `online`; a living member on another map/offline is LostMember (the master
+  stays MasterTooFar/MasterUnavailable).
+- Pull controller's waiting_party transition records the readiness reason and member.
+- In combat nothing here abandons the pack: cohesion only gates new pulls and the walk.
+- Observed gap (Phase 11): a member who stays beyond follow range (resurrected at the entrance,
+  133 yd back) is never regrouped - the leader holds until the session times out. Needs an
+  active regroup with timeout/escalation in the recovery controller.
+
+Remaining:
+- none (regroup belongs to Phase 11)
 
 ---
 

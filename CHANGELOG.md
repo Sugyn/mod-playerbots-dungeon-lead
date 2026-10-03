@@ -37,6 +37,7 @@ the MAJOR bar above is met.
 - Config: `PullRange` (30), `PullInitiateTimeoutSeconds` (10), `PullEstablishTimeoutSeconds` (8),
   `PullMaxAttempts` (2).
 - Config: `CombatLeashRadius` (30).
+- Config: `PartySoftRange` (40), `PartyHardRange` (90).
 - `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
 
 ### Changed
@@ -56,6 +57,9 @@ the MAJOR bar above is met.
   pack, it marks the target with the skull and starts the attack (the class AI does the
   fighting). A pull that doesn't start or doesn't stick within its timeouts is retried, then
   the pack is skipped and reported (`pull_failed`, `pack_skipped`) - never silently passed.
+- Party cohesion has levels: a member beyond `PartySoftRange` (40) holds the next pull, beyond
+  `PartyHardRange` (90, the old spread limit) the leader stops walking too, and a living member
+  on another map or offline counts as lost (stops both). The pull controller logs why it holds.
 - Combat leash: where a fight begins becomes its anchor, and the leading tank doesn't chase a
   target that runs more than `CombatLeashRadius` yards from it (logged as `leash_hold`), so a
   fleeing mob can't drag the party into the next pack.

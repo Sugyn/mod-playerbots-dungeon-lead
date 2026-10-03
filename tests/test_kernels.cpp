@@ -143,7 +143,7 @@ namespace
         return f;
     }
 
-    ReadinessPolicy const kReady{20.0f, 60.0f, 1.5f};
+    ReadinessPolicy const kReady{20.0f, 60.0f, 40.0f, 90.0f};
 
     ReadyStatus Walk(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Walk).status; }
     ReadyStatus Pull(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Pull).status; }
@@ -184,7 +184,7 @@ namespace
         Check(Walk(f) == ReadyStatus::PartyInCombat, "member in combat stops the walk");
         Check(Pull(f) == ReadyStatus::Ready, "member in combat does not block pulls");
         f.members[4].sameMap = false;
-        Check(Walk(f) == ReadyStatus::Ready, "off-map member's combat is not ours");
+        Check(!AnyInCombat(f), "off-map member's combat is not ours");
 
         f = Party();
         f.members[3].sitting = true;
@@ -203,9 +203,40 @@ namespace
         f = Party();
         f.members[4].distance = 95.0f;
         r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
-        Check(r.status == ReadyStatus::Fragmented && r.offender == 4, "member beyond leash*1.5 -> Fragmented, names who");
+        Check(r.status == ReadyStatus::Fragmented && r.offender == 4, "member beyond hard range -> Fragmented, names who");
         f.members[4].distance = 89.0f;
-        Check(Walk(f) == ReadyStatus::Ready, "member inside leash*1.5 -> Ready");
+        Check(Walk(f) == ReadyStatus::Ready, "member between soft and hard range -> walking continues");
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Pull);
+        Check(r.status == ReadyStatus::PartySpread && r.offender == 4, "member beyond soft range -> no new pull, names who");
+        f.members[4].distance = 39.0f;
+        Check(Pull(f) == ReadyStatus::Ready, "everyone inside soft range -> pull allowed");
+
+        // cohesion levels
+        f = Party();
+        Check(EvaluateCohesion(f, kReady).level == Cohesion::Ok, "together -> Ok");
+        f.members[3].distance = 50.0f;
+        f.members[4].distance = 70.0f;
+        CohesionResult c = EvaluateCohesion(f, kReady);
+        Check(c.level == Cohesion::SoftWarning && c.offender == 4, "soft warning names the farthest member");
+        f.members[3].distance = 100.0f;
+        c = EvaluateCohesion(f, kReady);
+        Check(c.level == Cohesion::HardStop && c.offender == 3, "hard stop beats soft warning");
+        f.members[4].sameMap = false;
+        c = EvaluateCohesion(f, kReady);
+        Check(c.level == Cohesion::LostMember && c.offender == 4, "living member on another map -> LostMember");
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::MemberLost && r.offender == 4, "lost member stops the walk");
+        f = Party();
+        f.members[3].online = false;
+        Check(Walk(f) == ReadyStatus::MemberLost, "offline member -> MemberLost");
+        f = Party();
+        f.members[4].alive = false;
+        f.members[4].sameMap = false;
+        Check(Walk(f) == ReadyStatus::MemberDead, "dead member elsewhere is MemberDead, not lost");
+        f = Party();
+        f.master.sameMap = false;
+        f.members[1].sameMap = false;
+        Check(Walk(f) == ReadyStatus::MasterTooFar, "master off-map is MasterTooFar, not a lost member");
 
         // priority: the most fundamental problem is reported first
         f = Party();

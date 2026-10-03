@@ -28,13 +28,16 @@ using DungeonLeadKernel::PullState;
 
 namespace
 {
-    void SetPullState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack, PullState next)
+    void SetPullState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack, PullState next,
+                      std::string const& detail = "")
     {
         if (st.pullState == next)
             return;
-        std::string const line = "#" + std::to_string(pack.id) + " " + pack.name + " " +
-                                 DungeonLeadKernel::ToString(st.pullState) + "->" + DungeonLeadKernel::ToString(next) +
-                                 " attempt=" + std::to_string(st.pullAttempts);
+        std::string line = "#" + std::to_string(pack.id) + " " + pack.name + " " +
+                           DungeonLeadKernel::ToString(st.pullState) + "->" + DungeonLeadKernel::ToString(next) +
+                           " attempt=" + std::to_string(st.pullAttempts);
+        if (!detail.empty())
+            line += " " + detail;
         st.pullState = next;
         st.pullStateTs = getMSTime();
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pull {}", botAI->GetBot()->GetName(), line);
@@ -88,8 +91,8 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     f.packAlive = sighting.observation.alive > 0;
     f.packEngaged = sighting.observation.engaged > 0;
     f.inPullRange = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange;
-    f.partyReady = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull).status ==
-                   DungeonLeadKernel::ReadyStatus::Ready;
+    DungeonLeadKernel::Readiness const ready = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
+    f.partyReady = ready.status == DungeonLeadKernel::ReadyStatus::Ready;
     f.targetMarked = IsPackMember(pack, skull);
     f.leaderInCombat = bot->IsInCombat();
     f.orderRefused = st.pullOrderRefused;
@@ -102,7 +105,14 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
 
     PullState const next = DungeonLeadKernel::DecidePull(f, policy);
     bool const changed = next != st.pullState;
-    SetPullState(botAI, st, pack, next);
+    std::string waitReason;
+    if (next == PullState::WaitingParty)
+    {
+        waitReason = std::string("reason=") + DungeonLeadKernel::ToString(ready.status);
+        if (Player* who = party.Member(ready.offender))
+            waitReason += " (" + who->GetName() + ")";
+    }
+    SetPullState(botAI, st, pack, next, waitReason);
 
     switch (next)
     {

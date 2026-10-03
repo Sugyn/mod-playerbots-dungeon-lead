@@ -59,6 +59,10 @@ public:
     uint32 dungeonLeadPullMaxAttempts;
     // Combat leash: the tank does not chase a target farther than this from where the fight began.
     float dungeonLeadCombatLeashRadius;
+    // Party cohesion: a member beyond the soft range holds the next pull, beyond the hard range
+    // the leader stops walking too.
+    float dungeonLeadPartySoftRange;
+    float dungeonLeadPartyHardRange;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -102,6 +106,14 @@ private:
         dungeonLeadPullEstablishTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds", 8, 1, 60);
         dungeonLeadPullMaxAttempts = Bounded("AiPlayerbot.DungeonLead.PullMaxAttempts", 2, 1, 5);
         dungeonLeadCombatLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.CombatLeashRadius", 30, 10, 80));
+        dungeonLeadPartySoftRange = float(Bounded("AiPlayerbot.DungeonLead.PartySoftRange", 40, 10, 150));
+        dungeonLeadPartyHardRange = float(Bounded("AiPlayerbot.DungeonLead.PartyHardRange", 90, 20, 300));
+        if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
+        {
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "
+                      "using soft + 10", dungeonLeadPartyHardRange, dungeonLeadPartySoftRange);
+            dungeonLeadPartyHardRange = dungeonLeadPartySoftRange + 10.0f;
+        }
     }
 };
 

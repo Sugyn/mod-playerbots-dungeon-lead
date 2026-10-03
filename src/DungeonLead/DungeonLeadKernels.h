@@ -115,6 +115,7 @@ namespace DungeonLeadKernel
         bool isHealerRole = false;    // mod-playerbots' default healer test (mana check)
         bool gameMaster = false;
         bool alive = false;           // false for dead and ghost alike
+        bool online = true;           // in world with a session
         bool sameMap = false;         // same map object as the leader
         bool inCombat = false;
         bool sitting = false;         // eating/drinking (bots) or sitting (players)
@@ -144,7 +145,8 @@ namespace DungeonLeadKernel
     {
         float healerManaPct = 20.0f;
         float leash = 60.0f;          // master farther than this (or off-map) -> wait
-        float spreadFactor = 1.5f;    // another member farther than leash * this -> wait
+        float softRange = 40.0f;      // a member farther than this -> no new pull (PartySoftRange)
+        float hardRange = 90.0f;      // a member farther than this -> stop walking too (PartyHardRange)
     };
 
     enum class ReadyPurpose : uint8_t
@@ -163,8 +165,10 @@ namespace DungeonLeadKernel
         PartyInCombat,      // walk only
         Drinking,           // someone (not the leader) sitting
         LowHealerMana,
+        MemberLost,         // a living member not on the leader's map, or offline
         MasterTooFar,       // off-map or beyond leash
-        Fragmented,         // another member beyond leash * spreadFactor
+        Fragmented,         // a member beyond PartyHardRange
+        PartySpread,        // a member beyond PartySoftRange - pulls only
     };
 
     inline char const* ToString(ReadyStatus s)
@@ -179,7 +183,9 @@ namespace DungeonLeadKernel
             case ReadyStatus::Drinking:          return "someone is eating/drinking";
             case ReadyStatus::LowHealerMana:     return "healer low on mana";
             case ReadyStatus::MasterTooFar:      return "waiting for you, master too far";
+            case ReadyStatus::MemberLost:        return "party member lost (other map or offline)";
             case ReadyStatus::Fragmented:        return "group too spread";
+            case ReadyStatus::PartySpread:       return "group spread out, holding the pull";
         }
         return "unknown";
     }
@@ -187,7 +193,7 @@ namespace DungeonLeadKernel
     struct Readiness
     {
         ReadyStatus status = ReadyStatus::Ready;
-        int offender = -1;  // index into PartyFacts::members for MemberDead/Fragmented, else -1
+        int offender = -1;  // index into PartyFacts::members for MemberDead/MemberLost/Fragmented/PartySpread
     };
 
     inline bool MasterUnavailable(PartyFacts const& f)
@@ -204,11 +210,69 @@ namespace DungeonLeadKernel
         return !m.sameMap || m.distance > p.leash;
     }
 
-    // Farthest member (not the leader) past leash * spreadFactor, or -1.
+    // ---------------------------------------------------------------------------------------
+    // Party cohesion: how far apart the party is, as one semantic level
+    // ---------------------------------------------------------------------------------------
+
+    enum class Cohesion : uint8_t
+    {
+        Ok,
+        SoftWarning,  // someone beyond softRange: finish what we're doing, don't open a new pull
+        HardStop,     // someone beyond hardRange: stop advancing
+        LostMember,   // a living member not on our map / offline: needs a regroup
+    };
+
+    inline char const* ToString(Cohesion c)
+    {
+        switch (c)
+        {
+            case Cohesion::Ok:          return "ok";
+            case Cohesion::SoftWarning: return "soft_warning";
+            case Cohesion::HardStop:    return "hard_stop";
+            case Cohesion::LostMember:  return "lost_member";
+        }
+        return "unknown";
+    }
+
+    struct CohesionResult
+    {
+        Cohesion level = Cohesion::Ok;
+        int offender = -1;  // the member that sets the level (farthest one for soft/hard)
+    };
+
+    // The master's own distance/presence is judged by MasterTooFar/MasterUnavailable; it still
+    // counts toward soft/hard spread like everyone else.
+    inline CohesionResult EvaluateCohesion(PartyFacts const& f, ReadinessPolicy const& p)
+    {
+        CohesionResult r;
+        float worstDist = 0.0f;
+        for (size_t i = 0; i < f.members.size(); ++i)
+        {
+            PartyMemberFacts const& m = f.members[i];
+            if (m.isSelf || !m.alive)
+                continue;
+            if (!m.isMaster && (!m.online || !m.sameMap))
+                return {Cohesion::LostMember, int(i)};
+            if (!m.sameMap)
+                continue;
+            Cohesion const level = m.distance > p.hardRange ? Cohesion::HardStop
+                                 : m.distance > p.softRange ? Cohesion::SoftWarning
+                                                            : Cohesion::Ok;
+            if (level > r.level || (level == r.level && level != Cohesion::Ok && m.distance > worstDist))
+            {
+                r.level = level;
+                r.offender = int(i);
+                worstDist = m.distance;
+            }
+        }
+        return r;
+    }
+
+    // Farthest member (not the leader) past hardRange, or -1 - named in the "waiting for X" chat line.
     inline int FindSpreadMember(PartyFacts const& f, ReadinessPolicy const& p)
     {
         int worst = -1;
-        float worstDist = p.leash * p.spreadFactor;
+        float worstDist = p.hardRange;
         for (size_t i = 0; i < f.members.size(); ++i)
         {
             PartyMemberFacts const& m = f.members[i];
@@ -259,6 +323,10 @@ namespace DungeonLeadKernel
                 return {ReadyStatus::MemberDead, int(i)};  // leader's own death and the master's are handled elsewhere
         }
 
+        CohesionResult const cohesion = EvaluateCohesion(f, p);
+        if (cohesion.level == Cohesion::LostMember)
+            return {ReadyStatus::MemberLost, cohesion.offender};
+
         if (purpose == ReadyPurpose::Walk && AnyInCombat(f))
             return {ReadyStatus::PartyInCombat, -1};
 
@@ -277,9 +345,10 @@ namespace DungeonLeadKernel
 
         if (MasterTooFar(f, p))
             return {ReadyStatus::MasterTooFar, -1};
-        int const spread = FindSpreadMember(f, p);
-        if (spread >= 0)
-            return {ReadyStatus::Fragmented, spread};
+        if (cohesion.level == Cohesion::HardStop)
+            return {ReadyStatus::Fragmented, cohesion.offender};
+        if (cohesion.level == Cohesion::SoftWarning && purpose == ReadyPurpose::Pull)
+            return {ReadyStatus::PartySpread, cohesion.offender};
         return {};
     }
 

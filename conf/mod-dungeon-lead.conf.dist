@@ -163,3 +163,18 @@ AiPlayerbot.DungeonLead.PullMaxAttempts = 2
 #        Default:     30
 
 AiPlayerbot.DungeonLead.CombatLeashRadius = 30
+
+#    AiPlayerbot.DungeonLead.PartySoftRange
+#        Description: A party member farther than this many yards from the leader holds the next
+#                      pull (the leader may still walk). Range 10-150.
+#        Default:     40
+
+AiPlayerbot.DungeonLead.PartySoftRange = 40
+
+#    AiPlayerbot.DungeonLead.PartyHardRange
+#        Description: A party member farther than this stops the leader from walking on as well.
+#                      Must be above PartySoftRange. Range 20-300. (The real player is held to
+#                      the tighter Leash instead.)
+#        Default:     90
+
+AiPlayerbot.DungeonLead.PartyHardRange = 90

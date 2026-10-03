@@ -53,6 +53,7 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
         m.isHealerRole = PlayerbotAI::IsHeal(member);
         m.gameMaster = member->IsGameMaster();
         m.alive = member->IsAlive();  // a ghost is DeathState::Dead too
+        m.online = member->IsInWorld() && member->GetSession();
         m.sameMap = member->GetMap() == bot->GetMap();
         m.inCombat = member->IsInCombat();
         m.sitting = member->IsSitState();
@@ -70,6 +71,8 @@ DungeonLeadKernel::ReadinessPolicy DungeonPartyState::Policy()
     DungeonLeadKernel::ReadinessPolicy p;
     p.healerManaPct = float(sDungeonLeadConfig.dungeonLeadHealerManaPct);
     p.leash = sDungeonLeadConfig.dungeonLeadLeash;
+    p.softRange = sDungeonLeadConfig.dungeonLeadPartySoftRange;
+    p.hardRange = sDungeonLeadConfig.dungeonLeadPartyHardRange;
     return p;
 }
 
