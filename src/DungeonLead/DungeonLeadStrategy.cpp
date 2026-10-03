@@ -52,7 +52,8 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         leash.hasTarget = target != nullptr;
         if (target)
             leash.targetDistFromAnchor = target->GetExactDist(st.anchorX, st.anchorY, st.anchorZ);
-        if (DungeonLeadKernel::ChaseAllowed(leash, sDungeonLeadConfig.dungeonLeadCombatLeashRadius))
+        float const radius = st.anchorRadius > 0.f ? st.anchorRadius : sDungeonLeadConfig.dungeonLeadCombatLeashRadius;
+        if (DungeonLeadKernel::ChaseAllowed(leash, radius))
             return 1.0f;
         if (!st.lastLeashLogTs || GetMSTimeDiffToNow(st.lastLeashLogTs) > 5000)
         {

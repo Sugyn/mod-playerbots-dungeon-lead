@@ -342,6 +342,24 @@ namespace
 
         Check(!IsActive(LeadState::Starting) && !IsActive(LeadState::Stopping) && IsActive(LeadState::Combat),
               "Starting/Stopping are not active states");
+
+        // boss flow: MovingToPull -> BossPrep -> BossCombat -> PostCombat
+        f = Active(LeadState::Travelling);
+        f.preparingPull = true;
+        f.bossPack = true;
+        Check(DecideActive(f).next == LeadState::BossPrep, "marking a boss -> BossPrep");
+        f.pulling = true;
+        Check(DecideActive(f).next == LeadState::BossPrep, "boss pull ordered -> still BossPrep");
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "in combat, boss not engaged yet (its trash) -> Combat");
+        f.bossEngaged = true;
+        t = DecideActive(f);
+        Check(t.next == LeadState::BossCombat && t.reason == TransitionReason::BossEngaged, "boss engaged -> BossCombat");
+        f.current = LeadState::BossCombat;
+        f.bossEngaged = false;
+        Check(DecideActive(f).next == LeadState::BossCombat, "boss fight holds while combat lasts");
+        f.anyInCombat = false;
+        Check(DecideActive(f).next == LeadState::PostCombat, "boss fight over -> PostCombat");
     }
 }
 

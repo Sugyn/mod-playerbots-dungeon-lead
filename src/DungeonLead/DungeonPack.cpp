@@ -44,6 +44,18 @@ DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)
     return pack;
 }
 
+DungeonBossStrategy DungeonPacks::BossStrategyFor(DungeonPack const& pack, Creature const* boss, float leashRadius)
+{
+    DungeonBossStrategy s;
+    s.bossEntry = pack.expectedEntries.empty() ? 0 : pack.expectedEntries.front();
+    Position const& home = boss ? boss->GetHomePosition() : Position(pack.x, pack.y, pack.z);
+    s.tankX = home.GetPositionX();
+    s.tankY = home.GetPositionY();
+    s.tankZ = home.GetPositionZ();
+    s.leashRadius = leashRadius;
+    return s;
+}
+
 DungeonPackSighting DungeonPacks::Observe(Player* bot, DungeonPack const& pack, uint32_t instanceId)
 {
     DungeonPackSighting sighting;

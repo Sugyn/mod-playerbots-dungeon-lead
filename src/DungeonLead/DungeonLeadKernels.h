@@ -373,7 +373,9 @@ namespace DungeonLeadKernel
         Travelling,    // party ready, walking the route
         PrePull,       // in range of the pack, preparing the pull (marking)
         Pulling,       // attack ordered, fight not established yet
+        BossPrep,      // the current pack is a boss: preparing / opening the pull
         Combat,        // someone in the party is fighting
+        BossCombat,    // fighting the current boss (its own anchor and leash)
         PostCombat,    // fight over, party not ready yet
         WipeRecovery,  // leader dead - waiting for upstream's release/corpse-run/res chain
         Recovery,      // a bounded recovery is running (DungeonRecoveryController)
@@ -390,7 +392,9 @@ namespace DungeonLeadKernel
             case LeadState::Travelling:   return "travelling";
             case LeadState::PrePull:      return "pre_pull";
             case LeadState::Pulling:      return "pulling";
+            case LeadState::BossPrep:     return "boss_prep";
             case LeadState::Combat:       return "combat";
+            case LeadState::BossCombat:   return "boss_combat";
             case LeadState::PostCombat:   return "post_combat";
             case LeadState::WipeRecovery: return "wipe_recovery";
             case LeadState::Recovery:     return "recovery";
@@ -420,6 +424,7 @@ namespace DungeonLeadKernel
         PullPreparing,
         PullStarted,
         RecoveryNeeded,
+        BossEngaged,
     };
 
     inline char const* ToString(TransitionReason r)
@@ -440,6 +445,7 @@ namespace DungeonLeadKernel
             case TransitionReason::PullPreparing:       return "pull_preparing";
             case TransitionReason::PullStarted:         return "pull_started";
             case TransitionReason::RecoveryNeeded:      return "recovery_needed";
+            case TransitionReason::BossEngaged:         return "boss_engaged";
         }
         return "unknown";
     }
@@ -457,6 +463,8 @@ namespace DungeonLeadKernel
         uint32_t msInState = 0;
         uint32_t postCombatMinMs = 3000;  // shortest pause between two fights
         bool recovering = false;          // DungeonRecoveryController has an open problem
+        bool bossPack = false;            // the current pack is a boss
+        bool bossEngaged = false;         // ... and it is in the fight
     };
 
     struct Transition
@@ -476,23 +484,28 @@ namespace DungeonLeadKernel
         if (f.routeComplete)
             return {LeadState::Completing, TransitionReason::RouteComplete};
         if (f.anyInCombat)
+        {
+            // A boss fight stays a boss fight even if the boss is briefly not seen engaged.
+            if (f.bossEngaged || f.current == LeadState::BossCombat)
+                return {LeadState::BossCombat, TransitionReason::BossEngaged};
             return {LeadState::Combat, TransitionReason::CombatStarted};
-        if (f.current == LeadState::Combat)
+        }
+        if (f.current == LeadState::Combat || f.current == LeadState::BossCombat)
             return {LeadState::PostCombat, TransitionReason::CombatEnded};
         // The deliberate gate between two packs: always a pause, then a full readiness check.
         if (f.current == LeadState::PostCombat && f.msInState < f.postCombatMinMs)
             return {LeadState::PostCombat, TransitionReason::CombatEnded};
         if (f.paused)
             return {LeadState::WaitingReady, TransitionReason::Paused};
-        if (f.pulling)
-            return {LeadState::Pulling, TransitionReason::PullStarted};  // attack already ordered
+        if (f.pulling)  // attack already ordered
+            return {f.bossPack ? LeadState::BossPrep : LeadState::Pulling, TransitionReason::PullStarted};
         if (f.recovering)
             return {LeadState::Recovery, TransitionReason::RecoveryNeeded};
         if (!f.walkReady)
             return {f.current == LeadState::PostCombat ? LeadState::PostCombat : LeadState::WaitingReady,
                     TransitionReason::PartyNotReady};
         if (f.preparingPull)
-            return {LeadState::PrePull, TransitionReason::PullPreparing};
+            return {f.bossPack ? LeadState::BossPrep : LeadState::PrePull, TransitionReason::PullPreparing};
         return {LeadState::Travelling, TransitionReason::PartyReady};
     }
 

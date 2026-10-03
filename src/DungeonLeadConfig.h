@@ -71,6 +71,8 @@ public:
     // escalation gets before the run is stopped as failed.
     uint32 dungeonLeadRecoveryTimeoutSeconds;
     uint32 dungeonLeadRecoveryEscalationSeconds;
+    // Boss fights are anchored at the boss's own spot with this leash (instead of CombatLeashRadius).
+    float dungeonLeadBossLeashRadius;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -120,6 +122,7 @@ private:
         dungeonLeadPostCombatMinHealthPct = Bounded("AiPlayerbot.DungeonLead.PostCombatMinHealthPct", 50, 0, 100);
         dungeonLeadRecoveryTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds", 60, 10, 600);
         dungeonLeadRecoveryEscalationSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryEscalationSeconds", 60, 10, 600);
+        dungeonLeadBossLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.BossLeashRadius", 25, 10, 80));
         if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
         {
             LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "

@@ -117,6 +117,8 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
     f.postCombatMinMs = sDungeonLeadConfig.dungeonLeadPostCombatMinSeconds * IN_MILLISECONDS;
     f.preparingPull = st.pullState == DungeonLeadKernel::PullState::Marking;
     f.recovering = st.recoveryReason != DungeonLeadKernel::RecoveryReason::None;
+    f.bossPack = st.bossPackCurrent;
+    f.bossEngaged = st.bossEngaged;
     f.pulling = st.pullState == DungeonLeadKernel::PullState::Initiating ||
                 st.pullState == DungeonLeadKernel::PullState::Establishing;
 
@@ -146,6 +148,34 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
             st.anchorX = bot->GetPositionX();
             st.anchorY = bot->GetPositionY();
             st.anchorZ = bot->GetPositionZ();
+            st.anchorRadius = 0.f;  // CombatLeashRadius
+        }
+        else if (t.next == LeadState::BossCombat && st.bossLeash > 0.f)
+        {
+            // A boss fight is held where the boss lives, with the boss leash - also when it starts
+            // out of a fight with its trash.
+            st.anchorSet = true;
+            st.anchorX = st.bossTankX;
+            st.anchorY = st.bossTankY;
+            st.anchorZ = st.bossTankZ;
+            st.anchorRadius = st.bossLeash;
+            DungeonLead::RecordEvent(botAI, "boss_combat",
+                                     "tank_pos=(" + std::to_string(int(st.bossTankX)) + "," +
+                                         std::to_string(int(st.bossTankY)) + ") leash=" +
+                                         std::to_string(int(st.bossLeash)));
+        }
+        else if (t.next == LeadState::BossPrep)
+        {
+            // Facing is mod-playerbots' "tank face" (turns the target away from the group); tank
+            // specs get it by default. A non-tank leader gets it for the boss.
+            bool const hadFace = botAI->HasStrategy("tank face", BOT_STATE_COMBAT);
+            if (!hadFace)
+                botAI->ChangeStrategy("+tank face", BOT_STATE_COMBAT);
+            DungeonLead::RecordEvent(botAI, "boss_prep",
+                                     "tank_pos=(" + std::to_string(int(st.bossTankX)) + "," +
+                                         std::to_string(int(st.bossTankY)) + ") leash=" +
+                                         std::to_string(int(st.bossLeash)) +
+                                         " tank_face=" + (hadFace ? "default" : "added"));
         }
         else if (t.next == LeadState::Travelling)
         {
@@ -158,7 +188,7 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
             st.arrivedTold = false;
         }
         std::string detail;
-        if (t.next == LeadState::Combat)
+        if (t.next == LeadState::Combat || t.next == LeadState::BossCombat)
             detail = "anchor=(" + std::to_string(int(st.anchorX)) + "," + std::to_string(int(st.anchorY)) + ")";
         else if (st.state == LeadState::PostCombat)
         {

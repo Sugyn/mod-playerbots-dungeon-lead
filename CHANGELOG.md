@@ -45,6 +45,7 @@ the MAJOR bar above is met.
 - Config: `PartySoftRange` (40), `PartyHardRange` (90).
 - Config: `PostCombatMinSeconds` (3), `PostCombatMinHealthPct` (50).
 - Config: `RecoveryTimeoutSeconds` (60), `RecoveryEscalationSeconds` (60).
+- Config: `BossLeashRadius` (25).
 - `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
 
 ### Changed
@@ -85,6 +86,9 @@ the MAJOR bar above is met.
 - Wipe checkpoints: the last cleared pack / reached waypoint is a checkpoint. After the tank
   dies and recovers, the route resumes right after it - anything only skipped since gets
   another try - and the current pack is looked at afresh (`checkpoint_restore`).
+- Boss fights: the leader goes through boss_prep and boss_combat states. A boss fight is
+  anchored at the boss's own spot with its own leash (`BossLeashRadius`, 25), and facing is left
+  to mod-playerbots' `tank face` (added for the fight if the leader isn't tank-specced).
 - Combat leash: where a fight begins becomes its anchor, and the leading tank doesn't chase a
   target that runs more than `CombatLeashRadius` yards from it (logged as `leash_hold`), so a
   fleeing mob can't drag the party into the next pack.

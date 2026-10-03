@@ -39,6 +39,16 @@ struct DungeonPack
     bool Exists() const { return id != 0; }
 };
 
+// Kept deliberately small (no scripting engine): where to tank a boss and how far the tank may
+// follow it. The generic default tanks the boss where it lives (its home position) - facing is
+// left to mod-playerbots' own "tank face" combat strategy, which tank specs get by default.
+struct DungeonBossStrategy
+{
+    uint32_t bossEntry = 0;
+    float tankX = 0.f, tankY = 0.f, tankZ = 0.f;
+    float leashRadius = 0.f;
+};
+
 struct DungeonPackSighting
 {
     DungeonLeadKernel::PackObservation observation;
@@ -54,6 +64,9 @@ namespace DungeonPacks
     // Live creatures of `pack` around its position, as seen from `bot`, plus the instance kill
     // memory for `instanceId`.
     DungeonPackSighting Observe(Player* bot, DungeonPack const& pack, uint32_t instanceId);
+
+    // Generic boss strategy for a live boss of `pack` (route data has no per-boss positions yet).
+    DungeonBossStrategy BossStrategyFor(DungeonPack const& pack, Creature const* boss, float leashRadius);
 }
 
 #endif

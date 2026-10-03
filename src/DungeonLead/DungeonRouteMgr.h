@@ -205,6 +205,11 @@ struct DungeonLeadState
     // cleared once the session walks on). The tank does not chase beyond CombatLeashRadius of it.
     bool anchorSet = false;
     float anchorX = 0.f, anchorY = 0.f, anchorZ = 0.f;
+    float anchorRadius = 0.f;  // leash for this anchor; 0 = CombatLeashRadius
+    // Current pack is a boss (set by the pull controller): its strategy and whether it is engaged
+    bool bossPackCurrent = false;
+    bool bossEngaged = false;
+    float bossTankX = 0.f, bossTankY = 0.f, bossTankZ = 0.f, bossLeash = 0.f;
     // DungeonRecoveryController: the open recovery (if any), since when, and the last step taken
     DungeonLeadKernel::RecoveryReason recoveryReason = DungeonLeadKernel::RecoveryReason::None;
     DungeonLeadKernel::RecoveryStep recoveryStep = DungeonLeadKernel::RecoveryStep::None;
@@ -322,6 +327,7 @@ struct DungeonLeadState
         pullFights = 0;
         pullPackFought = false;
         checkpointStep = -1;
+        bossPackCurrent = bossEngaged = false;
         anchorSet = false;
         targetPrimary = targetSecondary = targetCc = ObjectGuid::Empty;
         visited.clear();

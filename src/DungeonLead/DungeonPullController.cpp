@@ -76,6 +76,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                                             pack.type == DungeonRouteNodeType::Boss);
     if (!pullType)
     {
+        st.bossPackCurrent = st.bossEngaged = false;
         if (st.pullState != PullState::None)
             SetPullState(botAI, st, pack, PullState::None);
         return;
@@ -116,6 +117,19 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
 
     if (st.pullState == PullState::Established && f.packEngaged)
         st.pullPackFought = true;
+
+    // Boss facts for the brain (BossPrep / BossCombat) and its anchor.
+    st.bossPackCurrent = pack.bossPack && f.pullablePack;
+    st.bossEngaged = st.bossPackCurrent && f.packEngaged;
+    if (st.bossPackCurrent && sighting.firstAlive)
+    {
+        DungeonBossStrategy const boss =
+            DungeonPacks::BossStrategyFor(pack, sighting.firstAlive, sDungeonLeadConfig.dungeonLeadBossLeashRadius);
+        st.bossTankX = boss.tankX;
+        st.bossTankY = boss.tankY;
+        st.bossTankZ = boss.tankZ;
+        st.bossLeash = boss.leashRadius;
+    }
 
     PullState const next = DungeonLeadKernel::DecidePull(f, policy);
     bool const changed = next != st.pullState;

@@ -2580,14 +2580,35 @@ Remaining:
 
 ## Phase 14 — Boss foundation
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): boss prep and boss combat with a boss anchor`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 176 checks (6 new: marking/pulling a boss -> BossPrep, its
+  trash -> Combat, boss engaged -> BossCombat, holds while combat lasts, -> PostCombat)
+- Live: Wailing Caverns test party: combat with Lady Anacondra's trash -> `combat->boss_combat
+  reason=boss_engaged`, anchor moved to her home spot (boss_combat tank_pos), boss leash held an
+  add at 28 yd (leash_hold), she was cleared 16 s later, adds finished, post_combat, route on.
+  boss_prep not seen live (that fight began from trash, not a planned boss pull) - kernel-tested.
+
+Notes:
+- LeadState BossPrep (Marking/Initiating/Establishing on a boss pack) and BossCombat (in combat
+  with the boss pack engaged; holds while combat lasts). TransitionReason boss_engaged.
+- `DungeonBossStrategy` {bossEntry, tank position, leash} via `DungeonPacks::BossStrategyFor`:
+  generic default = the boss's home position and BossLeashRadius (25). Route data has no
+  per-boss positions yet; the struct is where they go when an encounter needs them.
+- The pull controller publishes boss facts (bossPackCurrent, bossEngaged, boss tank position)
+  each tick; the brain anchors BossCombat at the boss position with its own radius
+  (`anchorRadius`, used by the leash multiplier instead of CombatLeashRadius).
+- Facing: mod-playerbots' own "tank face" combat strategy (tank specs have it by default; added
+  at BossPrep for a non-tank leader). No movement is issued from here - class AI positions.
+- Events: boss_prep, boss_combat.
+
+Remaining:
+- none
 
 ---
 

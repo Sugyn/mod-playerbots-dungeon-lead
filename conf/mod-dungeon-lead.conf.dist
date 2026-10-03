@@ -207,3 +207,10 @@ AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds = 60
 #        Default:     60
 
 AiPlayerbot.DungeonLead.RecoveryEscalationSeconds = 60
+
+#    AiPlayerbot.DungeonLead.BossLeashRadius
+#        Description: A boss fight is anchored at the boss's own spot; the leading tank doesn't
+#                      chase anything farther than this many yards from it. Range 10-80.
+#        Default:     25
+
+AiPlayerbot.DungeonLead.BossLeashRadius = 25
