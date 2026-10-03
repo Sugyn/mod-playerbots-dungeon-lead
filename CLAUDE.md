@@ -2220,14 +2220,33 @@ Remaining:
 
 ## Phase 4 — Typed route nodes
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): typed route objectives`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 71 checks (10 new: kind parsing, anchor-wins, every
+  kind -> node type)
+- Live: temporary server-only harness (not committed) over the live route table: 96 routes,
+  353 walkable steps -> boss 260, pull 76, interaction 44, travel 20, door 14; 0 walkable
+  non-anchor Travel, 0 unknown kinds; Wailing Caverns sequence reads correctly. Removed after.
+
+Notes:
+- `src/DungeonLead/DungeonRouteTypes.h` (dependency-free): `DungeonRouteKind` + `ParseRouteKind`
+  (moved), `DungeonRouteNodeType` {Travel, Pull, TankPosition, SafeSpot, Boss, Door, Interaction,
+  Recovery, End}, `ClassifyRouteStep`. Node type is derived (`DungeonRouteStep::NodeType()`),
+  so route data/SQL/validator are unchanged.
+- `DungeonLeadBrain::CurrentObjective(st)` = destination + intent, derived from state + route
+  position (Recovery = `DungeonRoute::RecoveryPoint()` while WipeRecovery, End when Completing
+  or past the last step). Shown in every state_transition, `startdungeon status`, and the
+  "heading to" chat line.
+- SkipOptional now keys on node type Pull (same behavior as the old anchor special case).
+- TankPosition/SafeSpot have no route data yet; they are produced once data needs them.
+
+Remaining:
+- none
 
 ---
 

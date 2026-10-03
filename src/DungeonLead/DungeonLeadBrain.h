@@ -18,6 +18,7 @@
 #define MOD_DUNGEONLEAD_BRAIN_H
 
 #include "DungeonLeadKernels.h"
+#include "DungeonRouteTypes.h"
 
 #include <string>
 
@@ -25,8 +26,23 @@ class PlayerbotAI;
 struct DungeonLeadState;
 struct DungeonPartySnapshot;
 
+// Where the leader is going and why. Derived on demand from the session's route position and
+// state - never stored, so it cannot drift from them.
+struct DungeonLeadObjective
+{
+    bool valid = false;  // false: no route resolved yet (or none exists for this dungeon)
+    DungeonRouteNodeType type = DungeonRouteNodeType::End;
+    int32_t stepIndex = -1;  // -1 for End
+    std::string name;
+    float x = 0.f, y = 0.f, z = 0.f;
+
+    std::string Describe() const;  // "boss:Lady Anacondra@3", "end", "none"
+};
+
 namespace DungeonLeadBrain
 {
+    DungeonLeadObjective CurrentObjective(DungeonLeadState const& st);
+
     void TransitionTo(PlayerbotAI* botAI, DungeonLeadState& st, DungeonLeadKernel::LeadState next,
                       DungeonLeadKernel::TransitionReason reason, std::string const& detail = "");
 

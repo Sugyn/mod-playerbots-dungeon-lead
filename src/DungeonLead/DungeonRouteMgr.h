@@ -10,6 +10,7 @@
 #define PLAYERBOTS_DUNGEONROUTEMGR_H
 
 #include "DungeonLeadKernels.h"
+#include "DungeonRouteTypes.h"
 #include "Common.h"
 #include "ObjectGuid.h"
 
@@ -18,24 +19,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-// The DB column (playerbots_dungeon_route.kind) stays a plain VARCHAR - this is just the C++-side
-// representation, parsed once at Load() (see ParseRouteKind). A typo in the DB used to silently
-// become a non-walkable, non-mandatory step with no diagnostic at all; it's now Unknown, logged as
-// an error at load time (see DungeonRouteMgr::Load()) and validated ahead of time by
-// tools/validate_routes.py besides.
-enum class DungeonRouteKind : uint8
-{
-    Boss,
-    Optional,
-    HeroicOnly,
-    Event,
-    Door,
-    Skip,
-    Unknown,  // failed to parse - never IsWalkable()/IsMandatory(), always a load-time LOG_ERROR
-};
-
-DungeonRouteKind ParseRouteKind(std::string const& s);
 
 // One step of a hand-authored dungeon route (table playerbots_dungeon_route).
 struct DungeonRouteStep
@@ -70,7 +53,10 @@ struct DungeonRouteStep
     // AiPlayerbot.DungeonLead.SkipOptional=1 would silently delete the anchors some routes need
     // just to be walkable at all, reintroducing the direct NOPATH hops they exist to prevent - see
     // the skip condition in DungeonLeadNextAction::Execute.
-    bool IsPathAnchor() const { return entry == 1; }
+    bool IsPathAnchor() const { return entry == kPathAnchorEntry; }
+
+    // What the leader goes there to do (see DungeonRouteTypes.h) - derived, not stored.
+    DungeonRouteNodeType NodeType() const { return ClassifyRouteStep(kind, entry); }
 };
 
 // Run-level outcome, shared vocabulary between the runtime and (eventually) an automated test
@@ -151,6 +137,16 @@ struct DungeonRoute
             if (s.IsMandatory())
                 return true;
         return false;
+    }
+
+    // Where stranded party members are brought back to: the first walkable step, i.e. the
+    // entrance - known-walkable and mob-free.
+    DungeonRouteStep const* RecoveryPoint() const
+    {
+        for (DungeonRouteStep const& s : steps)
+            if (s.IsWalkable())
+                return &s;
+        return nullptr;
     }
 };
 

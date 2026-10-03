@@ -20,6 +20,47 @@
 using DungeonLeadKernel::LeadState;
 using DungeonLeadKernel::TransitionReason;
 
+std::string DungeonLeadObjective::Describe() const
+{
+    if (!valid)
+        return "none";
+    if (type == DungeonRouteNodeType::End)
+        return "end";
+    return std::string(ToString(type)) + ":" + name + "@" + std::to_string(stepIndex);
+}
+
+DungeonLeadObjective DungeonLeadBrain::CurrentObjective(DungeonLeadState const& st)
+{
+    DungeonLeadObjective o;
+    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
+    if (!route)
+        return o;
+    o.valid = true;
+
+    DungeonRouteStep const* step = nullptr;
+    if (st.state == LeadState::WipeRecovery)
+    {
+        step = route->RecoveryPoint();
+        o.type = DungeonRouteNodeType::Recovery;
+    }
+    else if (st.state != LeadState::Completing && st.stepIndex < route->steps.size())
+    {
+        step = &route->steps[st.stepIndex];
+        o.type = step->NodeType();
+    }
+    if (!step)
+    {
+        o.type = DungeonRouteNodeType::End;
+        return o;
+    }
+    o.stepIndex = int32_t(step - route->steps.data());
+    o.name = step->boss;
+    o.x = step->x;
+    o.y = step->y;
+    o.z = step->z;
+    return o;
+}
+
 void DungeonLeadBrain::TransitionTo(PlayerbotAI* botAI, DungeonLeadState& st, LeadState next,
                                     TransitionReason reason, std::string const& detail)
 {
@@ -36,7 +77,8 @@ void DungeonLeadBrain::TransitionTo(PlayerbotAI* botAI, DungeonLeadState& st, Le
         st.stateSinceTs = 1;  // 0 means "no state yet" above
 
     std::string line = std::string(from) + "->" + DungeonLeadKernel::ToString(next) + " reason=" +
-                       DungeonLeadKernel::ToString(reason) + " after_ms=" + std::to_string(inStateMs);
+                       DungeonLeadKernel::ToString(reason) + " after_ms=" + std::to_string(inStateMs) +
+                       " objective=" + CurrentObjective(st).Describe();
     if (!detail.empty())
         line += " " + detail;
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} state {} (run={})", botAI->GetBot()->GetName(), line,

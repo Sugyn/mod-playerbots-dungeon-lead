@@ -14,17 +14,6 @@
 
 #include <algorithm>
 
-DungeonRouteKind ParseRouteKind(std::string const& s)
-{
-    if (s == "boss") return DungeonRouteKind::Boss;
-    if (s == "optional") return DungeonRouteKind::Optional;
-    if (s == "heroic_only") return DungeonRouteKind::HeroicOnly;
-    if (s == "event") return DungeonRouteKind::Event;
-    if (s == "door") return DungeonRouteKind::Door;
-    if (s == "skip") return DungeonRouteKind::Skip;
-    return DungeonRouteKind::Unknown;
-}
-
 void DungeonRouteMgr::Load()
 {
     std::lock_guard<std::mutex> lock(mtx);

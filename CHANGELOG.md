@@ -38,6 +38,9 @@ the MAJOR bar above is met.
 - Each session now has one explicit state (starting, waiting, travelling, combat, post-combat,
   wipe recovery, completing, stopping). Every change is logged and written to
   `DungeonLeadSessions.csv` as `state_transition`; `startdungeon status` shows the current one.
+- Route steps are classified by what the leader does there (travel, pull, boss, door,
+  interaction, recovery, end) from the existing route data - no data change. The current
+  objective appears in state transitions, `startdungeon status` and the "heading to" message.
 
 ## [0.10.0-alpha] - 2026-10-03
 

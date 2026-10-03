@@ -657,15 +657,7 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
     DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(st.lfgId);
     if (!route)
         return;
-    DungeonRouteStep const* entrance = nullptr;
-    for (DungeonRouteStep const& step : route->steps)
-    {
-        if (step.IsWalkable())
-        {
-            entrance = &step;
-            break;
-        }
-    }
+    DungeonRouteStep const* entrance = route->RecoveryPoint();
     if (!entrance)
         return;
 
@@ -1388,12 +1380,10 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     while (st.stepIndex < route->steps.size())
     {
         DungeonRouteStep const& s = route->steps[st.stepIndex];
-        // 2026-09-15 (DL-011): !s.IsPathAnchor() added to the SkipOptional condition - see
-        // DungeonRouteStep::IsPathAnchor()'s comment. A pure navigation waypoint is never
-        // "optional content" in the sense SkipOptional means (skip a boss/mob nobody needs to
-        // fight), so it must not be deletable by that same switch.
+        // SkipOptional skips optional fights (Pull nodes) only - a path anchor on an optional row
+        // is a Travel node and must stay, or routes that need it stop being walkable (DL-011).
         bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
-                    (s.kind == DungeonRouteKind::Optional && !s.IsPathAnchor() && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
+                    (s.NodeType() == DungeonRouteNodeType::Pull && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
                     (s.entry && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;
@@ -1505,7 +1495,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         st.announcedStep = int32(st.stepIndex);
         st.arrivedTold = false;
         std::ostringstream headingOut;
-        headingOut << "Dungeon lead: heading to " << step.boss;
+        headingOut << "Dungeon lead: heading to " << step.boss << " (" << ToString(step.NodeType()) << ")";
         botAI->TellMasterNoFacing(headingOut);
     }
 
@@ -1926,7 +1916,8 @@ bool StartDungChatShortcutAction::Execute(Event event)
                 stepName = "(route complete)";
             std::ostringstream out;
             out << "Dungeon lead status: run #" << st.runId << " " << (route ? route->name : "no route")
-                << " | step " << stepName << " | outcome " << ToString(st.outcome);
+                << " | step " << stepName << " | objective " << DungeonLeadBrain::CurrentObjective(st).Describe()
+                << " | outcome " << ToString(st.outcome);
             if (st.outcome == DungeonRunOutcome::Partial)
                 out << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";
             out << " | " << (st.paused ? "PAUSED" : DungeonLeadKernel::ToString(st.state))

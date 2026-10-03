@@ -2,6 +2,7 @@
 // Run: tools/run_tests.sh
 
 #include "DungeonLeadKernels.h"
+#include "DungeonRouteTypes.h"
 
 #include <cstdio>
 #include <string>
@@ -288,12 +289,33 @@ namespace
     }
 }
 
+namespace
+{
+    void TestRouteTypes()
+    {
+        Check(ParseRouteKind("boss") == DungeonRouteKind::Boss && ParseRouteKind("door") == DungeonRouteKind::Door,
+              "existing kinds still parse");
+        Check(ParseRouteKind("Boss") == DungeonRouteKind::Unknown, "typo/case -> Unknown");
+        Check(ClassifyRouteStep(DungeonRouteKind::Boss, 3653) == DungeonRouteNodeType::Boss, "boss row -> Boss");
+        Check(ClassifyRouteStep(DungeonRouteKind::HeroicOnly, 1) == DungeonRouteNodeType::Travel,
+              "anchor entry wins over kind");
+        Check(ClassifyRouteStep(DungeonRouteKind::HeroicOnly, 500) == DungeonRouteNodeType::Boss, "heroic-only boss -> Boss");
+        Check(ClassifyRouteStep(DungeonRouteKind::Optional, 1) == DungeonRouteNodeType::Travel,
+              "optional path anchor -> Travel (not skippable)");
+        Check(ClassifyRouteStep(DungeonRouteKind::Optional, 3654) == DungeonRouteNodeType::Pull, "optional mob -> Pull");
+        Check(ClassifyRouteStep(DungeonRouteKind::Event, 42) == DungeonRouteNodeType::Interaction, "event -> Interaction");
+        Check(ClassifyRouteStep(DungeonRouteKind::Door, 42) == DungeonRouteNodeType::Door, "door -> Door");
+        Check(std::string(ToString(DungeonRouteNodeType::TankPosition)) == "tank_position", "node type names");
+    }
+}
+
 int main()
 {
     TestLeadership();
     TestHealer();
     TestReadiness();
     TestBrain();
+    TestRouteTypes();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
