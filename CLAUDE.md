@@ -2398,14 +2398,42 @@ Remaining:
 
 ## Phase 9 — Target manager
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): stable target plan and pull success on the plan`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, CMake reconfigured for the new .cpp, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 132 checks (12 new: priority boss > elite caster > caster >
+  elite > normal, deterministic ties, stability while targets live, dead primary replaced,
+  kept CC not promoted, empty; pull: primary engaged = established, fight over with pack
+  standing = approach again)
+- Live: Wailing Caverns test party, 3 runs. Run 1 found that pulls of the boss's trash
+  (planned primary) were counted as failed boss pulls -> Lady Anacondra skipped; run 2 found
+  that a fight cap counting trash fights skipped her again; run 3 (both fixed): 20 trash fights
+  around her, then Lady Anacondra engaged and cleared, route advanced; Kresh pulled and cleared.
+
+Notes:
+- `src/DungeonLead/DungeonTargetManager.{h,cpp}` builds candidates (hostiles within 20 yd of the
+  current pack's live creature before a pull, units in combat within 40 yd of the leader during
+  one), decides with `DungeonLeadKernel::PickTargetPlan`, keeps the plan in the session
+  (targetPrimary/Secondary/Cc) and logs `target_plan` changes.
+- Marks mirror the plan: skull = primary, cross = secondary, moon = CC (existing CC lifecycle in
+  CheckCcMark unchanged). Only icons that are free, on a dead unit, or ours are moved; owned
+  cross tracked like skull/moon so Stop() clears only ours.
+- Single writer for marks: the old boss-only marking in DungeonLeadMarkAction (and its
+  FindCcCandidate) is replaced by a call to the manager; the pull controller no longer marks.
+- Pull controller now pulls the plan's primary and counts a pull as established when the pack
+  OR the primary is engaged; a fight that ends with the pack standing returns to Approaching
+  (progress, not failure). Bounds: failed tries (PullMaxAttempts) and pack resets (the pack
+  itself engaged and survived, 3) - trash fights are not capped.
+- The route walk's 45 s arrival give-up no longer skips a live pull/boss pack (the controller's
+  bounds apply instead); it still covers interactions and empty spots.
+- "Healer-type NPC" priority not modelled (no reliable data); casters = mana users.
+
+Remaining:
+- none
 
 ---
 

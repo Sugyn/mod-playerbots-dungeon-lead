@@ -425,7 +425,7 @@ namespace
         Check(DecidePull(f, kPull) == PullState::Failed, "pack never engaged within establish timeout -> Failed");
 
         f = Pull(PullState::Established);
-        Check(DecidePull(f, kPull) == PullState::Failed, "pack alive, nobody fighting -> evade -> Failed");
+        Check(DecidePull(f, kPull) == PullState::Approaching, "fight over, pack still standing -> pull it next, not a failure");
         f.packAlive = false;
         Check(DecidePull(f, kPull) == PullState::None, "pack dead after established -> None");
 
@@ -440,6 +440,14 @@ namespace
         f.packEngaged = true;
         f.leaderInCombat = true;
         Check(DecidePull(f, kPull) == PullState::Established, "class AI opened the fight itself -> Established");
+
+        f = Pull(PullState::Establishing);
+        f.leaderInCombat = true;
+        f.primaryEngaged = true;
+        Check(DecidePull(f, kPull) == PullState::Established, "fighting the planned primary (trash next to the boss) -> Established");
+        f.primaryEngaged = false;
+        f.msInState = 8000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "in combat with something unrelated past the timeout -> Failed");
 
         f = Pull(PullState::Initiating);
         f.pullablePack = false;
@@ -481,6 +489,61 @@ namespace
     }
 }
 
+namespace
+{
+    TargetCandidate T(uint64_t id, bool boss, bool caster, bool elite, float dist)
+    {
+        TargetCandidate c;
+        c.id = id;
+        c.boss = boss;
+        c.caster = caster;
+        c.elite = elite;
+        c.distToAnchor = dist;
+        return c;
+    }
+
+    void TestTargets()
+    {
+        std::vector<TargetCandidate> pack{T(1, false, false, true, 5), T(2, false, true, true, 8),
+                                          T(3, true, false, true, 10), T(4, false, false, false, 3)};
+        TargetPlan p = PickTargetPlan(pack, TargetPlan(), true);
+        Check(p.primary == 3, "boss is primary");
+        Check(p.secondary == 2, "elite caster is secondary");
+        Check(p.cc == 1, "remaining elite is the CC target");
+
+        std::vector<TargetCandidate> trash{T(10, false, false, false, 9), T(11, false, true, false, 12),
+                                           T(12, false, false, true, 4)};
+        p = PickTargetPlan(trash, TargetPlan(), true);
+        Check(p.primary == 11 && p.secondary == 12, "caster before elite before normal");
+        Check(p.cc == 0, "no elite left for CC -> none");
+
+        std::vector<TargetCandidate> twins{T(21, false, false, true, 6), T(20, false, false, true, 6)};
+        Check(PickTargetPlan(twins, TargetPlan(), false).primary == 20, "equal rank and distance -> lower id (deterministic)");
+
+        // stability: a kept target holds its slot even if something better shows up
+        TargetPlan prev;
+        prev.primary = 12;
+        prev.secondary = 10;
+        std::vector<TargetCandidate> more = trash;
+        more.push_back(T(13, true, false, true, 30));
+        p = PickTargetPlan(more, prev, false);
+        Check(p.primary == 12 && p.secondary == 10, "plan is stable while its targets live");
+        // primary died -> the best remaining takes over, secondary stays
+        std::vector<TargetCandidate> after{T(10, false, false, false, 9), T(11, false, true, false, 12),
+                                           T(13, true, false, true, 30)};
+        p = PickTargetPlan(after, prev, false);
+        Check(p.primary == 13 && p.secondary == 10, "dead primary replaced by the best remaining, secondary kept");
+
+        // CC stability: a kept CC target is not promoted to a kill target
+        TargetPlan prevCc;
+        prevCc.cc = 1;
+        p = PickTargetPlan(pack, prevCc, true);
+        Check(p.cc == 1 && p.primary != 1 && p.secondary != 1, "kept CC target stays CC");
+
+        Check(PickTargetPlan({}, TargetPlan(), true) == TargetPlan(), "no candidates -> empty plan");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -491,6 +554,7 @@ int main()
     TestPack();
     TestPull();
     TestLeash();
+    TestTargets();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

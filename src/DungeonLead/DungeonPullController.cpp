@@ -28,6 +28,11 @@ using DungeonLeadKernel::PullState;
 
 namespace
 {
+    // Fights in which the pack itself engaged and still survived (evade/reset) before it is
+    // skipped - bounds a boss that keeps resetting. Fights with its trash don't count: they are
+    // progress, however many there are.
+    constexpr uint8 kMaxPackResets = 3;
+
     void SetPullState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack, PullState next,
                       std::string const& detail = "")
     {
@@ -80,7 +85,12 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     DungeonLeadKernel::PackState const prevPack = st.packId == pack.id ? st.packState : DungeonLeadKernel::PackState::Unknown;
     DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prevPack, sighting.observation));
 
+    // Pull the target plan's primary (DungeonTargetManager runs first and marks it); fall back to
+    // the pack's first live creature when there is no plan.
     Creature* target = sighting.firstAlive;
+    if (Unit* primary = st.targetPrimary.IsEmpty() ? nullptr : botAI->GetUnit(st.targetPrimary))
+        if (primary->IsAlive() && primary->ToCreature())
+            target = primary->ToCreature();
     Unit* skull = botAI->GetUnit(group->GetTargetIcon(RtiTargetValue::skullIndex));
 
     DungeonLeadKernel::PullFacts f;
@@ -90,10 +100,11 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                      st.packState != DungeonLeadKernel::PackState::Skipped;
     f.packAlive = sighting.observation.alive > 0;
     f.packEngaged = sighting.observation.engaged > 0;
+    f.primaryEngaged = target && target != sighting.firstAlive && target->IsAlive() && target->IsInCombat();
     f.inPullRange = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange;
     DungeonLeadKernel::Readiness const ready = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
     f.partyReady = ready.status == DungeonLeadKernel::ReadyStatus::Ready;
-    f.targetMarked = IsPackMember(pack, skull);
+    f.targetMarked = skull && skull->IsAlive() && (skull->GetGUID() == st.targetPrimary || IsPackMember(pack, skull));
     f.leaderInCombat = bot->IsInCombat();
     f.orderRefused = st.pullOrderRefused;
     f.attempts = st.pullAttempts;
@@ -102,6 +113,9 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     policy.initiateTimeoutMs = sDungeonLeadConfig.dungeonLeadPullInitiateTimeoutSeconds * IN_MILLISECONDS;
     policy.establishTimeoutMs = sDungeonLeadConfig.dungeonLeadPullEstablishTimeoutSeconds * IN_MILLISECONDS;
     policy.maxAttempts = uint8(sDungeonLeadConfig.dungeonLeadPullMaxAttempts);
+
+    if (st.pullState == PullState::Established && f.packEngaged)
+        st.pullPackFought = true;
 
     PullState const next = DungeonLeadKernel::DecidePull(f, policy);
     bool const changed = next != st.pullState;
@@ -116,15 +130,6 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
 
     switch (next)
     {
-        case PullState::Marking:
-            // Put the skull on the pull target unless someone else's live mark holds it.
-            if (target && !f.targetMarked && (!skull || !skull->IsAlive() || skull->GetGUID() == st.skullGuid))
-            {
-                group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), target->GetGUID());
-                st.skullGuid = target->GetGUID();  // so Stop() only clears our own
-                DungeonLead::RecordEvent(botAI, "mark_skull", target->GetName());
-            }
-            break;
         case PullState::Initiating:
             if (changed)
             {
@@ -146,7 +151,33 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
             break;
         case PullState::Established:
             if (changed)
-                DungeonLead::RecordEvent(botAI, "pull_established", pack.name);
+            {
+                st.pullAttempts = 0;  // a fight happened - failures are counted per failed try only
+                st.pullPackFought = f.packEngaged;
+                DungeonLead::RecordEvent(botAI, "pull_established",
+                                         pack.name + " target=" + (target ? target->GetName() : "?") +
+                                             " pack_engaged=" + std::to_string(f.packEngaged));
+            }
+            break;
+        case PullState::Approaching:
+            if (changed && st.pullPackFought)
+            {
+                // the fight ended with the pack itself still standing: it reset
+                st.pullPackFought = false;
+                ++st.pullFights;
+                DungeonLead::RecordEvent(botAI, "pack_reset", pack.name + " count=" + std::to_string(st.pullFights));
+            }
+            if (changed && st.pullFights >= kMaxPackResets)
+            {
+                DungeonRouteStep const& step = route->steps[st.stepIndex];
+                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} giving up on #{} {} after it reset {} times",
+                         bot->GetName(), pack.id, pack.name, st.pullFights);
+                botAI->TellMasterNoFacing("Dungeon lead: can't finish " + pack.name + ", moving on");
+                DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
+                DungeonLead::RecordEvent(botAI, "pack_skipped", pack.name + " reason=reset_too_often");
+                DungeonLead::SkipStep(st, step, DungeonFailureDomain::PullPlanning,
+                                      pack.bossPack ? DungeonFailureReason::BossEvade : DungeonFailureReason::ObjectiveTimeout);
+            }
             break;
         case PullState::Failed:
         {

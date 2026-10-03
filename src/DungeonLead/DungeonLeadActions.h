@@ -153,9 +153,6 @@ public:
 
     bool Execute(Event event) override;
     bool isUseful() override;
-
-private:
-    Creature* FindCcCandidate(Creature* boss);
 };
 
 class DungeonLeadStopAction : public Action

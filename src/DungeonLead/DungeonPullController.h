@@ -11,7 +11,8 @@
  * Initiating -> Establishing -> Established, or Failed (bounded retries, then the pack is skipped
  * and recorded - never a silent route advance). Decisions in DungeonLeadKernel::DecidePull.
  *
- * Orchestration only: it marks the pull target with the skull and starts the attack through
+ * Orchestration only: the pull target is the target plan's primary, skull-marked by
+ * DungeonTargetManager; the controller waits for that mark and starts the attack through
  * mod-playerbots' own "attack rti target"; the class AI does the fighting. A fight the class AI
  * opens on its own (grind) is simply observed as Established.
  */

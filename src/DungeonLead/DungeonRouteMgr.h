@@ -199,6 +199,8 @@ struct DungeonLeadState
     uint32 pullStateTs = 0;          // getMSTime() of the last pull state change
     uint8 pullAttempts = 0;          // pulls initiated on the current pack
     bool pullOrderRefused = false;   // upstream's Attack() refused the current attempt's order
+    uint8 pullFights = 0;            // fights in which the pack itself engaged and survived (resets)
+    bool pullPackFought = false;     // the pack itself engaged during the current fight
     // Combat anchor: where the current fight began (set by DungeonLeadBrain on entering Combat,
     // cleared once the session walks on). The tank does not chase beyond CombatLeashRadius of it.
     bool anchorSet = false;
@@ -260,7 +262,10 @@ struct DungeonLeadState
                                      // forever under the combat-aware wait, permanently excluding
                                      // it from normal DPS targeting for no reason - see
                                      // CcAbsoluteTimeoutSeconds and CheckCcMark().
-    ObjectGuid skullGuid;   // boss currently skull-marked by us, if any (so Stop() only clears our own)
+    ObjectGuid skullGuid;   // unit currently skull-marked by us, if any (so Stop() only clears our own)
+    ObjectGuid crossGuid;   // same for the cross (secondary target)
+    // DungeonTargetManager's current plan (kept between updates so it stays stable)
+    ObjectGuid targetPrimary, targetSecondary, targetCc;
     bool paused = false;    // "startdungeon pause" / "startdungeon continue"
     bool debugMode = false; // "startdungeon debug": verbose per-wait diagnostics to DungeonLeadDebug.log
     std::vector<DungeonLeadMemberSnapshot> memberSnapshots;  // pre-"startdungeon" state, for exact restore
@@ -308,7 +313,10 @@ struct DungeonLeadState
         pullStateTs = 0;
         pullAttempts = 0;
         pullOrderRefused = false;
+        pullFights = 0;
+        pullPackFought = false;
         anchorSet = false;
+        targetPrimary = targetSecondary = targetCc = ObjectGuid::Empty;
         visited.clear();
         skippedSteps.clear();
         mandatorySkipped = false;

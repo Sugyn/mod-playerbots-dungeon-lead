@@ -13,6 +13,7 @@
 #include "DungeonLeadKernels.h"
 #include "DungeonPack.h"
 #include "DungeonPullController.h"
+#include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
 
 #include "Creature.h"
@@ -48,18 +49,10 @@
 namespace
 {
     constexpr float kPathFinderDis = 70.0f;     // below this, hand the destination straight to mmaps
-    constexpr float kBossSearchRange = 60.0f;
-    constexpr float kCcSearchRange = 40.0f;
     // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
     // member dying repeatedly isn't yanked every tick, short enough that a real wipe is back on
     // its feet well inside WipeRecoverySeconds.
     constexpr uint32 kRecoveryRetrySeconds = 15;
-
-    Unit* IconUnit(PlayerbotAI* botAI, Group* group, uint8 index)
-    {
-        ObjectGuid guid = group->GetTargetIcon(index);
-        return guid.IsEmpty() ? nullptr : botAI->GetUnit(guid);
-    }
 
     bool RouteHasEntry(PlayerbotAI* botAI, uint32 entry)
     {
@@ -785,6 +778,7 @@ void DungeonLead::GuardActiveSessions()
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
+        DungeonTargetManager::Update(botAI);
         DungeonPullController::Update(botAI, party);
         if (!DungeonLeadBrain::Update(botAI, party))
             continue;  // session ended (wipe give-up)
@@ -841,6 +835,7 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
     DungeonLeadState const& st = sDungeonRouteMgr.State(bot->GetGUID());
     ObjectGuid const ownedCc = st.ccGuid;
     ObjectGuid const ownedSkull = st.skullGuid;
+    ObjectGuid const ownedCross = st.crossGuid;
     std::vector<DungeonLeadMemberSnapshot> const snapshots = st.memberSnapshots;
     DungeonLeadMemberSnapshot const leaderSnap = st.leaderSnapshot;
     bool const hasLeaderSnap = st.hasLeaderSnapshot;
@@ -894,6 +889,8 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
             group->SetTargetIcon(RtiTargetValue::starIndex, bot->GetGUID(), ObjectGuid::Empty);
         if (!ownedSkull.IsEmpty() && group->GetTargetIcon(RtiTargetValue::skullIndex) == ownedSkull)
             group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), ObjectGuid::Empty);
+        if (!ownedCross.IsEmpty() && group->GetTargetIcon(RtiTargetValue::crossIndex) == ownedCross)
+            group->SetTargetIcon(RtiTargetValue::crossIndex, bot->GetGUID(), ObjectGuid::Empty);
         if (!ownedCc.IsEmpty() && group->GetTargetIcon(RtiTargetValue::moonIndex) == ownedCc)
             group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
 
@@ -1382,6 +1379,8 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st)
     st.pullStateTs = 0;
     st.pullAttempts = 0;
     st.pullOrderRefused = false;
+    st.pullFights = 0;
+    st.pullPackFought = false;
 }
 
 void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
@@ -1594,7 +1593,11 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} reached step {} '{}'", bot->GetName(), step.step, step.boss);
             DungeonLead::RecordEvent(botAI, "reached", step.boss);
         }
-        else if (GetMSTimeDiffToNow(st.arrivedTs) >= sDungeonLeadConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+        // A live pull/boss pack is the pull controller's (bounded attempts and fights); this timeout
+        // is for what it can't handle - an interaction it can't perform, or nothing there at all.
+        else if (!((pack.type == DungeonRouteNodeType::Pull || pack.type == DungeonRouteNodeType::Boss) &&
+                   sighting.observation.alive > 0) &&
+                 GetMSTimeDiffToNow(st.arrivedTs) >= sDungeonLeadConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
         {
             // 2026-09-15 (independent architecture review DL-016 - "required interactions and
             // scripted events have no executor"): this used to require found.empty() too, so a
@@ -1787,83 +1790,11 @@ bool DungeonLeadMarkAction::isUseful()
     return bot && bot->GetGroup() && DungeonLead::InFiveMan(bot);
 }
 
-Creature* DungeonLeadMarkAction::FindCcCandidate(Creature* boss)
-{
-    // 2026-09-16 (independent architecture review DL-012 - "CC marks are not assignments and may
-    // pull an unrelated pack"): "possible targets" comes from upstream PossibleTargetsValue, which
-    // is unconstrained by pack/encounter - just AnyUnfriendlyUnitInObjectRangeCheck(range) around
-    // the BOT, confirmed by reading its FindUnits()/AcceptUnit(). The review's own named scenario
-    // is exactly a distance-from-bot search picking a closer elite from a DIFFERENT, unrelated
-    // pack over the boss's own intended one. Fixed narrowly: measure distance from the BOSS (the
-    // actual pack anchor this call already receives) instead of from the bot, so "nearest elite"
-    // means nearest to the encounter we're actually pulling, not nearest to wherever the tank
-    // currently stands relative to it.
-    //
-    // Deliberately NOT requiring c->IsInCombat(): a large part of what makes marking useful is
-    // catching an add BEFORE it's pulled - CC lands on it while it's still passive, so it never
-    // joins the fight in the first place. Requiring combat first would defeat that entirely.
-    GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
-    Creature* best = nullptr;
-    float bestDist = kCcSearchRange;
-    for (ObjectGuid const& guid : targets)
-    {
-        Creature* c = botAI->GetCreature(guid);
-        if (!c || c == boss || !c->IsAlive() || !c->IsInWorld() || c->IsDungeonBoss())
-            continue;
-        CreatureTemplate const* ct = c->GetCreatureTemplate();
-        if (!ct || ct->rank != CREATURE_ELITE_ELITE)
-            continue;
-        float d = boss->GetDistance(c);
-        if (d < bestDist)
-        {
-            bestDist = d;
-            best = c;
-        }
-    }
-    return best;
-}
-
+// The target plan (primary/secondary/CC) and its marks are owned by DungeonTargetManager, which
+// also runs every GuardActiveSessions() tick; a boss coming into range just refreshes it now.
 bool DungeonLeadMarkAction::Execute(Event /*event*/)
 {
-    Group* group = bot->GetGroup();
-    if (!group)
-        return false;
-
-    Creature* boss = DungeonLead::FindBossNear(botAI, kBossSearchRange);
-    if (!boss)
-        return false;
-
-    bool changed = false;
-    Unit* skull = IconUnit(botAI, group, RtiTargetValue::skullIndex);
-    if (!skull || !skull->IsAlive())
-    {
-        group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), boss->GetGUID());
-        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} skull -> {} ({})", bot->GetName(), boss->GetName(), boss->GetEntry());
-        DungeonLead::RecordEvent(botAI, "mark_skull", boss->GetName());
-        sDungeonRouteMgr.State(bot->GetGUID()).skullGuid = boss->GetGUID();  // so Stop() only clears our own
-        changed = true;
-    }
-
-    if (sDungeonLeadConfig.dungeonLeadMarkCc)
-    {
-        Unit* moon = IconUnit(botAI, group, RtiTargetValue::moonIndex);
-        if (!moon || !moon->IsAlive())
-        {
-            if (Creature* cc = FindCcCandidate(boss))
-            {
-                group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), cc->GetGUID());
-                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} moon -> {} ({})", bot->GetName(), cc->GetName(), cc->GetEntry());
-                DungeonLead::RecordEvent(botAI, "mark_moon", cc->GetName());
-                DungeonLeadState& ccSt = sDungeonRouteMgr.State(bot->GetGUID());
-                ccSt.ccGuid = cc->GetGUID();
-                ccSt.ccMarkedTs = getMSTime();
-                ccSt.ccMarkedAbsoluteTs = ccSt.ccMarkedTs;
-                ccSt.ccLandedTold = false;
-                changed = true;
-            }
-        }
-    }
-    return changed;
+    return DungeonTargetManager::Update(botAI);
 }
 
 // ---------------------------------------------------------------------------------------------

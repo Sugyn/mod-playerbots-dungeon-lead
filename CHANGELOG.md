@@ -57,9 +57,15 @@ the MAJOR bar above is met.
   pack, it marks the target with the skull and starts the attack (the class AI does the
   fighting). A pull that doesn't start or doesn't stick within its timeouts is retried, then
   the pack is skipped and reported (`pull_failed`, `pack_skipped`) - never silently passed.
+  Fighting the pack's trash counts as progress; only a pack that itself resets three times is
+  given up on (`pack_reset`).
 - Party cohesion has levels: a member beyond `PartySoftRange` (40) holds the next pull, beyond
   `PartyHardRange` (90, the old spread limit) the leader stops walking too, and a living member
   on another map or offline counts as lost (stops both). The pull controller logs why it holds.
+- Target plan: each fight gets one stable plan - skull on the primary (boss, then caster, then
+  elite), cross on the secondary, moon on an elite to crowd-control when there are more than two
+  enemies - logged as `target_plan`. Marks follow the plan; a mark placed by a player is never
+  moved. This also replaces the old boss-only skull/moon marking.
 - Combat leash: where a fight begins becomes its anchor, and the leading tank doesn't chase a
   target that runs more than `CombatLeashRadius` yards from it (logged as `leash_hold`), so a
   fleeing mob can't drag the party into the next pack.

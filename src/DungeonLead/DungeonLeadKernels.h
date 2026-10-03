@@ -567,8 +567,8 @@ namespace DungeonLeadKernel
         Marking,       // ready - put the skull on the pull target
         Initiating,    // attack ordered, waiting for the tank to be in combat
         Establishing,  // tank fighting, waiting for the pack to be engaged on it
-        Established,   // pack engaged and tank in combat - the class AI owns it now
-        Failed,        // timed out / evaded; retried until the attempt budget is spent
+        Established,   // tank fighting the pack or its planned primary - the class AI owns it now
+        Failed,        // order refused / no fight within the timeouts; retried until the budget is spent
     };
 
     inline char const* ToString(PullState s)
@@ -594,6 +594,7 @@ namespace DungeonLeadKernel
         bool pullablePack = false;  // current node is a Pull/Boss pack that is not cleared/skipped
         bool packAlive = false;     // something of the pack seen alive
         bool packEngaged = false;   // something of the pack alive and in combat
+        bool primaryEngaged = false;  // the target plan's primary (may be trash next to the pack) fighting
         bool inPullRange = false;   // tank within PullRange of the pull target
         bool partyReady = false;    // EvaluateReadiness(..., Pull) == Ready
         bool targetMarked = false;  // skull is on a living member of the pack
@@ -615,14 +616,16 @@ namespace DungeonLeadKernel
             return PullState::None;
         if (f.current == PullState::Failed)
             return f.attempts < p.maxAttempts ? PullState::Approaching : PullState::Failed;
-        if (f.packEngaged && f.leaderInCombat)
+        if (f.leaderInCombat && (f.packEngaged || f.primaryEngaged))
             return PullState::Established;  // however it started (ours, or the class AI's own)
 
         switch (f.current)
         {
             case PullState::Established:
-                // the pack is alive but nobody is fighting it any more: it evaded / reset
-                return f.packAlive ? PullState::Failed : PullState::None;
+                // Fight over. If the pack is still standing that fight was its trash (or it reset):
+                // go for it again - a fight that happened is progress, not a failed pull. Repeated
+                // fights on one pack are bounded by the caller.
+                return f.packAlive ? PullState::Approaching : PullState::None;
             case PullState::Initiating:
                 if (f.leaderInCombat || f.packEngaged)
                     return PullState::Establishing;
@@ -643,6 +646,102 @@ namespace DungeonLeadKernel
                     return PullState::Approaching;
                 return f.partyReady ? PullState::Marking : PullState::WaitingParty;
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Target plan (DungeonTargetManager): primary / secondary / CC for the current fight
+    // ---------------------------------------------------------------------------------------
+    //
+    // Deterministic and stable: a planned target keeps its slot for as long as it is a live
+    // candidate, so marks don't flicker between equally good choices. Priority: boss, elite
+    // caster, caster, elite, normal; ties by distance to the anchor, then id.
+
+    struct TargetCandidate
+    {
+        uint64_t id = 0;
+        bool boss = false;
+        bool caster = false;    // mana user
+        bool elite = false;
+        float distToAnchor = 0.0f;
+    };
+
+    struct TargetPlan
+    {
+        uint64_t primary = 0;    // skull
+        uint64_t secondary = 0;  // cross
+        uint64_t cc = 0;         // moon - an elite, never the boss or a kill target
+
+        bool operator==(TargetPlan const& o) const
+        {
+            return primary == o.primary && secondary == o.secondary && cc == o.cc;
+        }
+    };
+
+    inline int TargetRank(TargetCandidate const& c)
+    {
+        if (c.boss)
+            return 0;
+        if (c.caster && c.elite)
+            return 1;
+        if (c.caster)
+            return 2;
+        if (c.elite)
+            return 3;
+        return 4;
+    }
+
+    inline bool TargetBefore(TargetCandidate const& a, TargetCandidate const& b)
+    {
+        int const ra = TargetRank(a), rb = TargetRank(b);
+        if (ra != rb)
+            return ra < rb;
+        if (a.distToAnchor != b.distToAnchor)
+            return a.distToAnchor < b.distToAnchor;
+        return a.id < b.id;
+    }
+
+    inline TargetPlan PickTargetPlan(std::vector<TargetCandidate> const& candidates, TargetPlan const& previous,
+                                     bool wantCc)
+    {
+        auto find = [&](uint64_t id) -> TargetCandidate const*
+        {
+            for (TargetCandidate const& c : candidates)
+                if (c.id == id)
+                    return &c;
+            return nullptr;
+        };
+        auto best = [&](auto accept) -> uint64_t
+        {
+            TargetCandidate const* pick = nullptr;
+            for (TargetCandidate const& c : candidates)
+                if (accept(c) && (!pick || TargetBefore(c, *pick)))
+                    pick = &c;
+            return pick ? pick->id : 0;
+        };
+
+        TargetPlan plan;
+        // CC first among the kept slots: a kept CC target must not be promoted to a kill target.
+        TargetCandidate const* keptCc = wantCc && previous.cc ? find(previous.cc) : nullptr;
+        if (keptCc && keptCc->elite && !keptCc->boss)
+            plan.cc = keptCc->id;
+
+        plan.primary = previous.primary && previous.primary != plan.cc && find(previous.primary)
+                           ? previous.primary
+                           : best([&](TargetCandidate const& c) { return c.id != plan.cc; });
+        plan.secondary = previous.secondary && previous.secondary != plan.primary && previous.secondary != plan.cc &&
+                                 find(previous.secondary)
+                             ? previous.secondary
+                             : best([&](TargetCandidate const& c) { return c.id != plan.primary && c.id != plan.cc; });
+        if (wantCc && !plan.cc)
+        {
+            // Only worth it with more than two enemies: CC the best remaining elite that is
+            // neither kill target.
+            uint64_t const cc = best([&](TargetCandidate const& c)
+                { return c.elite && !c.boss && c.id != plan.primary && c.id != plan.secondary; });
+            if (cc && candidates.size() > 2)
+                plan.cc = cc;
+        }
+        return plan;
     }
 }
 
