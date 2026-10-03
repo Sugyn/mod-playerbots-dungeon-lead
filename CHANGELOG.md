@@ -25,6 +25,8 @@ the MAJOR bar above is met.
   retry limit, instead of assuming the queued change worked.
 - A dead or out-of-instance healer, or a dead party member, now also stops the route walk with
   a logged wait reason (pulls were already held back).
+- Pure navigation waypoints (e.g. the Wailing Caverns bridges) are passed as soon as they are
+  reached. They used to wait `StuckSeconds` (45 s) each and end up listed as skipped stops.
 
 ### Added
 - Config: `LeadershipAcquireTimeoutSeconds`, `LeadershipReturnTimeoutSeconds` (default 5),
@@ -41,6 +43,9 @@ the MAJOR bar above is met.
 - Route steps are classified by what the leader does there (travel, pull, boss, door,
   interaction, recovery, end) from the existing route data - no data change. The current
   objective appears in state transitions, `startdungeon status` and the "heading to" message.
+- Each pull/boss/event stop now tracks its enemy pack (unknown, available, engaged, cleared,
+  skipped), logged as `pack_state` and shown in `startdungeon status`. The route only moves past
+  a pack once it is cleared or given up on.
 
 ## [0.10.0-alpha] - 2026-10-03
 

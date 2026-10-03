@@ -15,6 +15,7 @@
 #include "NewRpgBaseAction.h"
 
 class Creature;
+struct DungeonPack;
 class PlayerbotAI;
 class Player;
 
@@ -117,6 +118,7 @@ public:
 private:
     DungeonRoute const* ResolveRoute(DungeonLeadState& st);
     void MarkVisited(DungeonLeadState& st);
+    void SetPackState(DungeonLeadState& st, DungeonPack const& pack, DungeonLeadKernel::PackState next);
     bool MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
 };
 

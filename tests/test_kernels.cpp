@@ -309,6 +309,37 @@ namespace
     }
 }
 
+namespace
+{
+    PackObservation Seen(uint32_t found, uint32_t alive, uint32_t engaged)
+    {
+        PackObservation o;
+        o.found = found;
+        o.alive = alive;
+        o.engaged = engaged;
+        return o;
+    }
+
+    void TestPack()
+    {
+        Check(DecidePackState(PackState::Unknown, Seen(0, 0, 0)) == PackState::Unknown, "nothing seen -> Unknown");
+        Check(DecidePackState(PackState::Unknown, Seen(3, 3, 0)) == PackState::Available, "alive, idle -> Available");
+        Check(DecidePackState(PackState::Available, Seen(3, 3, 1)) == PackState::Engaged, "one in combat -> Engaged");
+        Check(DecidePackState(PackState::Engaged, Seen(3, 1, 1)) == PackState::Engaged, "partly dead, fighting -> Engaged");
+        Check(DecidePackState(PackState::Engaged, Seen(3, 0, 0)) == PackState::Cleared, "only corpses -> Cleared");
+        Check(DecidePackState(PackState::Engaged, Seen(0, 0, 0)) == PackState::Engaged,
+              "engaged pack pulled out of probe range stays Engaged");
+        Check(DecidePackState(PackState::Available, Seen(0, 0, 0)) == PackState::Unknown, "available pack gone -> Unknown");
+        PackObservation remembered = Seen(0, 0, 0);
+        remembered.rememberedKilled = true;
+        Check(DecidePackState(PackState::Unknown, remembered) == PackState::Cleared, "instance kill memory -> Cleared");
+        Check(DecidePackState(PackState::Cleared, Seen(3, 3, 3)) == PackState::Cleared, "Cleared is terminal (respawn ignored)");
+        Check(DecidePackState(PackState::Skipped, Seen(0, 0, 0)) == PackState::Skipped, "Skipped is terminal");
+        Check(DecidePackState(PackState::Available, Seen(1, 1, 0)) == PackState::Available,
+              "reaching the spot alone does not clear a live pack");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -316,6 +347,7 @@ int main()
     TestReadiness();
     TestBrain();
     TestRouteTypes();
+    TestPack();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -11,6 +11,7 @@
 #include "DungeonLeadCanary.h"
 #include "DungeonLeadBrain.h"
 #include "DungeonLeadKernels.h"
+#include "DungeonPack.h"
 #include "DungeonPartyState.h"
 
 #include "Creature.h"
@@ -48,7 +49,6 @@ namespace
     constexpr float kPathFinderDis = 70.0f;     // below this, hand the destination straight to mmaps
     constexpr float kBossSearchRange = 60.0f;
     constexpr float kCcSearchRange = 40.0f;
-    constexpr float kCreatureProbeRange = 150.0f;
     // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
     // member dying repeatedly isn't yanked every tick, short enough that a real wipe is back on
     // its feet well inside WipeRecoverySeconds.
@@ -1347,6 +1347,17 @@ DungeonRoute const* DungeonLeadNextAction::ResolveRoute(DungeonLeadState& st)
     return route;
 }
 
+void DungeonLeadNextAction::SetPackState(DungeonLeadState& st, DungeonPack const& pack, DungeonLeadKernel::PackState next)
+{
+    if (st.packState == next)
+        return;
+    std::string const line = "#" + std::to_string(pack.id) + " " + pack.name + " (" + ToString(pack.type) + ") " +
+                             DungeonLeadKernel::ToString(st.packState) + "->" + DungeonLeadKernel::ToString(next);
+    st.packState = next;
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pack {}", bot->GetName(), line);
+    DungeonLead::RecordEvent(botAI, "pack_state", line);
+}
+
 void DungeonLeadNextAction::MarkVisited(DungeonLeadState& st)
 {
     if (st.stepIndex < st.visited.size())
@@ -1355,6 +1366,8 @@ void DungeonLeadNextAction::MarkVisited(DungeonLeadState& st)
     st.bestDist = 0.f;
     st.stuckAttempts = 0;
     st.stuckTs = 0;
+    st.packId = 0;  // the next step's pack (if any) is picked up on the next Execute()
+    st.packState = DungeonLeadKernel::PackState::Unknown;
 }
 
 bool DungeonLeadNextAction::Execute(Event /*event*/)
@@ -1499,38 +1512,23 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         botAI->TellMasterNoFacing(headingOut);
     }
 
-    // prefer the live creature position; a dead boss means this stop is done
-    std::list<Creature*> found;
-    bot->GetCreatureListWithEntryInGrid(found, step.entry, kCreatureProbeRange);
-    // 2026-09-16 (independent architecture review DL-015 - "encounter completion is inferred from
-    // nearby entry corpses, not encounter identity"): the search above is centered on the BOT's
-    // current live position, not on this step's own recorded coordinates - while still walking
-    // toward the step (this runs every tick along the way, not just on arrival), an unrelated
-    // creature that happens to share this entry ID somewhere else within 150y of wherever the bot
-    // currently is could be mistaken for this specific encounter. AzerothCore's grid search only
-    // takes a WorldObject anchor (no raw-position overload), so reusing it centered elsewhere isn't
-    // a one-line change - filtered the already-fetched list against the step's own coordinates
-    // instead, at the same probe range: cheap (list is already small - one entry ID within 150y),
-    // and only excludes entries the search would have wrongly included, never one it should have
-    // found (the intended encounter is at/near step.x/y/z by construction).
-    if (step.HasPosition())
+    // Pack nodes (pull/boss/interaction) advance only once their pack is Cleared (or Skipped
+    // below) - never just because the tank reached the coordinate. Travel nodes have no pack.
+    DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+    DungeonPackSighting sighting;
+    if (pack.Exists())
     {
-        WorldPosition const stepPos(bot->GetMapId(), step.x, step.y, step.z, 0.f);
-        found.remove_if([&](Creature* c)
-            { return c->GetExactDist(stepPos.GetPositionX(), stepPos.GetPositionY(), stepPos.GetPositionZ()) >
-                     kCreatureProbeRange; });
-    }
-    bool anyAlive = false;
-    for (Creature* c : found)
-    {
-        if (c->IsAlive())
+        if (st.packId != pack.id)
         {
-            anyAlive = true;
-            dest = WorldPosition(c);
-            break;
+            st.packId = pack.id;
+            st.packState = DungeonLeadKernel::PackState::Unknown;
         }
+        sighting = DungeonPacks::Observe(bot, pack, st.instanceId);
+        SetPackState(st, pack, DungeonLeadKernel::DecidePackState(st.packState, sighting.observation));
+        if (sighting.firstAlive)
+            dest = WorldPosition(sighting.firstAlive);  // prefer the live creature position
     }
-    if (!found.empty() && !anyAlive)
+    if (st.packState == DungeonLeadKernel::PackState::Cleared && pack.Exists())
     {
         std::ostringstream out;
         out << "Dungeon lead: " << step.boss << " is down, moving on";
@@ -1546,6 +1544,16 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     float dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
     if (dist <= sDungeonLeadConfig.dungeonLeadArriveDistance)
     {
+        if (!pack.Exists())
+        {
+            // A travel node is done once reached - there is nothing to fight or confirm. (Before
+            // typed nodes, path anchors waited StuckSeconds here and then logged "not_found".)
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} passed step {} '{}'", bot->GetName(), step.step, step.boss);
+            DungeonLead::RecordEvent(botAI, "travel_reached", step.boss);
+            MarkVisited(st);
+            return true;
+        }
+
         // Arriving next to a still-alive boss is NOT the same as completing this stop - a pull can
         // still evade, wipe, or just not happen this tick. Hold here (isUseful() already blocks
         // walking on while the group is in combat) and only advance once the "already_dead" branch
@@ -1578,7 +1586,8 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // actually progress an interaction-gated objective - but it now gives up and reports
             // Partial within the same dungeonLeadStuckSeconds window as every other stuck case,
             // instead of silently occupying the session until something else notices.
-            bool const stillAlive = !found.empty();
+            bool const stillAlive = sighting.observation.alive > 0;
+            SetPackState(st, pack, DungeonLeadKernel::PackState::Skipped);
             std::ostringstream out;
             out << "Dungeon lead: " << (stillAlive ? "can't progress past " : "nothing found at ") << step.boss
                 << ", moving on";
@@ -1917,6 +1926,8 @@ bool StartDungChatShortcutAction::Execute(Event event)
             std::ostringstream out;
             out << "Dungeon lead status: run #" << st.runId << " " << (route ? route->name : "no route")
                 << " | step " << stepName << " | objective " << DungeonLeadBrain::CurrentObjective(st).Describe()
+                << " | pack " << (st.packId ? "#" + std::to_string(st.packId) + " " + DungeonLeadKernel::ToString(st.packState)
+                                          : std::string("none"))
                 << " | outcome " << ToString(st.outcome);
             if (st.outcome == DungeonRunOutcome::Partial)
                 out << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";

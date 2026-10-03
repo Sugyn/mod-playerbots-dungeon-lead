@@ -193,6 +193,8 @@ struct DungeonLeadState
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
+    uint32 packId = 0;               // DungeonPack::id of the pack being worked on (0 = none)
+    DungeonLeadKernel::PackState packState = DungeonLeadKernel::PackState::Unknown;
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
     // revive from corpse. Exactly one step of it is impossible in a dungeon: releasing inside an
@@ -291,6 +293,8 @@ struct DungeonLeadState
         announcedStep = -1;
         arrivedTold = false;
         arrivedTs = 0;
+        packId = 0;
+        packState = DungeonLeadKernel::PackState::Unknown;
         visited.clear();
         skippedSteps.clear();
         mandatorySkipped = false;

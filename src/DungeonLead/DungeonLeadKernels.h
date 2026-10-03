@@ -390,6 +390,61 @@ namespace DungeonLeadKernel
                     TransitionReason::PartyNotReady};
         return {LeadState::Travelling, TransitionReason::PartyReady};
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Pack state (the enemy group a Pull/Boss/Interaction route node is about)
+    // ---------------------------------------------------------------------------------------
+    //
+    // A pack is identified by static data only (expected creature entries near the node's
+    // position); runtime GUIDs are observed each tick, never stored as the definition. Route
+    // progress depends on the pack becoming Cleared (or explicitly Skipped), never on the tank
+    // merely reaching the coordinate.
+
+    enum class PackState : uint8_t
+    {
+        Unknown,    // nothing seen yet (not in range, or nothing spawned)
+        Available,  // alive, not fighting
+        Engaged,    // alive and in combat
+        Cleared,    // seen dead (or remembered killed in this instance)
+        Skipped,    // given up on (stuck / not progressing) - terminal
+    };
+
+    inline char const* ToString(PackState s)
+    {
+        switch (s)
+        {
+            case PackState::Unknown:   return "unknown";
+            case PackState::Available: return "available";
+            case PackState::Engaged:   return "engaged";
+            case PackState::Cleared:   return "cleared";
+            case PackState::Skipped:   return "skipped";
+        }
+        return "unknown";
+    }
+
+    struct PackObservation
+    {
+        uint32_t found = 0;            // matching creatures near the pack position, dead or alive
+        uint32_t alive = 0;
+        uint32_t engaged = 0;          // alive and in combat
+        bool rememberedKilled = false; // instance kill memory says this pack is done
+    };
+
+    inline PackState DecidePackState(PackState prev, PackObservation const& o)
+    {
+        if (prev == PackState::Cleared || prev == PackState::Skipped)
+            return prev;  // terminal
+        if (o.rememberedKilled)
+            return PackState::Cleared;
+        if (o.engaged > 0)
+            return PackState::Engaged;
+        if (o.alive > 0)
+            return PackState::Available;
+        if (o.found > 0)
+            return PackState::Cleared;  // only corpses left
+        // Nothing in range: an engaged pack may just have been pulled out of probe range.
+        return prev == PackState::Engaged ? PackState::Engaged : PackState::Unknown;
+    }
 }
 
 #endif

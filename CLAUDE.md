@@ -2252,14 +2252,35 @@ Remaining:
 
 ## Phase 5 — Pack model
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): pack model and cleared detection`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, CMake reconfigured for the new .cpp, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 82 checks (11 new pack-state cases incl. "reaching the
+  spot alone does not clear a live pack", terminal Cleared/Skipped, kill memory)
+- Live: temporary server-only harness (not committed): pack built from a real creature
+  (Wrekt Warrior, entry 17142) observed found=1 alive=1 -> available; after KillSelf
+  found=1 alive=0 -> cleared. Removed after.
+
+Notes:
+- `src/DungeonLead/DungeonPack.{h,cpp}`: `DungeonPack` from static route data only (entry +
+  position + probe radius, boss/optional flags; id = step index + 1); `DungeonPacks::Observe`
+  finds the live creatures each time. Decision: `DungeonLeadKernel::DecidePackState`
+  {Unknown, Available, Engaged, Cleared, Skipped}.
+- Session: `packId` / `packState` (route-progress fields), changes logged as `pack_state`;
+  `startdungeon status` shows the current pack.
+- Route walk: a pack node advances only on Cleared (or Skipped by the existing
+  StuckSeconds-after-arrival give-up). Travel nodes have no pack and complete on arrival -
+  fixes path anchors waiting 45 s and being reported `not_found`/skipped (18 occurrences in
+  the run CSV before this change).
+- One expected entry per pack (route data has one entry per row). Multi-entry packs need
+  route data first.
+
+Remaining:
+- none
 
 ---
 
