@@ -9,6 +9,7 @@
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonLeadCanary.h"
+#include "DungeonLeadBrain.h"
 #include "DungeonLeadKernels.h"
 #include "DungeonPartyState.h"
 
@@ -727,7 +728,7 @@ void DungeonLead::GuardActiveSessions()
         if (!bot)
         {
             DungeonLeadState const& goneSt = sDungeonRouteMgr.State(guid);
-            if (goneSt.lifecycle == DungeonLeadLifecycle::Stopping)
+            if (goneSt.state == DungeonLeadKernel::LeadState::Stopping)
             {
                 // run summary was already written when Stop() ran - only the handback was pending
                 LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} disconnected before the leader "
@@ -750,7 +751,7 @@ void DungeonLead::GuardActiveSessions()
 
         // Starting/Stopping sessions only wait for a leadership change - none of the strategy
         // reassertion or wipe handling below applies until (or after) the tank actually leads.
-        if (sDungeonRouteMgr.State(guid).lifecycle != DungeonLeadLifecycle::Active)
+        if (!DungeonLeadKernel::IsActive(sDungeonRouteMgr.State(guid).state))
         {
             ReconcileLeadership(botAI);
             continue;
@@ -760,30 +761,10 @@ void DungeonLead::GuardActiveSessions()
         if (!group)
             continue;
 
-        // 2026-09-15 (independent architecture review DL-013 - "wipe, death, evade, reset, and
-        // event recovery are largely absent", narrow slice - see DungeonLeadState::tankDeathTs):
-        // DungeonLeadNextAction::isUseful() already refuses to run at all while the tank is dead,
-        // so nothing else in this codebase would ever notice a wipe, let alone recover from one -
-        // found live tonight, watching a run where the tank died fighting Lady Anacondra and the
-        // session just sat there afterward. Give up honestly (Stop(), outcome=Partial,
-        // Combat/PartyWipe) once the grace window expires, same shape as DL-016's stuck-alive fix,
-        // rather than occupying the session (and a CanaryMaxConcurrent slot) forever.
-        //
-        // 2026-09-16: the grace window is its own WipeRecoverySeconds (default 300) rather than the
-        // 45s StuckSeconds it originally borrowed, because 45s demonstrably cut recovery off before
-        // it could finish. Upstream mod-playerbots already implements the whole recovery chain and
-        // nothing here blocks it: BOT_STATE_DEAD is a separate engine from the BOT_STATE_NON_COMBAT
-        // one holding "dungeon lead", the bot switches to it automatically on death, and
-        // AiFactory::AddDefaultDeadStrategies always installs "dead" - whose triggers are
-        // auto release -> find corpse -> revive from corpse, plus accept/self resurrect. What that
-        // needs is *time*: a corpse run from the instance graveyard back to the boss, on top of
-        // AzerothCore's own corpse reclaim delay, does not fit in 45 seconds. Measured live on
-        // 2026-09-16 (run 1876500886323200): tank died 16:01:48, this gave up 16:02:34, and the bot
-        // was found alive on its own feet shortly after - i.e. the session was abandoned while the
-        // recovery it was waiting for was still in progress. Still NOT the review's full recovery
-        // model: no regroup or resume is driven from here, and a tank that resurrects inside the
-        // window is simply left running as if nothing happened. It only stops cutting the recovery
-        // short. Follower deaths are still not tracked at all (only the leader's).
+        // The route-walk action does not run while the leader is dead, so death and wipe recovery
+        // are driven from here, through DungeonLeadBrain::Update() below (WipeRecovery state,
+        // WipeRecoverySeconds / MaxWipesPerRun give-up). Measured 2026-09-16: upstream's own
+        // dead-state chain (release, corpse run, resurrect) works but needs minutes, not 45 s.
         DungeonLeadState& st = sDungeonRouteMgr.State(guid);
 
         // Latch which dungeon this session is actually in, as soon as the leader is standing in
@@ -809,59 +790,11 @@ void DungeonLead::GuardActiveSessions()
         // mob-free spot, and a corpse run from there is an ordinary same-map run that works.
         DungeonLead::RecoverStrandedMembers(botAI, st);
 
+        // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
+        if (!DungeonLeadBrain::Update(botAI, DungeonPartyState::Evaluate(botAI)))
+            continue;  // session ended (wipe give-up)
         if (!bot->IsAlive())
-        {
-            if (!st.tankDeathTs)
-            {
-                st.tankDeathTs = now;
-                ++st.wipeCount;
-                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} died while leading (run={}, wipe #{}) - "
-                         "recovering, {}s before giving up", bot->GetName(), st.runId, st.wipeCount,
-                         sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds);
-                DungeonLead::RecordEvent(botAI, "wipe_detected", "wipe #" + std::to_string(st.wipeCount));
-            }
-            // Two independent ways a run ends here. Too many wipes means the party simply cannot
-            // do this dungeon, and no amount of further recovery will change that - stop rather
-            // than loop forever. The timeout is the other one: recovery didn't take, for whatever
-            // reason, and the session must not hang waiting on it.
-            else if (sDungeonLeadConfig.dungeonLeadMaxWipesPerRun &&
-                     st.wipeCount > sDungeonLeadConfig.dungeonLeadMaxWipesPerRun)
-            {
-                LOG_INFO("playerbots.dungeonlead",
-                         "[DungeonLead] {} wiped {} times on run={} (limit {}) - giving up",
-                         bot->GetName(), st.wipeCount, st.runId,
-                         sDungeonLeadConfig.dungeonLeadMaxWipesPerRun);
-                st.outcome = DungeonRunOutcome::Partial;
-                st.failureDomain = DungeonFailureDomain::Combat;
-                st.failureReason = DungeonFailureReason::PartyWipe;
-                DungeonLead::RecordEvent(botAI, "wipe_giveup", "wipe limit reached");
-                DungeonLead::RecordRunSummary(botAI, "wipe");
-                DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
-            }
-            else if (GetMSTimeDiffToNow(st.tankDeathTs) >=
-                     sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds * IN_MILLISECONDS)
-            {
-                LOG_INFO("playerbots.dungeonlead",
-                         "[DungeonLead] {} still dead {}s into leading run={} - giving up (wipe)",
-                         bot->GetName(), sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds, st.runId);
-                st.outcome = DungeonRunOutcome::Partial;
-                st.failureDomain = DungeonFailureDomain::Combat;
-                st.failureReason = DungeonFailureReason::PartyWipe;
-                DungeonLead::RecordEvent(botAI, "wipe_giveup", "recovery timed out");
-                DungeonLead::RecordRunSummary(botAI, "wipe");
-                DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
-            }
-            continue;  // dead either way this tick - nothing below applies to a corpse
-        }
-        if (st.tankDeathTs)
-        {
-            // Back on its feet - resume the route from wherever it had got to. wipeCount is
-            // deliberately NOT cleared: it is the run's honest tally, reported at the end.
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovered from wipe #{} on run={} - resuming",
-                     bot->GetName(), st.wipeCount, st.runId);
-            DungeonLead::RecordEvent(botAI, "wipe_recovered", "wipe #" + std::to_string(st.wipeCount));
-            st.tankDeathTs = 0;
-        }
+            continue;  // nothing below applies to a corpse
 
         // Observability only - the reapply below is unconditional regardless of this check (a
         // FOLLOWER-only wipe wouldn't show up here at all, see below), but logging specifically
@@ -892,17 +825,17 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
     if (!sDungeonRouteMgr.HasState(bot->GetGUID()))
         return;  // nothing to stop - and State() below would otherwise create an entry
 
-    switch (sDungeonRouteMgr.State(bot->GetGUID()).lifecycle)
+    switch (sDungeonRouteMgr.State(bot->GetGUID()).state)
     {
-        case DungeonLeadLifecycle::Stopping:
+        case DungeonLeadKernel::LeadState::Stopping:
             return;  // already stopped, handback in flight - GuardActiveSessions() finishes it
-        case DungeonLeadLifecycle::Starting:
+        case DungeonLeadKernel::LeadState::Starting:
             // nothing applied yet (strategies wait for confirmed leadership), so nothing to restore
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} stopped while still acquiring leadership",
                      bot->GetName());
             sDungeonRouteMgr.ResetState(bot->GetGUID());
             return;
-        case DungeonLeadLifecycle::Active:
+        default:
             break;
     }
 
@@ -975,16 +908,23 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
             handbackTo = master->GetGUID();
     }
 
-    sDungeonRouteMgr.ResetState(bot->GetGUID());
     if (handbackTo.IsEmpty())
+    {
+        sDungeonRouteMgr.ResetState(bot->GetGUID());
         return;
+    }
+    DungeonLeadBrain::TransitionTo(botAI, sDungeonRouteMgr.State(bot->GetGUID()), DungeonLeadKernel::LeadState::Stopping,
+                                   DungeonLeadKernel::TransitionReason::StopRequested);
+    uint32 const stoppingSinceTs = sDungeonRouteMgr.State(bot->GetGUID()).stateSinceTs;
+    sDungeonRouteMgr.ResetState(bot->GetGUID());
 
     // Queueing the handback is not the handback (audit AUDIT-003): the session stays registered
     // as Stopping - strategies are already restored above, so nothing else runs for it - until
     // GuardActiveSessions() observes the original owner as leader again, retrying a bounded
     // number of times. A failed enqueue counts as an attempt and is retried the same way.
     DungeonLeadState& stopping = sDungeonRouteMgr.State(bot->GetGUID());
-    stopping.lifecycle = DungeonLeadLifecycle::Stopping;
+    stopping.state = DungeonLeadKernel::LeadState::Stopping;  // carried over, transition logged above
+    stopping.stateSinceTs = stoppingSinceTs;
     stopping.runId = runId;
     stopping.origin = origin;
     stopping.tankName = tankName;
@@ -1078,7 +1018,7 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
 
     if (group->GetLeaderGUID() == bot->GetGUID())
     {
-        ActivateSession(botAI, group, master);
+        ActivateSession(botAI, group, master, DungeonLeadKernel::TransitionReason::SessionStart);
         return true;
     }
 
@@ -1088,7 +1028,8 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
     // leader; the request is retried a bounded number of times and the start abandoned if it
     // never lands.
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
-    st.lifecycle = DungeonLeadLifecycle::Starting;
+    DungeonLeadBrain::TransitionTo(botAI, st, DungeonLeadKernel::LeadState::Starting,
+                                   DungeonLeadKernel::TransitionReason::SessionStart);
     st.leadershipTarget = bot->GetGUID();
     st.leadershipFrom = group->GetLeaderGUID();
     RequestLeadership(bot, st);
@@ -1101,13 +1042,14 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
 }
 
 // Starting -> Active, once the tank is confirmed as group leader (or already was).
-void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* master)
+void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* master,
+                                  DungeonLeadKernel::TransitionReason reason)
 {
     Player* bot = botAI->GetBot();
     DungeonLeadSessionOrigin origin;
     {
         DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
-        st.lifecycle = DungeonLeadLifecycle::Active;
+        DungeonLeadBrain::TransitionTo(botAI, st, DungeonLeadKernel::LeadState::WaitingReady, reason);
         st.leadershipTarget = ObjectGuid::Empty;
         st.leadershipFrom = ObjectGuid::Empty;
         st.leadershipRequestTs = 0;
@@ -1169,7 +1111,7 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
-    bool const starting = st.lifecycle == DungeonLeadLifecycle::Starting;
+    bool const starting = st.state == DungeonLeadKernel::LeadState::Starting;
     Group* group = bot->GetGroup();
 
     DungeonLeadKernel::LeadershipObservation obs;
@@ -1206,7 +1148,8 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
                      bot->GetName(), what, st.leadershipAttempts, st.runId);
             if (starting)
                 ActivateSession(botAI, group,
-                                st.origin == DungeonLeadSessionOrigin::Manual ? botAI->GetMaster() : nullptr);
+                                st.origin == DungeonLeadSessionOrigin::Manual ? botAI->GetMaster() : nullptr,
+                                DungeonLeadKernel::TransitionReason::LeadershipConfirmed);
             else
                 sDungeonRouteMgr.ResetState(bot->GetGUID());
             return;
@@ -1246,13 +1189,16 @@ bool DungeonLeadNextAction::isUseful()
     if (!DungeonLead::InFiveMan(bot))
         return false;
 
+    // The brain decides whether to walk (Travelling); this only reports why not.
+    DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
+    if (!DungeonLeadBrain::Update(botAI, party))
+        return false;
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
     if (st.paused)
         return false;  // "startdungeon pause": stand still until "startdungeon continue"
 
     // "waiting for you": a one-shot chat ping on the transition into master-too-far, not spammed
     // every tick, and cleared as soon as the player is back in range.
-    DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
     DungeonLeadKernel::ReadinessPolicy const policy = DungeonPartyState::Policy();
     bool masterTooFar = DungeonLeadKernel::MasterTooFar(party.facts, policy);
     if (masterTooFar && !st.farFromMasterTold)
@@ -1284,11 +1230,11 @@ bool DungeonLeadNextAction::isUseful()
     if (Player* offender = party.Member(ready.offender))
         waitDetail = offender->GetName();
 
-    if (wait)
+    if (st.state != DungeonLeadKernel::LeadState::Travelling)
     {
         // throttled: one line per 10 s per bot
         uint32 now = getMSTime();
-        if (!st.lastWaitLogTs || now - st.lastWaitLogTs > 10000)
+        if (wait && (!st.lastWaitLogTs || now - st.lastWaitLogTs > 10000))
         {
             st.lastWaitLogTs = now;
 
@@ -1983,7 +1929,7 @@ bool StartDungChatShortcutAction::Execute(Event event)
                 << " | step " << stepName << " | outcome " << ToString(st.outcome);
             if (st.outcome == DungeonRunOutcome::Partial)
                 out << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";
-            out << " | " << (st.paused ? "PAUSED" : "running")
+            out << " | " << (st.paused ? "PAUSED" : DungeonLeadKernel::ToString(st.state))
                 << (st.debugMode ? " | debug ON" : "") << (st.testMode ? " | TEST MODE" : "");
             botAI->TellMaster(out);
             return true;

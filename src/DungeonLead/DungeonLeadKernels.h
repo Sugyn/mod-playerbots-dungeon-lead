@@ -282,6 +282,114 @@ namespace DungeonLeadKernel
             return {ReadyStatus::Fragmented, spread};
         return {};
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Leader state machine (DungeonLeadBrain) - the one authoritative state of a session
+    // ---------------------------------------------------------------------------------------
+
+    enum class LeadState : uint8_t
+    {
+        Starting,      // leadership requested, not yet observed; nothing applied
+        WaitingReady,  // party not ready (or paused) - hold position, no new pulls
+        Travelling,    // party ready, walking the route
+        Combat,        // someone in the party is fighting
+        PostCombat,    // fight over, party not ready yet
+        WipeRecovery,  // leader dead - waiting for upstream's release/corpse-run/res chain
+        Completing,    // route finished, session held until stopped
+        Stopping,      // strategies restored, leader handback not yet observed
+    };
+
+    inline char const* ToString(LeadState s)
+    {
+        switch (s)
+        {
+            case LeadState::Starting:     return "starting";
+            case LeadState::WaitingReady: return "waiting_ready";
+            case LeadState::Travelling:   return "travelling";
+            case LeadState::Combat:       return "combat";
+            case LeadState::PostCombat:   return "post_combat";
+            case LeadState::WipeRecovery: return "wipe_recovery";
+            case LeadState::Completing:   return "completing";
+            case LeadState::Stopping:     return "stopping";
+        }
+        return "unknown";
+    }
+
+    // Starting and Stopping are driven by the leadership reconciliation, everything else by
+    // DecideActive below.
+    inline bool IsActive(LeadState s) { return s != LeadState::Starting && s != LeadState::Stopping; }
+
+    enum class TransitionReason : uint8_t
+    {
+        SessionStart,
+        LeadershipConfirmed,
+        StopRequested,
+        Paused,
+        PartyNotReady,
+        PartyReady,
+        CombatStarted,
+        CombatEnded,
+        LeaderDied,
+        LeaderRecovered,
+        RouteComplete,
+    };
+
+    inline char const* ToString(TransitionReason r)
+    {
+        switch (r)
+        {
+            case TransitionReason::SessionStart:        return "session_start";
+            case TransitionReason::LeadershipConfirmed: return "leadership_confirmed";
+            case TransitionReason::StopRequested:       return "stop_requested";
+            case TransitionReason::Paused:              return "paused";
+            case TransitionReason::PartyNotReady:       return "party_not_ready";
+            case TransitionReason::PartyReady:          return "party_ready";
+            case TransitionReason::CombatStarted:       return "combat_started";
+            case TransitionReason::CombatEnded:         return "combat_ended";
+            case TransitionReason::LeaderDied:          return "leader_died";
+            case TransitionReason::LeaderRecovered:     return "leader_recovered";
+            case TransitionReason::RouteComplete:       return "route_complete";
+        }
+        return "unknown";
+    }
+
+    struct ActiveFacts
+    {
+        LeadState current = LeadState::WaitingReady;
+        bool leaderAlive = true;
+        bool paused = false;
+        bool routeComplete = false;
+        bool anyInCombat = false;  // leader or a living same-map member
+        bool walkReady = false;    // EvaluateReadiness(..., Walk) == Ready
+    };
+
+    struct Transition
+    {
+        LeadState next;
+        TransitionReason reason;
+    };
+
+    // Next state for an active session. Returns `current` unchanged (with the reason that keeps
+    // it there) when nothing changed - the caller only logs actual changes.
+    inline Transition DecideActive(ActiveFacts const& f)
+    {
+        if (!f.leaderAlive)
+            return {LeadState::WipeRecovery, TransitionReason::LeaderDied};
+        if (f.current == LeadState::WipeRecovery)
+            return {LeadState::WaitingReady, TransitionReason::LeaderRecovered};
+        if (f.routeComplete)
+            return {LeadState::Completing, TransitionReason::RouteComplete};
+        if (f.anyInCombat)
+            return {LeadState::Combat, TransitionReason::CombatStarted};
+        if (f.current == LeadState::Combat)
+            return {LeadState::PostCombat, TransitionReason::CombatEnded};
+        if (f.paused)
+            return {LeadState::WaitingReady, TransitionReason::Paused};
+        if (!f.walkReady)
+            return {f.current == LeadState::PostCombat ? LeadState::PostCombat : LeadState::WaitingReady,
+                    TransitionReason::PartyNotReady};
+        return {LeadState::Travelling, TransitionReason::PartyReady};
+    }
 }
 
 #endif

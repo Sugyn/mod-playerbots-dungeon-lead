@@ -94,7 +94,7 @@ uint32 DungeonLead::CanarySupervisorTick()
         if (st.origin != DungeonLeadSessionOrigin::AutoCanary)
             continue;
         ++activeCanaryCount;
-        if (st.lifecycle == DungeonLeadLifecycle::Stopping)
+        if (st.state == DungeonLeadKernel::LeadState::Stopping)
             continue;  // already stopped, only the leader handback is still being confirmed
 
         Group* group = bot->GetGroup();

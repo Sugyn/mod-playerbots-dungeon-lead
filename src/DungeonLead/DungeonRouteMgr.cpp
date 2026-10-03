@@ -213,14 +213,3 @@ char const* ToString(DungeonLeadSessionOrigin v)
     }
     return "unknown";
 }
-
-char const* ToString(DungeonLeadLifecycle v)
-{
-    switch (v)
-    {
-        case DungeonLeadLifecycle::Starting: return "starting";
-        case DungeonLeadLifecycle::Active:   return "active";
-        case DungeonLeadLifecycle::Stopping: return "stopping";
-    }
-    return "unknown";
-}

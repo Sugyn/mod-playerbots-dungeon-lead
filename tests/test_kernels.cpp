@@ -226,11 +226,74 @@ namespace
     }
 }
 
+namespace
+{
+    ActiveFacts Active(LeadState current)
+    {
+        ActiveFacts f;
+        f.current = current;
+        f.walkReady = true;
+        return f;
+    }
+
+    void TestBrain()
+    {
+        Check(DecideActive(Active(LeadState::WaitingReady)).next == LeadState::Travelling, "ready -> Travelling");
+        ActiveFacts f = Active(LeadState::Travelling);
+        f.walkReady = false;
+        Transition t = DecideActive(f);
+        Check(t.next == LeadState::WaitingReady && t.reason == TransitionReason::PartyNotReady,
+              "not ready -> WaitingReady (party_not_ready)");
+        f = Active(LeadState::Travelling);
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "fight starts -> Combat");
+        f = Active(LeadState::Combat);
+        f.walkReady = false;
+        Check(DecideActive(f).next == LeadState::PostCombat, "fight over -> PostCombat");
+        f.current = LeadState::PostCombat;
+        Check(DecideActive(f).next == LeadState::PostCombat, "PostCombat holds while not ready");
+        f.walkReady = true;
+        Check(DecideActive(f).next == LeadState::Travelling, "PostCombat -> Travelling once ready");
+        f = Active(LeadState::Combat);
+        Check(DecideActive(f).next == LeadState::PostCombat, "Combat always passes through PostCombat");
+
+        f = Active(LeadState::Combat);
+        f.leaderAlive = false;
+        t = DecideActive(f);
+        Check(t.next == LeadState::WipeRecovery && t.reason == TransitionReason::LeaderDied, "leader dies -> WipeRecovery");
+        f.current = LeadState::WipeRecovery;
+        Check(DecideActive(f).next == LeadState::WipeRecovery, "still dead -> stays WipeRecovery");
+        f.leaderAlive = true;
+        f.anyInCombat = true;
+        t = DecideActive(f);
+        Check(t.next == LeadState::WaitingReady && t.reason == TransitionReason::LeaderRecovered,
+              "resurrected -> WaitingReady first, even if combat is around");
+
+        f = Active(LeadState::Travelling);
+        f.routeComplete = true;
+        Check(DecideActive(f).next == LeadState::Completing, "route done -> Completing");
+        f.current = LeadState::Completing;
+        f.routeComplete = false;
+        Check(DecideActive(f).next == LeadState::Travelling, "route reset -> back to walking");
+
+        f = Active(LeadState::Travelling);
+        f.paused = true;
+        t = DecideActive(f);
+        Check(t.next == LeadState::WaitingReady && t.reason == TransitionReason::Paused, "paused -> WaitingReady");
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "combat still tracked while paused");
+
+        Check(!IsActive(LeadState::Starting) && !IsActive(LeadState::Stopping) && IsActive(LeadState::Combat),
+              "Starting/Stopping are not active states");
+    }
+}
+
 int main()
 {
     TestLeadership();
     TestHealer();
     TestReadiness();
+    TestBrain();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

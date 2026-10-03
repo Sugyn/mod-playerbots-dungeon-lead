@@ -10,6 +10,7 @@
 #define PLAYERBOTS_DUNGEONLEADACTIONS_H
 
 #include "ChatShortcutActions.h"
+#include "DungeonLeadKernels.h"
 #include "DungeonRouteMgr.h"
 #include "NewRpgBaseAction.h"
 
@@ -25,7 +26,7 @@ namespace DungeonLead
 {
     bool InFiveMan(Player* bot);
     bool IsOn(PlayerbotAI* botAI);
-    // A session exists for this bot in any lifecycle stage (Starting, Active or Stopping) - IsOn()
+    // A session exists for this bot in any state (Starting, active or Stopping) - IsOn()
     // only becomes true once it is Active. Use this for "is this bot/group already busy".
     bool HasSession(PlayerbotAI* botAI);
     // Readiness (healer, deaths, resting, mana, leash, spread) lives in DungeonPartyState; this
@@ -75,8 +76,8 @@ namespace DungeonLead
     // to finish.
     void Stop(PlayerbotAI* botAI, bool giveLeaderBack);
 
-    // Leadership lifecycle internals, see StartSession()/Stop() and DungeonLeadLifecycle.
-    void ActivateSession(PlayerbotAI* botAI, Group* group, Player* master);
+    // Leadership lifecycle internals, see StartSession()/Stop() and DungeonLeadBrain.
+    void ActivateSession(PlayerbotAI* botAI, Group* group, Player* master, DungeonLeadKernel::TransitionReason reason);
     void RequestLeadership(Player* bot, DungeonLeadState& st);
     void ReconcileLeadership(PlayerbotAI* botAI);
     // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,

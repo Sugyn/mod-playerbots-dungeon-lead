@@ -35,6 +35,9 @@ the MAJOR bar above is met.
 - Party readiness (player, healer, deaths, combat, drinking, healer mana, leash, spread) is
   checked in one place for both pulling and walking, so the two can no longer disagree. The
   healer mana check reads the party directly instead of mod-playerbots' cached value.
+- Each session now has one explicit state (starting, waiting, travelling, combat, post-combat,
+  wipe recovery, completing, stopping). Every change is logged and written to
+  `DungeonLeadSessions.csv` as `state_transition`; `startdungeon status` shows the current one.
 
 ## [0.10.0-alpha] - 2026-10-03
 

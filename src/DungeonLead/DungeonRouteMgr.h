@@ -9,6 +9,7 @@
 #ifndef PLAYERBOTS_DUNGEONROUTEMGR_H
 #define PLAYERBOTS_DUNGEONROUTEMGR_H
 
+#include "DungeonLeadKernels.h"
 #include "Common.h"
 #include "ObjectGuid.h"
 
@@ -126,20 +127,6 @@ enum class DungeonLeadSessionOrigin : uint8
 
 char const* ToString(DungeonLeadSessionOrigin v);
 
-// Where a session is in its own life. Leadership changes go through mod-playerbots' world-thread
-// queue and land later (or never), so a session is not Active until the tank is actually observed
-// as group leader, and not finished until leadership is observed back with the original owner.
-//   Starting: transfer to the tank requested, not yet observed - no strategies applied yet.
-//   Active:   tank confirmed as leader, dungeon lead running.
-//   Stopping: strategies already restored, waiting to observe the handback.
-enum class DungeonLeadLifecycle : uint8
-{
-    Starting,
-    Active,
-    Stopping
-};
-
-char const* ToString(DungeonLeadLifecycle v);
 
 struct DungeonRoute
 {
@@ -210,19 +197,6 @@ struct DungeonLeadState
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
-    // 2026-09-15 (independent architecture review DL-013 - "wipe, death, evade, reset, and event
-    // recovery are largely absent", narrow slice only): getMSTime() when the tank was first
-    // observed dead this stretch, 0 while alive/not tracked. DungeonLeadNextAction::isUseful()
-    // already gates the entire route-progression action out while bot->IsAlive()==false, so a
-    // wipe with no other cause of death (corpse run, resurrection, external Stop()) would
-    // otherwise occupy the session - and a CanaryMaxConcurrent slot - forever with no telemetry at
-    // all. GuardActiveSessions() uses this to give up (Stop() with reason "wipe") after
-    // WipeRecoverySeconds of being dead - the same honest-failure-instead-of-silent-hang shape as
-    // DL-016. Upstream's own BOT_STATE_DEAD engine does the actual corpse release / corpse run /
-    // resurrect; this window only has to be long enough not to cut that off (45s was not - see
-    // GuardActiveSessions()). No regroup or resume-after-recovery is driven from here, and only
-    // the leader's death is tracked, not the followers'.
-    uint32 tankDeathTs = 0;
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
     // revive from corpse. Exactly one step of it is impossible in a dungeon: releasing inside an
@@ -246,7 +220,11 @@ struct DungeonLeadState
 
     // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
     uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
-    DungeonLeadLifecycle lifecycle = DungeonLeadLifecycle::Active;
+    // The session's one authoritative state - only DungeonLeadBrain::TransitionTo changes it.
+    // Starting: leadership requested, not observed yet. Stopping: strategies restored, handback
+    // not observed yet. Everything in between is an active session (see DungeonLeadBrain).
+    DungeonLeadKernel::LeadState state = DungeonLeadKernel::LeadState::WaitingReady;
+    uint32 stateSinceTs = 0;  // getMSTime() of the last transition
     // Leadership transfer in flight (Starting: to the tank; Stopping: back to leadershipTarget).
     ObjectGuid leadershipTarget;   // who must end up leader
     ObjectGuid leadershipFrom;     // who held it when the transfer was requested

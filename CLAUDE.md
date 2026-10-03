@@ -2183,14 +2183,38 @@ Remaining:
 
 ## Phase 3 — DungeonLeadBrain
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): explicit leader state machine`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, 0 warnings; full rebuild needed once - see Notes)
+- Tests: PASS - `tools/run_tests.sh` 61 checks (15 new: every DecideActive transition,
+  PostCombat hold, wipe in/out, Completing, pause, Starting/Stopping not active)
+- Live: temporary server-only harness (not committed) on a real bot: none->waiting_ready
+  (session_start), KillSelf -> waiting_ready->wipe_recovery (leader_died, wipe #1),
+  ResurrectPlayer -> wipe_recovery->waiting_ready (leader_recovered). Removed after.
+
+Notes:
+- `DungeonLeadKernel::LeadState` {Starting, WaitingReady, Travelling, Combat, PostCombat,
+  WipeRecovery, Completing, Stopping} in `DungeonLeadState::state` is the one authoritative
+  state; it replaced Phase 1's `lifecycle` field and the old `tankDeathTs` timestamp.
+- `DungeonLeadBrain::TransitionTo` is the only writer (logs + `state_transition` CSV event).
+  `DungeonLeadBrain::Update` (from GuardActiveSessions every 2 s and from the route walk's
+  isUseful) decides via `DungeonLeadKernel::DecideActive` and owns wipe give-up.
+- The route walk only moves in Travelling. Pull gating stays on readiness (Phase 2) until the
+  pull controller (Phase 6).
+- Not modelled yet (spec names them; added when the behavior exists): MovingToPull/PrePull/
+  Pulling (Phase 6), Recovery/RouteRecovery (Phase 11), BossPrep/BossCombat (Phase 14).
+- Environment: on 2026-10-03 unattended Ubuntu upgrades touched libc headers, invalidating
+  the server's precompiled headers ("file has been modified since the precompiled header").
+  Fix: `find build -name '*.pch' -delete` then rebuild (~13 min full worldserver build).
+- Harness pitfall: outside an instance the "dungeon lead left instance" trigger stops a
+  session on the bot's next AI tick - open-world tests must act within the same tick.
+
+Remaining:
+- none
 
 ---
 
