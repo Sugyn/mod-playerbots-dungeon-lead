@@ -2286,14 +2286,45 @@ Remaining:
 
 ## Phase 6 — DungeonPullController
 
-Status: NOT STARTED
+Status: DONE (2026-10-03) - live-verified in the open world only, see Notes
 
 Commit:
-`N/A`
+`feat(dungeon-lead): pull controller with bounded retries`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, CMake reconfigured for the new .cpp, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 103 checks (21 new: every DecidePull transition incl.
+  marking timeout, initiate/establish timeouts, evade after Established, bounded retry,
+  class-AI-opened fight, pack cleared; brain PrePull/Pulling)
+- Live: temporary server-only harness (not committed): real bot (lvl 64) + skull on a hostile
+  creature 26 yd away + `DoSpecificAction("attack rti target")` -> in combat after 4.0 s
+  (initiating->establishing), pack engaged 1 s later (established). Removed after.
+
+Notes:
+- `src/DungeonLead/DungeonPullController.{h,cpp}`, decision `DungeonLeadKernel::DecidePull`
+  {None, Approaching, WaitingParty, Marking, Initiating, Establishing, Established, Failed}.
+  Driven from GuardActiveSessions (2 s) before the brain; session fields pullState /
+  pullStateTs / pullAttempts (route progress, reset per step).
+- Orchestration only: skull on the pack's first live creature (respecting someone else's live
+  mark; owned skull tracked in skullGuid so Stop() clears only ours), then upstream
+  "attack rti target". A fight the class AI opens itself (grind) is observed as Established.
+- Failure: retried up to PullMaxAttempts, then the pack is Skipped via `DungeonLead::SkipStep`
+  (PullPlanning / BossEvade for bosses, ObjectiveTimeout otherwise) with pull_failed +
+  pack_skipped events and a chat line - never a silent advance.
+- Brain: new LeadState PrePull (Marking) and Pulling (Initiating/Establishing); the route walk
+  holds in both.
+- Shared route helpers: `DungeonLead::AdvanceStep`, `SkipStep`, `SetPackState` (single writer
+  of pack state) replace the walk action's private MarkVisited/SetPackState.
+- PullInitiateTimeoutSeconds default 10 (not 5): the live test needed 4.0 s from 26 yd, plus
+  the 2 s controller tick. Config: PullRange 30, PullInitiateTimeoutSeconds 10,
+  PullEstablishTimeoutSeconds 8, PullMaxAttempts 2.
+- NOT live-verified inside a dungeon: the server's bot population had no idle level-matched
+  healer for a test party (same blocker as earlier self-tests). To verify when possible:
+  `.dungeonlead canarytest 1` and look for pull_state / pull_established in
+  DungeonLeadSessions.csv.
+
+Remaining:
+- in-dungeon live verification (environment-limited, see Notes)
 
 ---
 

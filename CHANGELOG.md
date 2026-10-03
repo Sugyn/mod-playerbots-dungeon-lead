@@ -31,6 +31,8 @@ the MAJOR bar above is met.
 ### Added
 - Config: `LeadershipAcquireTimeoutSeconds`, `LeadershipReturnTimeoutSeconds` (default 5),
   `LeadershipMaxAttempts` (default 3).
+- Config: `PullRange` (30), `PullInitiateTimeoutSeconds` (10), `PullEstablishTimeoutSeconds` (8),
+  `PullMaxAttempts` (2).
 - `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
 
 ### Changed
@@ -46,6 +48,10 @@ the MAJOR bar above is met.
 - Each pull/boss/event stop now tracks its enemy pack (unknown, available, engaged, cleared,
   skipped), logged as `pack_state` and shown in `startdungeon status`. The route only moves past
   a pack once it is cleared or given up on.
+- Pull controller: once the party is ready and the tank is within `PullRange` of the current
+  pack, it marks the target with the skull and starts the attack (the class AI does the
+  fighting). A pull that doesn't start or doesn't stick within its timeouts is retried, then
+  the pack is skipped and reported (`pull_failed`, `pack_skipped`) - never silently passed.
 
 ## [0.10.0-alpha] - 2026-10-03
 

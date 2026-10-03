@@ -195,6 +195,9 @@ struct DungeonLeadState
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
     uint32 packId = 0;               // DungeonPack::id of the pack being worked on (0 = none)
     DungeonLeadKernel::PackState packState = DungeonLeadKernel::PackState::Unknown;
+    DungeonLeadKernel::PullState pullState = DungeonLeadKernel::PullState::None;  // DungeonPullController
+    uint32 pullStateTs = 0;          // getMSTime() of the last pull state change
+    uint8 pullAttempts = 0;          // pulls initiated on the current pack
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
     // revive from corpse. Exactly one step of it is impossible in a dungeon: releasing inside an
@@ -295,6 +298,9 @@ struct DungeonLeadState
         arrivedTs = 0;
         packId = 0;
         packState = DungeonLeadKernel::PackState::Unknown;
+        pullState = DungeonLeadKernel::PullState::None;
+        pullStateTs = 0;
+        pullAttempts = 0;
         visited.clear();
         skippedSteps.clear();
         mandatorySkipped = false;

@@ -34,6 +34,16 @@ namespace DungeonLead
     // is the one piece of it other code (the canary's "don't take over mid-pull") needs directly.
     bool GroupInCombat(PlayerbotAI* botAI);
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
+
+    // Route progress, shared by the route walk and the pull controller.
+    void AdvanceStep(DungeonLeadState& st);  // current step done - move on
+    // Give up on the current step, recorded (never silent): a skipped mandatory step makes the
+    // run Partial with the given failure domain/reason.
+    void SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
+                  DungeonFailureReason reason);
+    // The only writer of DungeonLeadState::packId/packState (logs "pack_state" on change).
+    void SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack,
+                      DungeonLeadKernel::PackState next);
     void CheckCcMark(PlayerbotAI* botAI);
 
     // One-shot diagnostic (2026-09-12 night's 49-party scale test): runs the EXACT same
@@ -117,8 +127,6 @@ public:
 
 private:
     DungeonRoute const* ResolveRoute(DungeonLeadState& st);
-    void MarkVisited(DungeonLeadState& st);
-    void SetPackState(DungeonLeadState& st, DungeonPack const& pack, DungeonLeadKernel::PackState next);
     bool MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
 };
 

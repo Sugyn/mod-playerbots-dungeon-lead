@@ -340,6 +340,88 @@ namespace
     }
 }
 
+namespace
+{
+    PullFacts Pull(PullState current)
+    {
+        PullFacts f;
+        f.current = current;
+        f.pullablePack = true;
+        f.packAlive = true;
+        f.inPullRange = true;
+        f.partyReady = true;
+        return f;
+    }
+
+    PullPolicy const kPull{5000, 8000, 2};
+
+    void TestPull()
+    {
+        PullFacts f = Pull(PullState::None);
+        f.inPullRange = false;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "pack out of range -> Approaching");
+        f = Pull(PullState::Approaching);
+        f.partyReady = false;
+        Check(DecidePull(f, kPull) == PullState::WaitingParty, "in range, party not ready -> WaitingParty");
+        f.partyReady = true;
+        Check(DecidePull(f, kPull) == PullState::Marking, "in range, ready -> Marking");
+        f = Pull(PullState::Marking);
+        Check(DecidePull(f, kPull) == PullState::Marking, "not marked yet -> stays Marking");
+        f.targetMarked = true;
+        Check(DecidePull(f, kPull) == PullState::Initiating, "marked -> Initiating");
+        f = Pull(PullState::Marking);
+        f.msInState = 5000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "skull held elsewhere past timeout -> Failed");
+
+        f = Pull(PullState::Initiating);
+        f.msInState = 2000;
+        Check(DecidePull(f, kPull) == PullState::Initiating, "attack ordered, waiting -> Initiating");
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Establishing, "tank in combat -> Establishing");
+        f.packEngaged = true;
+        Check(DecidePull(f, kPull) == PullState::Established, "pack engaged on fighting tank -> Established");
+        f = Pull(PullState::Initiating);
+        f.msInState = 5000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "no combat within initiate timeout -> Failed");
+        f = Pull(PullState::Establishing);
+        f.leaderInCombat = true;
+        f.msInState = 8000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "pack never engaged within establish timeout -> Failed");
+
+        f = Pull(PullState::Established);
+        Check(DecidePull(f, kPull) == PullState::Failed, "pack alive, nobody fighting -> evade -> Failed");
+        f.packAlive = false;
+        Check(DecidePull(f, kPull) == PullState::None, "pack dead after established -> None");
+
+        f = Pull(PullState::Failed);
+        f.attempts = 1;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "failed, attempts left -> retry");
+        f.attempts = 2;
+        Check(DecidePull(f, kPull) == PullState::Failed, "failed, out of attempts -> stays Failed (pack gets skipped)");
+
+        f = Pull(PullState::Approaching);
+        f.inPullRange = false;
+        f.packEngaged = true;
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Established, "class AI opened the fight itself -> Established");
+
+        f = Pull(PullState::Initiating);
+        f.pullablePack = false;
+        Check(DecidePull(f, kPull) == PullState::None, "pack cleared/skipped -> None");
+
+        // brain: pull phases
+        ActiveFacts a = Active(LeadState::Travelling);
+        a.preparingPull = true;
+        Check(DecideActive(a).next == LeadState::PrePull, "marking -> PrePull");
+        a.pulling = true;
+        Check(DecideActive(a).next == LeadState::Pulling, "attack ordered -> Pulling");
+        a.walkReady = false;
+        Check(DecideActive(a).next == LeadState::Pulling, "pull in flight is not aborted by a readiness blip");
+        a.anyInCombat = true;
+        Check(DecideActive(a).next == LeadState::Combat, "fight started -> Combat");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -348,6 +430,7 @@ int main()
     TestBrain();
     TestRouteTypes();
     TestPack();
+    TestPull();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

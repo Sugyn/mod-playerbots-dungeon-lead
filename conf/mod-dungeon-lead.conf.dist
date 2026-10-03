@@ -126,3 +126,32 @@ AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds = 5
 #        Default:     3
 
 AiPlayerbot.DungeonLead.LeadershipMaxAttempts = 3
+
+#    AiPlayerbot.DungeonLead.PullRange
+#        Description: The leader starts a pull once it is this many yards from the pull target
+#                      (and the party is ready). Range 5-60.
+#        Default:     30
+
+AiPlayerbot.DungeonLead.PullRange = 30
+
+#    AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds
+#        Description: How long after ordering the attack the tank must be in combat before the
+#                      pull counts as failed. Includes running in from PullRange (measured ~4 s
+#                      for 26 yd) and the 2 s controller tick. Range 1-30.
+#        Default:     10
+
+AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds = 10
+
+#    AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds
+#        Description: How long the tank may be fighting before the pack has to be engaged on it.
+#                      Range 1-60.
+#        Default:     8
+
+AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds = 8
+
+#    AiPlayerbot.DungeonLead.PullMaxAttempts
+#        Description: Pulls tried on one pack before it is skipped (reported, never silent; a
+#                      skipped boss makes the run Partial). Range 1-5.
+#        Default:     2
+
+AiPlayerbot.DungeonLead.PullMaxAttempts = 2

@@ -101,6 +101,9 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
     f.anyInCombat = DungeonLeadKernel::AnyInCombat(party.facts);
     f.walkReady = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Walk).status ==
                   DungeonLeadKernel::ReadyStatus::Ready;
+    f.preparingPull = st.pullState == DungeonLeadKernel::PullState::Marking;
+    f.pulling = st.pullState == DungeonLeadKernel::PullState::Initiating ||
+                st.pullState == DungeonLeadKernel::PullState::Establishing;
 
     DungeonLeadKernel::Transition const t = DungeonLeadKernel::DecideActive(f);
     if (t.next != st.state)

@@ -292,6 +292,8 @@ namespace DungeonLeadKernel
         Starting,      // leadership requested, not yet observed; nothing applied
         WaitingReady,  // party not ready (or paused) - hold position, no new pulls
         Travelling,    // party ready, walking the route
+        PrePull,       // in range of the pack, preparing the pull (marking)
+        Pulling,       // attack ordered, fight not established yet
         Combat,        // someone in the party is fighting
         PostCombat,    // fight over, party not ready yet
         WipeRecovery,  // leader dead - waiting for upstream's release/corpse-run/res chain
@@ -306,6 +308,8 @@ namespace DungeonLeadKernel
             case LeadState::Starting:     return "starting";
             case LeadState::WaitingReady: return "waiting_ready";
             case LeadState::Travelling:   return "travelling";
+            case LeadState::PrePull:      return "pre_pull";
+            case LeadState::Pulling:      return "pulling";
             case LeadState::Combat:       return "combat";
             case LeadState::PostCombat:   return "post_combat";
             case LeadState::WipeRecovery: return "wipe_recovery";
@@ -332,6 +336,8 @@ namespace DungeonLeadKernel
         LeaderDied,
         LeaderRecovered,
         RouteComplete,
+        PullPreparing,
+        PullStarted,
     };
 
     inline char const* ToString(TransitionReason r)
@@ -349,6 +355,8 @@ namespace DungeonLeadKernel
             case TransitionReason::LeaderDied:          return "leader_died";
             case TransitionReason::LeaderRecovered:     return "leader_recovered";
             case TransitionReason::RouteComplete:       return "route_complete";
+            case TransitionReason::PullPreparing:       return "pull_preparing";
+            case TransitionReason::PullStarted:         return "pull_started";
         }
         return "unknown";
     }
@@ -361,6 +369,8 @@ namespace DungeonLeadKernel
         bool routeComplete = false;
         bool anyInCombat = false;  // leader or a living same-map member
         bool walkReady = false;    // EvaluateReadiness(..., Walk) == Ready
+        bool preparingPull = false;  // pull controller: Marking
+        bool pulling = false;        // pull controller: Initiating / Establishing
     };
 
     struct Transition
@@ -385,9 +395,13 @@ namespace DungeonLeadKernel
             return {LeadState::PostCombat, TransitionReason::CombatEnded};
         if (f.paused)
             return {LeadState::WaitingReady, TransitionReason::Paused};
+        if (f.pulling)
+            return {LeadState::Pulling, TransitionReason::PullStarted};  // attack already ordered
         if (!f.walkReady)
             return {f.current == LeadState::PostCombat ? LeadState::PostCombat : LeadState::WaitingReady,
                     TransitionReason::PartyNotReady};
+        if (f.preparingPull)
+            return {LeadState::PrePull, TransitionReason::PullPreparing};
         return {LeadState::Travelling, TransitionReason::PartyReady};
     }
 
@@ -444,6 +458,96 @@ namespace DungeonLeadKernel
             return PackState::Cleared;  // only corpses left
         // Nothing in range: an engaged pack may just have been pulled out of probe range.
         return prev == PackState::Engaged ? PackState::Engaged : PackState::Unknown;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Pull lifecycle (DungeonPullController) for the current Pull/Boss pack
+    // ---------------------------------------------------------------------------------------
+    //
+    // Orchestration only: the controller decides when to open the fight, marks the target and
+    // starts the attack through mod-playerbots' own "attack rti target"; the class AI fights.
+
+    enum class PullState : uint8_t
+    {
+        None,          // no pullable pack (travel node, cleared, interaction)
+        Approaching,   // pack known, tank not in pull range yet
+        WaitingParty,  // in range, party not ready for a pull
+        Marking,       // ready - put the skull on the pull target
+        Initiating,    // attack ordered, waiting for the tank to be in combat
+        Establishing,  // tank fighting, waiting for the pack to be engaged on it
+        Established,   // pack engaged and tank in combat - the class AI owns it now
+        Failed,        // timed out / evaded; retried until the attempt budget is spent
+    };
+
+    inline char const* ToString(PullState s)
+    {
+        switch (s)
+        {
+            case PullState::None:         return "none";
+            case PullState::Approaching:  return "approaching";
+            case PullState::WaitingParty: return "waiting_party";
+            case PullState::Marking:      return "marking";
+            case PullState::Initiating:   return "initiating";
+            case PullState::Establishing: return "establishing";
+            case PullState::Established:  return "established";
+            case PullState::Failed:       return "failed";
+        }
+        return "unknown";
+    }
+
+    struct PullFacts
+    {
+        PullState current = PullState::None;
+        uint32_t msInState = 0;
+        bool pullablePack = false;  // current node is a Pull/Boss pack that is not cleared/skipped
+        bool packAlive = false;     // something of the pack seen alive
+        bool packEngaged = false;   // something of the pack alive and in combat
+        bool inPullRange = false;   // tank within PullRange of the pull target
+        bool partyReady = false;    // EvaluateReadiness(..., Pull) == Ready
+        bool targetMarked = false;  // skull is on a living member of the pack
+        bool leaderInCombat = false;
+        uint8_t attempts = 0;       // pulls initiated so far for this pack
+    };
+
+    struct PullPolicy
+    {
+        uint32_t initiateTimeoutMs = 10000;
+        uint32_t establishTimeoutMs = 8000;
+        uint8_t maxAttempts = 2;
+    };
+
+    inline PullState DecidePull(PullFacts const& f, PullPolicy const& p)
+    {
+        if (!f.pullablePack)
+            return PullState::None;
+        if (f.current == PullState::Failed)
+            return f.attempts < p.maxAttempts ? PullState::Approaching : PullState::Failed;
+        if (f.packEngaged && f.leaderInCombat)
+            return PullState::Established;  // however it started (ours, or the class AI's own)
+
+        switch (f.current)
+        {
+            case PullState::Established:
+                // the pack is alive but nobody is fighting it any more: it evaded / reset
+                return f.packAlive ? PullState::Failed : PullState::None;
+            case PullState::Initiating:
+                if (f.leaderInCombat || f.packEngaged)
+                    return PullState::Establishing;
+                return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Initiating;
+            case PullState::Establishing:
+                return f.msInState >= p.establishTimeoutMs ? PullState::Failed : PullState::Establishing;
+            case PullState::Marking:
+                if (!f.partyReady)
+                    return PullState::WaitingParty;
+                if (f.targetMarked)
+                    return PullState::Initiating;
+                // the skull is held by someone else's live mark - don't fight over it forever
+                return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Marking;
+            default:  // None, Approaching, WaitingParty
+                if (!f.packAlive || !f.inPullRange)
+                    return PullState::Approaching;
+                return f.partyReady ? PullState::Marking : PullState::WaitingParty;
+        }
     }
 }
 

@@ -12,6 +12,7 @@
 #include "DungeonLeadBrain.h"
 #include "DungeonLeadKernels.h"
 #include "DungeonPack.h"
+#include "DungeonPullController.h"
 #include "DungeonPartyState.h"
 
 #include "Creature.h"
@@ -783,7 +784,9 @@ void DungeonLead::GuardActiveSessions()
         DungeonLead::RecoverStrandedMembers(botAI, st);
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
-        if (!DungeonLeadBrain::Update(botAI, DungeonPartyState::Evaluate(botAI)))
+        DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
+        DungeonPullController::Update(botAI, party);
+        if (!DungeonLeadBrain::Update(botAI, party))
             continue;  // session ended (wipe give-up)
         if (!bot->IsAlive())
             continue;  // nothing below applies to a corpse
@@ -1347,18 +1350,24 @@ DungeonRoute const* DungeonLeadNextAction::ResolveRoute(DungeonLeadState& st)
     return route;
 }
 
-void DungeonLeadNextAction::SetPackState(DungeonLeadState& st, DungeonPack const& pack, DungeonLeadKernel::PackState next)
+void DungeonLead::SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack,
+                               DungeonLeadKernel::PackState next)
 {
+    if (st.packId != pack.id)
+    {
+        st.packId = pack.id;  // a new pack: its state starts over
+        st.packState = DungeonLeadKernel::PackState::Unknown;
+    }
     if (st.packState == next)
         return;
     std::string const line = "#" + std::to_string(pack.id) + " " + pack.name + " (" + ToString(pack.type) + ") " +
                              DungeonLeadKernel::ToString(st.packState) + "->" + DungeonLeadKernel::ToString(next);
     st.packState = next;
-    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pack {}", bot->GetName(), line);
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pack {}", botAI->GetBot()->GetName(), line);
     DungeonLead::RecordEvent(botAI, "pack_state", line);
 }
 
-void DungeonLeadNextAction::MarkVisited(DungeonLeadState& st)
+void DungeonLead::AdvanceStep(DungeonLeadState& st)
 {
     if (st.stepIndex < st.visited.size())
         st.visited[st.stepIndex] = 1;
@@ -1366,8 +1375,26 @@ void DungeonLeadNextAction::MarkVisited(DungeonLeadState& st)
     st.bestDist = 0.f;
     st.stuckAttempts = 0;
     st.stuckTs = 0;
-    st.packId = 0;  // the next step's pack (if any) is picked up on the next Execute()
+    // the next step's pack and pull (if any) start from scratch
+    st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
+    st.pullState = DungeonLeadKernel::PullState::None;
+    st.pullStateTs = 0;
+    st.pullAttempts = 0;
+}
+
+void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
+                           DungeonFailureReason reason)
+{
+    st.skippedSteps.push_back(step.boss);
+    if (step.IsMandatory())
+    {
+        st.mandatorySkipped = true;
+        st.outcome = DungeonRunOutcome::Partial;
+        st.failureDomain = domain;
+        st.failureReason = reason;
+    }
+    AdvanceStep(st);
 }
 
 bool DungeonLeadNextAction::Execute(Event /*event*/)
@@ -1518,13 +1545,9 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     DungeonPackSighting sighting;
     if (pack.Exists())
     {
-        if (st.packId != pack.id)
-        {
-            st.packId = pack.id;
-            st.packState = DungeonLeadKernel::PackState::Unknown;
-        }
         sighting = DungeonPacks::Observe(bot, pack, st.instanceId);
-        SetPackState(st, pack, DungeonLeadKernel::DecidePackState(st.packState, sighting.observation));
+        DungeonLeadKernel::PackState const prev = st.packId == pack.id ? st.packState : DungeonLeadKernel::PackState::Unknown;
+        DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prev, sighting.observation));
         if (sighting.firstAlive)
             dest = WorldPosition(sighting.firstAlive);  // prefer the live creature position
     }
@@ -1537,7 +1560,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         DungeonLead::RecordEvent(botAI, "already_dead", step.boss);
         if (step.entry)
             sDungeonRouteMgr.MarkStepKilled(st.instanceId, step.entry);
-        MarkVisited(st);
+        DungeonLead::AdvanceStep(st);
         return true;
     }
 
@@ -1550,7 +1573,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // typed nodes, path anchors waited StuckSeconds here and then logged "not_found".)
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} passed step {} '{}'", bot->GetName(), step.step, step.boss);
             DungeonLead::RecordEvent(botAI, "travel_reached", step.boss);
-            MarkVisited(st);
+            DungeonLead::AdvanceStep(st);
             return true;
         }
 
@@ -1587,7 +1610,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // Partial within the same dungeonLeadStuckSeconds window as every other stuck case,
             // instead of silently occupying the session until something else notices.
             bool const stillAlive = sighting.observation.alive > 0;
-            SetPackState(st, pack, DungeonLeadKernel::PackState::Skipped);
+            DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
             std::ostringstream out;
             out << "Dungeon lead: " << (stillAlive ? "can't progress past " : "nothing found at ") << step.boss
                 << ", moving on";
@@ -1597,15 +1620,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                      stillAlive ? "target alive but not progressing (needs an interaction this module can't do)"
                                 : "nothing at destination");
             DungeonLead::RecordEvent(botAI, stillAlive ? "stuck_alive" : "not_found", step.boss);
-            st.skippedSteps.push_back(step.boss);
-            if (step.IsMandatory())
-            {
-                st.mandatorySkipped = true;
-                st.outcome = DungeonRunOutcome::Partial;
-                st.failureDomain = DungeonFailureDomain::Navigation;
-                st.failureReason = DungeonFailureReason::ObjectiveTimeout;
-            }
-            MarkVisited(st);
+            DungeonLead::SkipStep(st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::ObjectiveTimeout);
         }
         return true;
     }
@@ -1688,15 +1703,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             std::to_string(dest.GetPositionZ()) + ")" +
             " actual=(" + std::to_string(bot->GetPositionX()) + "," + std::to_string(bot->GetPositionY()) + "," +
             std::to_string(bot->GetPositionZ()) + ")");
-        st.skippedSteps.push_back(step.boss);
-        if (step.IsMandatory())
-        {
-            st.mandatorySkipped = true;
-            st.outcome = DungeonRunOutcome::Partial;
-            st.failureDomain = DungeonFailureDomain::Navigation;
-            st.failureReason = DungeonFailureReason::PathFailed;
-        }
-        MarkVisited(st);
+        DungeonLead::SkipStep(st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::PathFailed);
         return true;
     }
 
@@ -1928,6 +1935,7 @@ bool StartDungChatShortcutAction::Execute(Event event)
                 << " | step " << stepName << " | objective " << DungeonLeadBrain::CurrentObjective(st).Describe()
                 << " | pack " << (st.packId ? "#" + std::to_string(st.packId) + " " + DungeonLeadKernel::ToString(st.packState)
                                           : std::string("none"))
+                << " | pull " << DungeonLeadKernel::ToString(st.pullState)
                 << " | outcome " << ToString(st.outcome);
             if (st.outcome == DungeonRunOutcome::Partial)
                 out << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";

@@ -51,6 +51,12 @@ public:
     uint32 dungeonLeadLeadershipAcquireTimeoutSeconds;
     uint32 dungeonLeadLeadershipReturnTimeoutSeconds;
     uint32 dungeonLeadLeadershipMaxAttempts;
+    // Pull controller: open a fight once the tank is this close to the pull target, and give a
+    // pull this long to start / to settle before counting it as failed.
+    float dungeonLeadPullRange;
+    uint32 dungeonLeadPullInitiateTimeoutSeconds;
+    uint32 dungeonLeadPullEstablishTimeoutSeconds;
+    uint32 dungeonLeadPullMaxAttempts;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -89,6 +95,10 @@ private:
         dungeonLeadLeadershipReturnTimeoutSeconds =
             Bounded("AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds", 5, 1, 60);
         dungeonLeadLeadershipMaxAttempts = Bounded("AiPlayerbot.DungeonLead.LeadershipMaxAttempts", 3, 1, 10);
+        dungeonLeadPullRange = float(Bounded("AiPlayerbot.DungeonLead.PullRange", 30, 5, 60));
+        dungeonLeadPullInitiateTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds", 10, 1, 30);
+        dungeonLeadPullEstablishTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds", 8, 1, 60);
+        dungeonLeadPullMaxAttempts = Bounded("AiPlayerbot.DungeonLead.PullMaxAttempts", 2, 1, 5);
     }
 };
 
