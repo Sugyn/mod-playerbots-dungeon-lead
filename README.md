@@ -10,9 +10,8 @@ other bots follow *it* instead of the player, it walks the boss route, decides w
 target (skull) and a CC target (moon), and paces the group by healer mana and group spread — while the real player
 in the group simply rides along (or fights, without having to give any orders).
 
-This is a genuine AzerothCore **module** (drop it into `modules/`, like any other) — not a patch
-against mod-playerbots' own source. See "How this works without patching mod-playerbots" below for
-why that distinction matters and how it's done.
+Ships as a standalone AzerothCore module (drop it into `modules/`) — not a patch against
+mod-playerbots' source. See "Why this doesn't patch mod-playerbots" below.
 
 Route data is included for every 5-man LFD entry in Vanilla, The Burning Crusade (normal + heroic) and Wrath of
 the Lich King (normal + heroic) that has one to give — see "Testing status" below for exactly which dungeons have
@@ -31,10 +30,9 @@ enforces the logs above).
 - **AzerothCore** with **mod-playerbots** already built and working (bots can be added to a group and fight).
   This module was written and tested against mod-playerbots `master` @ `037c014` — the API it relies on
   (`MovementAction`/`NewRpgBaseAction`, `FormationValue`, `RtiTargetValue`, `PlayerbotOperations::GroupSetLeaderOperation`,
-  `Map::IsNonRaidDungeon`) is fairly stable but not guaranteed identical on a much older or newer checkout. Unlike a
-  patch, this module is **not pinned to that commit in a way that can go stale and silently break** — see "How this
-  works without patching mod-playerbots" below for exactly what *would* break it and how you'd find out (a compile
-  error, not a quiet runtime bug).
+  `Map::IsNonRaidDungeon`) is fairly stable but not guaranteed identical on a much older or newer checkout. Unlike
+  the old patch, nothing here is pinned to that commit in a way that can silently drift — a future API change shows
+  up as a compile error, not a quiet runtime break. See "Why this doesn't patch mod-playerbots" below.
 - **mmaps generated** for the continents/instances you want to use this in. Without mmaps, `PathGenerator`-based
   movement (which this entire feature is built on) silently fails or produces nonsense paths — if bots won't move
   or wander into walls, check mmaps before opening an issue here.
@@ -229,8 +227,8 @@ walk up to a locked door and get stuck/skip past it. See `data/routes.tsv` for e
 
 ## Install
 
-This **is** a standalone AzerothCore module — clone or copy this repo's contents directly into
-`modules/mod-dungeon-lead/` inside your AzerothCore checkout, next to `modules/mod-playerbots`.
+Clone or copy this repo's contents directly into `modules/mod-dungeon-lead/` inside your
+AzerothCore checkout, next to `modules/mod-playerbots`.
 
 1. `git clone https://github.com/Sugyn/mod-playerbots-dungeon-lead.git modules/mod-dungeon-lead`
 2. Re-run CMake (`cmake ..` in your build directory) — AzerothCore's module system globs `modules/` at
@@ -242,26 +240,12 @@ This **is** a standalone AzerothCore module — clone or copy this repo's conten
 That's it — nothing to apply, nothing to re-apply after a mod-playerbots update, no pinned-commit
 drift to track. Config (below) is entirely optional, with sensible defaults.
 
-### How this works without patching mod-playerbots
+### Why this doesn't patch mod-playerbots
 
-mod-playerbots has no public plugin API for adding new Strategies/Actions/Triggers — its shared
-registries are private static members, populated once at startup by hardcoded functions. This
-module reaches them using a well-defined (if unusual) piece of standard C++: the
-explicit-instantiation access technique ([temp.explicit] / [class.access.general] in the C++
-standard), which legally exposes the address of a private static member without `#define private
-public` or any other undefined behavior — see `src/DungeonLeadAccess.h`. Two places
-(`FormationValue::Load()` for the "leader" formation, and `UnknownDungeonTrigger::IsActive()` for
-the dungeon hand-back bypass) needed to change *existing* behavior rather than just add something
-new — both targets are `virtual`, so a small subclass plus registering our version under
-mod-playerbots' own registry key (our registration simply runs *after* its own, which the registry
-supports) reaches both without editing a single mod-playerbots source file — see
-`src/DungeonLeadOverrides.h`.
-
-The practical upshot: if a future mod-playerbots release renames one of the handful of
-symbols/keys this module touches, the build **fails to compile** — loud, at build time,
-immediately attributable — instead of silently drifting out of sync the way a pinned-commit patch
-can. See [ADR-004](docs/architecture/adr-004-patch-to-module-migration.md) for the full design,
-including a real bug this migration found and fixed along the way.
+No pinned commit to go stale, no `git apply` to redo after a mod-playerbots update. If a future
+release ever breaks something this relies on, it's a compile error, not a silent runtime bug. How
+that's done (and a real bug it surfaced along the way) is in
+[ADR-004](docs/architecture/adr-004-patch-to-module-migration.md), for anyone touching the code.
 
 ### Configuration (all optional - sensible defaults, nothing here is required to install)
 
