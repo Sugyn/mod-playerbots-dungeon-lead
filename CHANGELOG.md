@@ -35,6 +35,17 @@ the MAJOR bar above is met.
   from the working tree — recoverable from this repo's git history if ever needed, and the
   pre-migration patch-based state remains intact on the server it was developed against.
 
+### Also included: unpublished DungeonLead fixes from the live development branch
+Since this migration took its source from the live branch's current state rather than the last
+published patch, it also catches up several `DungeonLead/` fixes developed there after 2026-10-02
+that were never separately regenerated/pushed before now — notably stranded-member wipe recovery
+(`RecoverStrandedMembers`, wipe count now recorded in `DungeonLeadSessions.csv`/run summaries) and
+a `DungeonTestBotPool` instance-binding fix (teleporting a party simultaneously could land each
+member in a *different* copy of the same instance; the leader now enters first so the group's
+instance binding exists before followers teleport in, plus a self-exit step for a bot still sitting
+in a stale copy of the dungeon). Not itemized further here since they predate and are independent
+of the patch-to-module work itself.
+
 ### Known gap in this release
 - GM diagnostic commands from the patch era (`testbotpool`, `lfgstate`, `pathcheck`,
   `pathcheckfrom`, `tpbot`) are not yet ported to the module's own `.dungeonlead` command root.
