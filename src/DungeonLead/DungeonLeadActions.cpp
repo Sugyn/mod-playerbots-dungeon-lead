@@ -13,6 +13,7 @@
 #include "DungeonLeadKernels.h"
 #include "DungeonPack.h"
 #include "DungeonPullController.h"
+#include "DungeonRecoveryController.h"
 #include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
 
@@ -780,6 +781,8 @@ void DungeonLead::GuardActiveSessions()
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
         DungeonTargetManager::Update(botAI);
         DungeonPullController::Update(botAI, party);
+        if (!DungeonRecoveryController::Update(botAI, party))
+            continue;  // session ended (recovery failed)
         if (!DungeonLeadBrain::Update(botAI, party))
             continue;  // session ended (wipe give-up)
         if (!bot->IsAlive())

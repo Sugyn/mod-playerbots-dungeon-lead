@@ -376,6 +376,7 @@ namespace DungeonLeadKernel
         Combat,        // someone in the party is fighting
         PostCombat,    // fight over, party not ready yet
         WipeRecovery,  // leader dead - waiting for upstream's release/corpse-run/res chain
+        Recovery,      // a bounded recovery is running (DungeonRecoveryController)
         Completing,    // route finished, session held until stopped
         Stopping,      // strategies restored, leader handback not yet observed
     };
@@ -392,6 +393,7 @@ namespace DungeonLeadKernel
             case LeadState::Combat:       return "combat";
             case LeadState::PostCombat:   return "post_combat";
             case LeadState::WipeRecovery: return "wipe_recovery";
+            case LeadState::Recovery:     return "recovery";
             case LeadState::Completing:   return "completing";
             case LeadState::Stopping:     return "stopping";
         }
@@ -417,6 +419,7 @@ namespace DungeonLeadKernel
         RouteComplete,
         PullPreparing,
         PullStarted,
+        RecoveryNeeded,
     };
 
     inline char const* ToString(TransitionReason r)
@@ -436,6 +439,7 @@ namespace DungeonLeadKernel
             case TransitionReason::RouteComplete:       return "route_complete";
             case TransitionReason::PullPreparing:       return "pull_preparing";
             case TransitionReason::PullStarted:         return "pull_started";
+            case TransitionReason::RecoveryNeeded:      return "recovery_needed";
         }
         return "unknown";
     }
@@ -452,6 +456,7 @@ namespace DungeonLeadKernel
         bool pulling = false;        // pull controller: Initiating / Establishing
         uint32_t msInState = 0;
         uint32_t postCombatMinMs = 3000;  // shortest pause between two fights
+        bool recovering = false;          // DungeonRecoveryController has an open problem
     };
 
     struct Transition
@@ -481,6 +486,8 @@ namespace DungeonLeadKernel
             return {LeadState::WaitingReady, TransitionReason::Paused};
         if (f.pulling)
             return {LeadState::Pulling, TransitionReason::PullStarted};  // attack already ordered
+        if (f.recovering)
+            return {LeadState::Recovery, TransitionReason::RecoveryNeeded};
         if (!f.walkReady)
             return {f.current == LeadState::PostCombat ? LeadState::PostCombat : LeadState::WaitingReady,
                     TransitionReason::PartyNotReady};
@@ -757,6 +764,88 @@ namespace DungeonLeadKernel
                 plan.cc = cc;
         }
         return plan;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Recovery (DungeonRecoveryController) - problems that waiting alone may not fix
+    // ---------------------------------------------------------------------------------------
+    //
+    // Every recovery is bounded: act, then escalate, then abort the session with a recorded
+    // failure. The timer runs for as long as *some* recovery problem persists, even if its label
+    // changes (fragmented -> lost and back), so flapping can't reset it into an endless loop.
+    // Ordinary waits (drinking, mana, health, the real player's position) are not recoveries.
+
+    enum class RecoveryReason : uint8_t
+    {
+        None,
+        LeadershipLost,   // someone else is group leader now
+        MemberLost,       // a living member on another map / offline
+        PartyFragmented,  // a member beyond the hard range
+        MemberDead,       // a party member (not the leader) dead
+    };
+
+    inline char const* ToString(RecoveryReason r)
+    {
+        switch (r)
+        {
+            case RecoveryReason::None:            return "none";
+            case RecoveryReason::LeadershipLost:  return "leadership_lost";
+            case RecoveryReason::MemberLost:      return "member_lost";
+            case RecoveryReason::PartyFragmented: return "party_fragmented";
+            case RecoveryReason::MemberDead:      return "member_dead";
+        }
+        return "unknown";
+    }
+
+    enum class RecoveryStep : uint8_t
+    {
+        None,      // nothing to recover
+        Act,       // the reason's own action (regroup, wait for a resurrection, ...)
+        Escalate,  // stronger action, once (bring a bot member to the leader, ...)
+        Abort,     // give up: stop the session, recorded as failed
+    };
+
+    inline char const* ToString(RecoveryStep s)
+    {
+        switch (s)
+        {
+            case RecoveryStep::None:     return "none";
+            case RecoveryStep::Act:      return "act";
+            case RecoveryStep::Escalate: return "escalate";
+            case RecoveryStep::Abort:    return "abort";
+        }
+        return "unknown";
+    }
+
+    struct RecoveryPolicy
+    {
+        uint32_t actMs = 60000;       // RecoveryTimeoutSeconds
+        uint32_t escalateMs = 60000;  // RecoveryEscalationSeconds
+    };
+
+    inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msSinceProblem, RecoveryPolicy const& p)
+    {
+        if (observed == RecoveryReason::None)
+            return RecoveryStep::None;
+        if (msSinceProblem < p.actMs)
+            return RecoveryStep::Act;
+        if (msSinceProblem < p.actMs + p.escalateMs)
+            return RecoveryStep::Escalate;
+        return RecoveryStep::Abort;
+    }
+
+    // Which recovery a readiness result calls for (LeadershipLost is observed separately).
+    // `healerAlive`: for HealerUnavailable, whether the healer is alive (then it is elsewhere).
+    inline RecoveryReason RecoveryFor(ReadyStatus status, bool healerAlive)
+    {
+        switch (status)
+        {
+            case ReadyStatus::MemberLost:        return RecoveryReason::MemberLost;
+            case ReadyStatus::Fragmented:        return RecoveryReason::PartyFragmented;
+            case ReadyStatus::MemberDead:        return RecoveryReason::MemberDead;
+            case ReadyStatus::HealerUnavailable: return healerAlive ? RecoveryReason::MemberLost : RecoveryReason::MemberDead;
+            default:                             return RecoveryReason::None;
+        }
     }
 }
 

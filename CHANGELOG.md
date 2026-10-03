@@ -41,6 +41,7 @@ the MAJOR bar above is met.
 - Config: `CombatLeashRadius` (30).
 - Config: `PartySoftRange` (40), `PartyHardRange` (90).
 - Config: `PostCombatMinSeconds` (3), `PostCombatMinHealthPct` (50).
+- Config: `RecoveryTimeoutSeconds` (60), `RecoveryEscalationSeconds` (60).
 - `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
 
 ### Changed
@@ -72,6 +73,12 @@ the MAJOR bar above is met.
 - After every fight the leader pauses (`PostCombatMinSeconds`, 3) and re-checks the party before
   moving on, now including health: it waits while anyone is below `PostCombatMinHealthPct` (50).
   The decision and what it was based on are logged as `post_combat_decision`.
+- Recovery with a time limit instead of waiting forever: a member too far behind, on another
+  map/offline, dead, or someone else taking the party lead now starts a recovery (the leader
+  walks back to a straggler, waits for a resurrection...). After `RecoveryTimeoutSeconds` it
+  escalates (a bot member is brought to the leader - a real player never is), and after
+  `RecoveryEscalationSeconds` more the run is stopped and reported as failed. Logged as
+  `recovery_start` / `recovery_escalate` / `recovery_complete` / `recovery_failed`.
 - Combat leash: where a fight begins becomes its anchor, and the leading tank doesn't chase a
   target that runs more than `CombatLeashRadius` yards from it (logged as `leash_hold`), so a
   fleeing mob can't drag the party into the next pack.

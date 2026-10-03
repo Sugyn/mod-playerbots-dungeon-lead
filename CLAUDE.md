@@ -2473,14 +2473,41 @@ Remaining:
 
 ## Phase 11 — Recovery controller
 
-Status: NOT STARTED
+Status: DONE (2026-10-03)
 
 Commit:
-`N/A`
+`feat(dungeon-lead): bounded recovery controller`
 
 Validation:
-- Build: NOT RUN
-- Tests: NOT RUN
+- Build: PASS (server, CMake reconfigured for the new .cpp, 0 warnings)
+- Tests: PASS - `tools/run_tests.sh` 158 checks (18 new: act/escalate/abort windows, never an
+  endless loop, readiness -> recovery mapping incl. waits that are not recoveries, brain
+  Recovery state, combat interrupts it)
+- Live: Wailing Caverns test party, 20 min: the healer died and was returned to the entrance ->
+  `recovery_start party_fragmented member=Thyleae`, leader walked back, `recovery_complete`
+  after 32 s (the same situation stalled earlier runs for 16-20 min); Lady Anacondra and Kresh
+  cleared, party moving on to Cobrahn at the cap. A first attempt was cut short by a test-pool
+  start race (characters logged in inside the old instance) - Phase 13 territory.
+
+Notes:
+- `DungeonLeadKernel::DecideRecovery` / `RecoveryFor`, `src/DungeonLead/DungeonRecoveryController.{h,cpp}`.
+  Reasons: leadership_lost, member_lost, party_fragmented, member_dead. Act ->
+  RecoveryTimeoutSeconds (60) -> Escalate -> RecoveryEscalationSeconds (60) -> Abort (Stop, run
+  recorded Failed, domain Recovery). The clock runs as long as any recovery problem persists
+  (label changes don't reset it); escalation always runs once before an abort.
+- Actions: party_fragmented = leader walks back to the straggler after an 8 s grace;
+  member_lost/member_dead/leadership_lost = wait. Escalation brings a *bot* member (not real
+  player, not selfbot) to the leader; nothing else is escalated. Abort for leadership_lost
+  does not try to hand leadership back.
+- Ordinary waits (drinking, mana, health, the real player's position/availability) are not
+  recoveries and are never timed out here.
+- Brain: new LeadState Recovery (while a recovery is open, out of combat); events
+  recovery_start / recovery_escalate / recovery_complete / recovery_failed.
+- Eligible only in WaitingReady/PostCombat/Recovery with the leader alive; the leader's own
+  death stays WipeRecovery (Phase 12).
+
+Remaining:
+- none
 
 ---
 

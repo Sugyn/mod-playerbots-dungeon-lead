@@ -67,6 +67,10 @@ public:
     // for before walking or pulling on (0 = don't wait for health).
     uint32 dungeonLeadPostCombatMinSeconds;
     uint32 dungeonLeadPostCombatMinHealthPct;
+    // Recovery controller: how long a recovery acts before escalating, and how long the
+    // escalation gets before the run is stopped as failed.
+    uint32 dungeonLeadRecoveryTimeoutSeconds;
+    uint32 dungeonLeadRecoveryEscalationSeconds;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -114,6 +118,8 @@ private:
         dungeonLeadPartyHardRange = float(Bounded("AiPlayerbot.DungeonLead.PartyHardRange", 90, 20, 300));
         dungeonLeadPostCombatMinSeconds = Bounded("AiPlayerbot.DungeonLead.PostCombatMinSeconds", 3, 0, 30);
         dungeonLeadPostCombatMinHealthPct = Bounded("AiPlayerbot.DungeonLead.PostCombatMinHealthPct", 50, 0, 100);
+        dungeonLeadRecoveryTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds", 60, 10, 600);
+        dungeonLeadRecoveryEscalationSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryEscalationSeconds", 60, 10, 600);
         if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
         {
             LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "

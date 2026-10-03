@@ -205,6 +205,10 @@ struct DungeonLeadState
     // cleared once the session walks on). The tank does not chase beyond CombatLeashRadius of it.
     bool anchorSet = false;
     float anchorX = 0.f, anchorY = 0.f, anchorZ = 0.f;
+    // DungeonRecoveryController: the open recovery (if any), since when, and the last step taken
+    DungeonLeadKernel::RecoveryReason recoveryReason = DungeonLeadKernel::RecoveryReason::None;
+    DungeonLeadKernel::RecoveryStep recoveryStep = DungeonLeadKernel::RecoveryStep::None;
+    uint32 recoverySinceTs = 0;
     uint32 lastLeashLogTs = 0;
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->

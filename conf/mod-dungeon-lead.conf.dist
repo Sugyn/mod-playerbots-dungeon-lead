@@ -192,3 +192,18 @@ AiPlayerbot.DungeonLead.PostCombatMinSeconds = 3
 #        Default:     50
 
 AiPlayerbot.DungeonLead.PostCombatMinHealthPct = 50
+
+#    AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds
+#        Description: How long the leader tries to fix a party problem itself (walk back to a
+#                      straggler, wait for a lost member or a resurrection) before escalating.
+#                      Range 10-600.
+#        Default:     60
+
+AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds = 60
+
+#    AiPlayerbot.DungeonLead.RecoveryEscalationSeconds
+#        Description: How long the escalation (a bot member brought to the leader - never a real
+#                      player) gets before the run is stopped and reported as failed. Range 10-600.
+#        Default:     60
+
+AiPlayerbot.DungeonLead.RecoveryEscalationSeconds = 60

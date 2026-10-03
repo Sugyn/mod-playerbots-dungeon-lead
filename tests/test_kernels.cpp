@@ -569,6 +569,39 @@ namespace
     }
 }
 
+namespace
+{
+    void TestRecovery()
+    {
+        RecoveryPolicy const p{60000, 60000};
+        Check(DecideRecovery(RecoveryReason::None, 999999, p) == RecoveryStep::None, "no problem -> nothing to do");
+        Check(DecideRecovery(RecoveryReason::PartyFragmented, 0, p) == RecoveryStep::Act, "new problem -> act");
+        Check(DecideRecovery(RecoveryReason::PartyFragmented, 59999, p) == RecoveryStep::Act, "inside the act window -> act");
+        Check(DecideRecovery(RecoveryReason::MemberLost, 60000, p) == RecoveryStep::Escalate, "act window over -> escalate");
+        Check(DecideRecovery(RecoveryReason::MemberDead, 119999, p) == RecoveryStep::Escalate, "inside escalation -> escalate");
+        Check(DecideRecovery(RecoveryReason::MemberDead, 120000, p) == RecoveryStep::Abort, "escalation over -> abort (bounded)");
+        Check(DecideRecovery(RecoveryReason::LeadershipLost, 500000, p) == RecoveryStep::Abort, "never an endless loop");
+
+        Check(RecoveryFor(ReadyStatus::Fragmented, true) == RecoveryReason::PartyFragmented, "fragmented -> regroup");
+        Check(RecoveryFor(ReadyStatus::MemberLost, true) == RecoveryReason::MemberLost, "lost member -> recovery");
+        Check(RecoveryFor(ReadyStatus::MemberDead, true) == RecoveryReason::MemberDead, "dead member -> recovery");
+        Check(RecoveryFor(ReadyStatus::HealerUnavailable, false) == RecoveryReason::MemberDead, "dead healer -> member dead");
+        Check(RecoveryFor(ReadyStatus::HealerUnavailable, true) == RecoveryReason::MemberLost, "healer elsewhere -> member lost");
+        Check(RecoveryFor(ReadyStatus::Drinking, true) == RecoveryReason::None, "drinking is a wait, not a recovery");
+        Check(RecoveryFor(ReadyStatus::MasterTooFar, true) == RecoveryReason::None, "the real player is waited for, never recovered");
+        Check(RecoveryFor(ReadyStatus::LowHealth, true) == RecoveryReason::None, "low health is a wait");
+
+        ActiveFacts a = Active(LeadState::WaitingReady);
+        a.walkReady = false;
+        a.recovering = true;
+        Check(DecideActive(a).next == LeadState::Recovery, "open recovery -> Recovery state");
+        a.anyInCombat = true;
+        Check(DecideActive(a).next == LeadState::Combat, "combat interrupts recovery");
+        a = Active(LeadState::Recovery);
+        Check(DecideActive(a).next == LeadState::Travelling, "recovery resolved, ready -> Travelling");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -580,6 +613,7 @@ int main()
     TestPull();
     TestLeash();
     TestTargets();
+    TestRecovery();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
