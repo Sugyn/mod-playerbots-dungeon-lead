@@ -1028,8 +1028,20 @@ namespace DungeonLeadKernel
             t.relapse = false;
             return false;
         }
+        // Same reason: the recovery goes on, even if the farthest member changes while it is still
+        // acting (two stragglers swapping places must not keep restarting the clock). Only once it
+        // has escalated (the stragglers were brought) is someone new falling behind a recovery of
+        // its own - the episode cap still bounds the whole.
         if (observed == t.reason)
-            return false;
+        {
+            bool const newMember = subject && t.subject && subject != t.subject;
+            if (!newMember || t.step != RecoveryStep::Escalate)
+            {
+                if (subject)
+                    t.subject = subject;
+                return false;
+            }
+        }
         bool const relapse = t.reason == RecoveryReason::None && t.clearedReason == observed &&
                              t.clearedSubject == subject && uint32_t(now - t.clearedAt) < kRecoveryRelapseMs;
         if (relapse)

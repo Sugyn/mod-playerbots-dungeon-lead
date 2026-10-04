@@ -137,6 +137,22 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                 detail += " action=brought_to_leader";
                 who->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
                                 bot->GetOrientation());
+                // Every other bot straggler too: bringing only the farthest left the next one behind
+                // to run the same recovery out (RFC/DM, H7).
+                if (observed == RecoveryReason::PartyFragmented)
+                    if (Group* group = bot->GetGroup())
+                        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                        {
+                            Player* m = ref->GetSource();
+                            if (m && m != who && m != bot && IsBotMember(m) && m->IsAlive() &&
+                                m->GetMap() == bot->GetMap() &&
+                                bot->GetDistance(m) > sDungeonLeadConfig.dungeonLeadPartyHardRange)
+                            {
+                                detail += " +" + m->GetName();
+                                m->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
+                                              bot->GetPositionZ(), bot->GetOrientation());
+                            }
+                        }
             }
             else
                 detail += " action=none";

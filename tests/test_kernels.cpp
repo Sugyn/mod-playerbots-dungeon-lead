@@ -710,6 +710,21 @@ namespace
         ObserveRecovery(t, RecoveryReason::PartyFragmented, 10000 + kRecoveryRelapseMs, 7);
         Check(!t.relapse && t.reasonSince == 10000 + kRecoveryRelapseMs, "long after it cleared -> fresh recovery");
 
+        // H7 (RFC 60-min pass): straggler A escalated, then B falls behind - B gets its own window
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        t.step = RecoveryStep::Escalate;
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 70000, 8) && t.reasonSince == 70000 &&
+                  t.step == RecoveryStep::None && t.episodeSince == 0,
+              "same reason, another member -> new recovery, episode goes on");
+        Check(DecideRecovery(t.reason, 70000 - t.reasonSince, 70000 - t.episodeSince, p) == RecoveryStep::Act,
+              "the second straggler starts at act, not at abort");
+        Check(!ObserveRecovery(t, RecoveryReason::PartyFragmented, 80000, 8), "same member again -> same recovery");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        Check(!ObserveRecovery(t, RecoveryReason::PartyFragmented, 30000, 8) && t.reasonSince == 0,
+              "farthest member swaps while still acting -> clock keeps running (escalation is reached)");
+
         Check(RecoveryFor(ReadyStatus::Fragmented, true) == RecoveryReason::PartyFragmented, "fragmented -> regroup");
         Check(RecoveryFor(ReadyStatus::MemberLost, true) == RecoveryReason::MemberLost, "lost member -> recovery");
         Check(RecoveryFor(ReadyStatus::MemberDead, true) == RecoveryReason::MemberDead, "dead member -> recovery");
