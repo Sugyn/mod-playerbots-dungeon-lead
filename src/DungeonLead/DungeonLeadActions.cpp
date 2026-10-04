@@ -274,7 +274,12 @@ namespace
                 fv->Load("leader");
             if (!logWipeDetection || strategyWiped)
             {
-                memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead", BOT_STATE_NON_COMBAT);
+                // -new rpg/-rpg: upstream's RPG wandering teleports a bot to its RPG destination when
+                // it can't walk there (NewRpgBaseAction::MoveFarTo) - from inside an instance that
+                // means out of the dungeon (seen live in Shadowfang Keep: the leader landed in
+                // Silverpine while the party was drinking). Restored with the snapshot at Stop().
+                memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg",
+                                         BOT_STATE_NON_COMBAT);
                 memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
             }
         }
@@ -292,7 +297,7 @@ namespace
         }
         if (!logWipeDetection || leaderStrategyWiped)
         {
-            botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay", BOT_STATE_NON_COMBAT);
+            botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg", BOT_STATE_NON_COMBAT);
             botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
         }
     }

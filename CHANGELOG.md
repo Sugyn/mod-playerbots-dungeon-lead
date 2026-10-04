@@ -18,6 +18,11 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Fixed
+- The leader and its party no longer wander off with mod-playerbots' RPG behaviour during a run.
+  When it couldn't walk to its RPG destination it teleported there - out of the dungeon (seen in
+  Shadowfang Keep while the party was drinking).
+
 ### Added
 - Closed doors: when the way is blocked by a closed door or gate, the leader waits for it to open
   (its event, key or boss) instead of giving up on the step - up to `DoorWaitSeconds` (120), then
