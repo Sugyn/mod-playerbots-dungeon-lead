@@ -1394,6 +1394,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.pullOrderRefused = false;
     st.pullFights = 0;
     st.pullPackFought = false;
+    st.objectiveFailures = 0;
 }
 
 void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
@@ -1408,6 +1409,73 @@ void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, D
         st.failureReason = reason;
     }
     AdvanceStep(st, /*confirmed*/ false);
+}
+
+void DungeonLead::ResetStepState(DungeonLeadState& st)
+{
+    st.packId = 0;
+    st.packState = DungeonLeadKernel::PackState::Unknown;
+    st.pullState = DungeonLeadKernel::PullState::None;
+    st.pullStateTs = 0;
+    st.pullAttempts = 0;
+    st.pullOrderRefused = false;
+    st.pullFights = 0;
+    st.pullPackFought = false;
+    st.anchorSet = false;
+    st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
+    st.arrivedTold = false;
+    st.bestDist = 0.f;
+    st.stuckTs = 0;
+    st.stuckAttempts = 0;
+}
+
+bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, DungeonRouteStep const& step,
+                                DungeonFailureDomain domain, DungeonFailureReason reason, std::string const& why)
+{
+    DungeonObjectiveRequirement const requirement = step.Requirement();
+    ++st.objectiveFailures;
+    DungeonLeadKernel::ObjectiveFailureAction const action = DungeonLeadKernel::DecideObjectiveFailure(
+        requirement, st.objectiveFailures, sDungeonLeadConfig.dungeonLeadObjectiveRetryRounds);
+    std::string const detail = step.boss + " requirement=" + ToString(requirement) + " why=" + why +
+                               " round=" + std::to_string(st.objectiveFailures) + " action=" +
+                               DungeonLeadKernel::ToString(action);
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} objective failed: {}", botAI->GetBot()->GetName(), detail);
+
+    switch (action)
+    {
+        case DungeonLeadKernel::ObjectiveFailureAction::Skip:
+        {
+            if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+            {
+                DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+                if (pack.Exists())
+                    SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
+            }
+            DungeonLead::RecordEvent(botAI, "objective_skipped", detail);
+            botAI->TellMasterNoFacing("Dungeon lead: can't do " + step.boss + ", moving on");
+            SkipStep(st, step, domain, reason);
+            return false;
+        }
+        case DungeonLeadKernel::ObjectiveFailureAction::Retry:
+            DungeonLead::RecordEvent(botAI, "objective_retry", detail);
+            botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " didn't work out, trying again");
+            ResetStepState(st);
+            return false;
+        case DungeonLeadKernel::ObjectiveFailureAction::Abort:
+            break;
+    }
+
+    // Out of rounds on something that must not be skipped: stop here rather than walk past it.
+    st.outcome = DungeonRunOutcome::Partial;
+    st.failureDomain = domain;
+    st.failureReason = reason;
+    st.skippedSteps.push_back(step.boss);
+    st.mandatorySkipped = true;
+    DungeonLead::RecordEvent(botAI, "objective_failed", detail);
+    DungeonLead::RecordRunSummary(botAI, "objective_failed");
+    botAI->TellMasterNoFacing("Dungeon lead: can't get past " + step.boss + " - stopping here");
+    Stop(botAI, /*giveLeaderBack*/ true);
+    return true;
 }
 
 void DungeonLead::RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st)
@@ -1444,20 +1512,8 @@ void DungeonLead::RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st)
     }
 
     // Whatever the current step is, look at it afresh: packs reset when the party wipes.
-    st.packId = 0;
-    st.packState = DungeonLeadKernel::PackState::Unknown;
-    st.pullState = DungeonLeadKernel::PullState::None;
-    st.pullStateTs = 0;
-    st.pullAttempts = 0;
-    st.pullOrderRefused = false;
-    st.pullFights = 0;
-    st.pullPackFought = false;
-    st.anchorSet = false;
-    st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
-    st.arrivedTold = false;
-    st.bestDist = 0.f;
-    st.stuckTs = 0;
-    st.stuckAttempts = 0;
+    ResetStepState(st);
+    st.objectiveFailures = 0;
 
     std::string const checkpoint = route && st.checkpointStep >= 0 && size_t(st.checkpointStep) < route->steps.size()
                                        ? route->steps[st.checkpointStep].boss
@@ -1685,17 +1741,13 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // Partial within the same dungeonLeadStuckSeconds window as every other stuck case,
             // instead of silently occupying the session until something else notices.
             bool const stillAlive = sighting.observation.alive > 0;
-            DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
-            std::ostringstream out;
-            out << "Dungeon lead: " << (stillAlive ? "can't progress past " : "nothing found at ") << step.boss
-                << ", moving on";
-            botAI->TellMasterNoFacing(out);
             LOG_INFO("playerbots.dungeonlead",
                      "[DungeonLead] {} step {} '{}' - {}, giving up", bot->GetName(), step.step, step.boss,
                      stillAlive ? "target alive but not progressing (needs an interaction this module can't do)"
                                 : "nothing at destination");
             DungeonLead::RecordEvent(botAI, stillAlive ? "stuck_alive" : "not_found", step.boss);
-            DungeonLead::SkipStep(st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::ObjectiveTimeout);
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Navigation,
+                                       DungeonFailureReason::ObjectiveTimeout, stillAlive ? "stuck_alive" : "not_found");
         }
         return true;
     }
@@ -1759,9 +1811,6 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
     else if (++st.stuckAttempts >= 5 && st.stuckTs &&
              GetMSTimeDiffToNow(st.stuckTs) >= sDungeonLeadConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
     {
-        std::ostringstream out;
-        out << "Dungeon lead: can't reach " << step.boss << ", skipping";
-        botAI->TellMasterNoFacing(out);
         // Both positions on purpose: `dest` alone (the target's own coordinates, effectively just
         // repeating the already-known route waypoint) was useless for telling where the bot
         // actually ended up stuck versus where it was trying to go - `bot->GetPosition*()` is the
@@ -1778,7 +1827,8 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             std::to_string(dest.GetPositionZ()) + ")" +
             " actual=(" + std::to_string(bot->GetPositionX()) + "," + std::to_string(bot->GetPositionY()) + "," +
             std::to_string(bot->GetPositionZ()) + ")");
-        DungeonLead::SkipStep(st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::PathFailed);
+        DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::PathFailed,
+                                   "path");
         return true;
     }
 

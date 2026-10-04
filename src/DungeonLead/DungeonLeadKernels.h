@@ -15,6 +15,8 @@
 #ifndef MOD_DUNGEONLEAD_KERNELS_H
 #define MOD_DUNGEONLEAD_KERNELS_H
 
+#include "DungeonRouteTypes.h"
+
 #include <cstdint>
 #include <vector>
 
@@ -984,6 +986,38 @@ namespace DungeonLeadKernel
         if (all)
             return AssemblyStep::Start;
         return msWaiting >= timeoutMs ? AssemblyStep::Abort : AssemblyStep::Wait;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Objective failure policy - what happens when a route objective can't be completed
+    // ---------------------------------------------------------------------------------------
+
+    enum class ObjectiveFailureAction : uint8_t
+    {
+        Skip,   // give up on it and move on (optional content only)
+        Retry,  // start a fresh round of attempts on the same objective
+        Abort,  // stop the run as partial - never advance past an unresolved mandatory objective
+    };
+
+    inline char const* ToString(ObjectiveFailureAction a)
+    {
+        switch (a)
+        {
+            case ObjectiveFailureAction::Skip:  return "skip";
+            case ObjectiveFailureAction::Retry: return "retry";
+            case ObjectiveFailureAction::Abort: return "abort";
+        }
+        return "unknown";
+    }
+
+    // `failedRounds`: rounds of attempts that have failed on this objective, the current one
+    // included. `maxRounds`: rounds a mandatory objective gets before the run is stopped.
+    inline ObjectiveFailureAction DecideObjectiveFailure(DungeonObjectiveRequirement requirement, uint32_t failedRounds,
+                                                         uint32_t maxRounds)
+    {
+        if (requirement == DungeonObjectiveRequirement::Optional)
+            return ObjectiveFailureAction::Skip;
+        return failedRounds < maxRounds ? ObjectiveFailureAction::Retry : ObjectiveFailureAction::Abort;
     }
 }
 

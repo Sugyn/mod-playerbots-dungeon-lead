@@ -214,3 +214,12 @@ AiPlayerbot.DungeonLead.RecoveryEscalationSeconds = 60
 #        Default:     25
 
 AiPlayerbot.DungeonLead.BossLeashRadius = 25
+
+#    AiPlayerbot.DungeonLead.ObjectiveRetryRounds
+#        Description: Rounds of attempts a boss gets (each round = PullMaxAttempts pulls, or one
+#                      give-up of the route walk) before the run is stopped as partial. A boss is
+#                      never skipped; optional trash and events are skipped after one failed
+#                      round. Range 1-5.
+#        Default:     2
+
+AiPlayerbot.DungeonLead.ObjectiveRetryRounds = 2

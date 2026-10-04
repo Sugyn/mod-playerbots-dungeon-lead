@@ -43,9 +43,18 @@ namespace DungeonLead
     // step (packs reset when a party wipes). Records "checkpoint_restore".
     void RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st);
     // Give up on the current step, recorded (never silent): a skipped mandatory step makes the
-    // run Partial with the given failure domain/reason.
+    // run Partial with the given failure domain/reason. Only FailObjective decides to skip.
     void SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
                   DungeonFailureReason reason);
+    // The current step's objective could not be completed (`why` for the record). Optional content
+    // is skipped; a boss/required objective gets another round (step state reset) and, when out of
+    // rounds, ends the run as partial - the route never advances past it. Returns true if the
+    // session was stopped (the caller must not touch it any more).
+    bool FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, DungeonRouteStep const& step,
+                       DungeonFailureDomain domain, DungeonFailureReason reason, std::string const& why);
+    // Forget everything observed about the current step (pack, pull, target plan, anchor,
+    // arrival, stuck baseline) so it is looked at afresh. Not the objective failure count.
+    void ResetStepState(DungeonLeadState& st);
     // The only writer of DungeonLeadState::packId/packState (logs "pack_state" on change).
     void SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack,
                       DungeonLeadKernel::PackState next);

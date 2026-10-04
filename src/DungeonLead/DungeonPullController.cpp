@@ -184,13 +184,13 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
             if (changed && st.pullFights >= kMaxPackResets)
             {
                 DungeonRouteStep const& step = route->steps[st.stepIndex];
-                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} giving up on #{} {} after it reset {} times",
+                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} #{} {} reset {} times",
                          bot->GetName(), pack.id, pack.name, st.pullFights);
-                botAI->TellMasterNoFacing("Dungeon lead: can't finish " + pack.name + ", moving on");
-                DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
-                DungeonLead::RecordEvent(botAI, "pack_skipped", pack.name + " reason=reset_too_often");
-                DungeonLead::SkipStep(st, step, DungeonFailureDomain::PullPlanning,
-                                      pack.bossPack ? DungeonFailureReason::BossEvade : DungeonFailureReason::ObjectiveTimeout);
+                if (DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::PullPlanning,
+                                               pack.bossPack ? DungeonFailureReason::BossEvade
+                                                             : DungeonFailureReason::ObjectiveTimeout,
+                                               "reset_too_often"))
+                    return;  // session stopped
             }
             break;
         case PullState::Failed:
@@ -201,15 +201,16 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
             if (st.pullAttempts < policy.maxAttempts)
                 break;  // DecidePull goes back to Approaching for another attempt
 
-            // Out of attempts: skip the pack, recorded - never a silent route advance.
+            // Out of attempts: the objective failure policy decides - skip optional content, retry
+            // or stop on a boss. Never a silent route advance.
             DungeonRouteStep const& step = route->steps[st.stepIndex];
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} giving up on #{} {} after {} failed pull(s)",
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} #{} {}: {} failed pull(s)",
                      bot->GetName(), pack.id, pack.name, st.pullAttempts);
-            botAI->TellMasterNoFacing("Dungeon lead: can't pull " + pack.name + ", moving on");
-            DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
-            DungeonLead::RecordEvent(botAI, "pack_skipped", pack.name + " reason=pull_failed");
-            DungeonLead::SkipStep(st, step, DungeonFailureDomain::PullPlanning,
-                                  pack.bossPack ? DungeonFailureReason::BossEvade : DungeonFailureReason::ObjectiveTimeout);
+            if (DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::PullPlanning,
+                                           pack.bossPack ? DungeonFailureReason::BossEvade
+                                                         : DungeonFailureReason::ObjectiveTimeout,
+                                           "pull_failed"))
+                return;  // session stopped
             break;
         }
         default:

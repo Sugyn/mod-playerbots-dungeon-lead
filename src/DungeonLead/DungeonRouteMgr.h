@@ -57,6 +57,8 @@ struct DungeonRouteStep
 
     // What the leader goes there to do (see DungeonRouteTypes.h) - derived, not stored.
     DungeonRouteNodeType NodeType() const { return ClassifyRouteStep(kind, entry); }
+    // Whether it may be skipped if it can't be completed (DungeonLead::FailObjective).
+    DungeonObjectiveRequirement Requirement() const { return ClassifyRequirement(kind, entry); }
 };
 
 // Run-level outcome, shared vocabulary between the runtime and (eventually) an automated test
@@ -214,6 +216,7 @@ struct DungeonLeadState
     DungeonLeadKernel::RecoveryTimers recovery;
     // Wipe checkpoint: last step confirmed safe (cleared pack / reached travel node), -1 = none.
     int32 checkpointStep = -1;
+    uint8 objectiveFailures = 0;  // failed rounds on the current step (DungeonLead::FailObjective)
     uint32 lastLeashLogTs = 0;
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
@@ -325,6 +328,7 @@ struct DungeonLeadState
         pullFights = 0;
         pullPackFought = false;
         checkpointStep = -1;
+        objectiveFailures = 0;
         bossPackCurrent = bossEngaged = false;
         anchorSet = false;
         targetPrimary = targetSecondary = targetCc = ObjectGuid::Empty;

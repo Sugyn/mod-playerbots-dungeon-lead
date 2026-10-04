@@ -752,6 +752,33 @@ namespace
     }
 }
 
+namespace
+{
+    void TestObjectivePolicy()
+    {
+        using R = DungeonObjectiveRequirement;
+        Check(ClassifyRequirement(DungeonRouteKind::Boss, 3653) == R::Boss, "boss row -> Boss");
+        Check(ClassifyRequirement(DungeonRouteKind::Optional, 3654) == R::Optional, "optional trash -> Optional");
+        Check(ClassifyRequirement(DungeonRouteKind::Boss, 1) == R::Optional, "path anchor is never mandatory");
+        Check(ClassifyRequirement(DungeonRouteKind::Event, 42) == R::Optional, "event row -> Optional");
+
+        for (uint32_t rounds = 1; rounds <= 3; ++rounds)
+            Check(DecideObjectiveFailure(R::Optional, rounds, 2) == ObjectiveFailureAction::Skip,
+                  "optional trash failing (1-3 rounds) may be skipped");
+        Check(DecideObjectiveFailure(R::Required, 1, 2) == ObjectiveFailureAction::Retry,
+              "required trash failing -> retried, not skipped");
+        Check(DecideObjectiveFailure(R::Required, 2, 2) == ObjectiveFailureAction::Abort,
+              "required trash still failing -> run stops, never silently advances");
+        Check(DecideObjectiveFailure(R::Boss, 1, 2) == ObjectiveFailureAction::Retry, "boss pull fails -> retried");
+        Check(DecideObjectiveFailure(R::Boss, 2, 2) == ObjectiveFailureAction::Abort, "boss still unresolved -> run stops");
+        bool neverSkips = true;
+        for (uint32_t rounds = 1; rounds < 10; ++rounds)
+            neverSkips = neverSkips && DecideObjectiveFailure(R::Boss, rounds, 2) != ObjectiveFailureAction::Skip &&
+                         DecideObjectiveFailure(R::Required, rounds, 2) != ObjectiveFailureAction::Skip;
+        Check(neverSkips, "a boss or required objective is never skipped, whatever the count");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -767,6 +794,7 @@ int main()
     TestCheckpoint();
     TestAssembly();
     TestTelemetryBuffer();
+    TestObjectivePolicy();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

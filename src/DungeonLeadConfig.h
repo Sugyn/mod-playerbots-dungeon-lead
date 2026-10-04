@@ -73,6 +73,9 @@ public:
     uint32 dungeonLeadRecoveryEscalationSeconds;
     // Boss fights are anchored at the boss's own spot with this leash (instead of CombatLeashRadius).
     float dungeonLeadBossLeashRadius;
+    // Rounds of attempts a mandatory objective (a boss) gets before the run is stopped as partial;
+    // optional content is skipped after its first failed round instead.
+    uint32 dungeonLeadObjectiveRetryRounds;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -123,6 +126,7 @@ private:
         dungeonLeadRecoveryTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds", 60, 10, 600);
         dungeonLeadRecoveryEscalationSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryEscalationSeconds", 60, 10, 600);
         dungeonLeadBossLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.BossLeashRadius", 25, 10, 80));
+        dungeonLeadObjectiveRetryRounds = Bounded("AiPlayerbot.DungeonLead.ObjectiveRetryRounds", 2, 1, 5);
         if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
         {
             LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "

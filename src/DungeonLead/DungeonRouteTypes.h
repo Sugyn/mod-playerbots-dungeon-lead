@@ -98,4 +98,34 @@ inline DungeonRouteNodeType ClassifyRouteStep(DungeonRouteKind kind, uint32_t en
     return DungeonRouteNodeType::Travel;
 }
 
+// How much a route objective matters if it can't be completed. Only Optional content may ever
+// be skipped; Required and Boss objectives are retried and, if still unresolved, end the run as
+// partial - the route never advances past them.
+enum class DungeonObjectiveRequirement : uint8_t
+{
+    Optional,
+    Required,  // must be cleared, not a boss (no route data marks trash this way yet)
+    Boss,
+};
+
+inline char const* ToString(DungeonObjectiveRequirement r)
+{
+    switch (r)
+    {
+        case DungeonObjectiveRequirement::Optional: return "optional";
+        case DungeonObjectiveRequirement::Required: return "required";
+        case DungeonObjectiveRequirement::Boss:     return "boss";
+    }
+    return "unknown";
+}
+
+// From the existing data: a `boss` row is a mandatory boss; everything else (optional trash,
+// heroic-only, events, path anchors) is optional.
+inline DungeonObjectiveRequirement ClassifyRequirement(DungeonRouteKind kind, uint32_t entry)
+{
+    if (entry != kPathAnchorEntry && kind == DungeonRouteKind::Boss)
+        return DungeonObjectiveRequirement::Boss;
+    return DungeonObjectiveRequirement::Optional;
+}
+
 #endif

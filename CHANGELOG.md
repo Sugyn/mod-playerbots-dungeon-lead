@@ -18,6 +18,18 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Fixed (hardening)
+- A recovery whose reason changes (a straggler that then counts as lost, ...) gets a fresh
+  timeout instead of inheriting an almost-expired one; a recovery episode as a whole is still
+  capped, so switching between reasons can't loop.
+- During a fight, targets are picked around where the fight began, not around wherever the tank
+  has moved to - a neighbouring pack no longer slides into the target plan; an add attacking the
+  party still counts wherever it is.
+- A boss is never skipped any more: if it can't be pulled or reached, it gets another round
+  (`ObjectiveRetryRounds`, 2) and then the run stops as partial (`objective_failed`) instead of
+  walking past it. Optional trash and events are still skipped (`objective_skipped`, replaces
+  `pack_skipped`).
+
 ### Fixed
 - A session no longer counts as started until the tank is seen as group leader. The leader
   change is retried and the start abandoned if it never lands, instead of running with the wrong
@@ -54,6 +66,7 @@ the MAJOR bar above is met.
 - Config: `PostCombatMinSeconds` (3), `PostCombatMinHealthPct` (50).
 - Config: `RecoveryTimeoutSeconds` (60), `RecoveryEscalationSeconds` (60).
 - Config: `BossLeashRadius` (25).
+- Config: `ObjectiveRetryRounds` (2).
 - `tools/run_tests.sh`: unit tests for the leadership and party-readiness decisions.
 
 ### Changed

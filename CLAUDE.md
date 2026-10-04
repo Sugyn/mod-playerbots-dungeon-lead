@@ -2767,4 +2767,31 @@ Notes:
 - `DungeonLeadKernel::IsFightCandidate`: in combat AND (within 40 yd of the anchor OR attacking
   a party member). Same boundary as the leash; pack identity hardening follows in H4.
 
+## H3 — Mandatory objective failure policy
+
+Status: DONE (2026-10-04)
+
+Commit:
+`fix(dungeon-lead): enforce mandatory objective failure policy`
+
+Validation:
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - 211 checks (12 new: requirement classification, optional skipped after 1-3
+  rounds, required/boss retried then aborted, a boss/required objective never skipped)
+- Live: Wailing Caverns test party with two forced failures on Lady Anacondra (harness, not
+  committed): round 1 -> objective_retry, session kept; round 2 -> objective_failed, session
+  stopped, run row `partial / pull_planning / boss_evade / objective_failed`.
+
+Notes:
+- `DungeonObjectiveRequirement` {Optional, Required, Boss} in DungeonRouteTypes.h, derived from
+  existing data (`DungeonRouteStep::Requirement()`): a `boss` row is Boss, everything else
+  Optional; Required exists for future route data (no row marks trash as required yet).
+- `DungeonLeadKernel::DecideObjectiveFailure` -> Skip (optional only) / Retry / Abort, rounds =
+  ObjectiveRetryRounds (2). `DungeonLead::FailObjective` is the single entry for every
+  "can't complete this step" path: pull attempts exhausted, pack reset too often, arrival
+  give-up (stuck_alive/not_found), route walk stuck (path). Retry = `ResetStepState` (fresh
+  observation, same step); Abort = run Partial + objective_failed + run summary + Stop. The
+  route never advances past an unresolved boss.
+- objective_skipped replaces pack_skipped.
+
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS
