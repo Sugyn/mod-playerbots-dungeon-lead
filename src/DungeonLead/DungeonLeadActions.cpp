@@ -1365,6 +1365,8 @@ void DungeonLead::SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, Dungeon
     {
         st.packId = pack.id;  // a new pack: its state starts over
         st.packState = DungeonLeadKernel::PackState::Unknown;
+        st.packLocked.clear();
+        st.packResolutionKey = 0;
     }
     if (st.packState == next)
         return;
@@ -1373,6 +1375,42 @@ void DungeonLead::SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, Dungeon
     st.packState = next;
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pack {}", botAI->GetBot()->GetName(), line);
     DungeonLead::RecordEvent(botAI, "pack_state", line);
+}
+
+DungeonPackSighting DungeonLead::TrackPack(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack)
+{
+    bool const samePack = st.packId == pack.id;
+    std::vector<ObjectGuid> const noLock;
+    DungeonPackSighting sighting =
+        DungeonPacks::Observe(botAI->GetBot(), pack, st.instanceId, samePack ? st.packLocked : noLock);
+    DungeonLeadKernel::PackState const prev = samePack ? st.packState : DungeonLeadKernel::PackState::Unknown;
+    SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prev, sighting.observation));
+
+    // Once the pack itself is fighting, its membership is fixed - a neighbouring group with the
+    // same entry can't join it afterwards except by actually attacking the party (as an add).
+    if (st.packState == DungeonLeadKernel::PackState::Engaged && st.packLocked.empty())
+        st.packLocked = sighting.members;
+
+    if (st.debugMode)
+    {
+        // membership, rejections and the lock - not the add count, which changes all fight long
+        uint32 const key = uint32(sighting.members.size()) | (sighting.rejected << 16) |
+                           (uint32(st.packLocked.empty() ? 0 : 1) << 24);
+        if (key != st.packResolutionKey)
+        {
+            st.packResolutionKey = key;
+            std::string entries;
+            for (uint32 e : pack.expectedEntries)
+                entries += (entries.empty() ? "" : "/") + std::to_string(e);
+            DungeonLead::RecordEvent(botAI, "pack_resolution",
+                                     "#" + std::to_string(pack.id) + " entries=" + entries +
+                                         " members=" + std::to_string(sighting.members.size()) +
+                                         " adds=" + std::to_string(sighting.engagedAdds) +
+                                         " rejected=" + std::to_string(sighting.rejected) +
+                                         " reason=" + (st.packLocked.empty() ? "spawn_area" : "locked_on_engage"));
+        }
+    }
+    return sighting;
 }
 
 void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
@@ -1388,6 +1426,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     // the next step's pack and pull (if any) start from scratch
     st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
+    st.packLocked.clear();
     st.pullState = DungeonLeadKernel::PullState::None;
     st.pullStateTs = 0;
     st.pullAttempts = 0;
@@ -1415,6 +1454,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
 {
     st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
+    st.packLocked.clear();
     st.pullState = DungeonLeadKernel::PullState::None;
     st.pullStateTs = 0;
     st.pullAttempts = 0;
@@ -1672,9 +1712,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     DungeonPackSighting sighting;
     if (pack.Exists())
     {
-        sighting = DungeonPacks::Observe(bot, pack, st.instanceId);
-        DungeonLeadKernel::PackState const prev = st.packId == pack.id ? st.packState : DungeonLeadKernel::PackState::Unknown;
-        DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prev, sighting.observation));
+        sighting = DungeonLead::TrackPack(botAI, st, pack);
         if (sighting.firstAlive)
             dest = WorldPosition(sighting.firstAlive);  // prefer the live creature position
     }

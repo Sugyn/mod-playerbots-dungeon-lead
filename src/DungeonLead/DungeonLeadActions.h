@@ -16,6 +16,7 @@
 
 class Creature;
 struct DungeonPack;
+struct DungeonPackSighting;
 class PlayerbotAI;
 class Player;
 
@@ -58,6 +59,9 @@ namespace DungeonLead
     // The only writer of DungeonLeadState::packId/packState (logs "pack_state" on change).
     void SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack,
                       DungeonLeadKernel::PackState next);
+    // Observe the current pack, update its state, lock its members once it engages, and (debug
+    // mode) record how it was resolved. Used by the route walk and the pull controller alike.
+    DungeonPackSighting TrackPack(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack);
     void CheckCcMark(PlayerbotAI* botAI);
 
     // One-shot diagnostic (2026-09-12 night's 49-party scale test): runs the EXACT same

@@ -197,6 +197,8 @@ struct DungeonLeadState
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
     uint32 packId = 0;               // DungeonPack::id of the pack being worked on (0 = none)
     DungeonLeadKernel::PackState packState = DungeonLeadKernel::PackState::Unknown;
+    std::vector<ObjectGuid> packLocked;  // the pack's members, locked when it first engaged
+    uint32 packResolutionKey = 0;        // last logged resolution (debug telemetry on change)
     DungeonLeadKernel::PullState pullState = DungeonLeadKernel::PullState::None;  // DungeonPullController
     uint32 pullStateTs = 0;          // getMSTime() of the last pull state change
     uint8 pullAttempts = 0;          // pulls initiated on the current pack
@@ -321,6 +323,7 @@ struct DungeonLeadState
         arrivedTs = 0;
         packId = 0;
         packState = DungeonLeadKernel::PackState::Unknown;
+        packLocked.clear();
         pullState = DungeonLeadKernel::PullState::None;
         pullStateTs = 0;
         pullAttempts = 0;

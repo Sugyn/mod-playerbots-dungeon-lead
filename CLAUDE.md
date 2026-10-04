@@ -2796,4 +2796,34 @@ Notes:
   route never advances past an unresolved boss.
 - objective_skipped replaces pack_skipped.
 
+## H4 — Pack identity
+
+Status: DONE (2026-10-04) - dense-room live validation pending (H7 Tier 2)
+
+Commit:
+`refactor(dungeon-lead): strengthen runtime pack identity`
+
+Validation:
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - 220 checks (9 new ResolvePack cases: two same-entry packs 15 yd apart not
+  merged, lock on engage, add joins, neighbour that joins counts but its idle friends don't,
+  locked members dead -> cleared, a boss's trash is an add not the boss, patrol lead, empty)
+- Live: Wailing Caverns test party 14 min (debug on): Lady Anacondra resolved as 1 member with
+  the trash around her as adds (up to 7), locked on engage, cleared; Kresh the same; no
+  neighbouring group merged, no objective failure.
+
+Notes:
+- `DungeonLeadKernel::ResolvePack`: core members = the nearest expected unit (lead) + expected
+  units whose spawn (home) position is within 12 yd of the pack spot + expected units attacking
+  the party; once engaged the core is locked (`DungeonLeadState::packLocked`); any other unit
+  attacking a party member is an add. The pack's observation (found/alive/engaged -> state) uses
+  the core only - fighting a boss's trash must not look like fighting the boss.
+- `DungeonPacks::Observe` gathers the expected entries (grid search) plus all creatures attacking
+  party members (`Unit::getAttackers`); `DungeonLead::TrackPack` = observe + state + lock + debug
+  `pack_resolution` (members, adds, rejected, reason) and is shared by the route walk and the
+  pull controller.
+- Dense-room behaviour (two same-entry groups) is kernel-tested; WC routes are single named
+  units, so the live run exercised the add/lock path, not the rejection path - Tier 2 dungeons
+  in H7 will.
+
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS

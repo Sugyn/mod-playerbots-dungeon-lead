@@ -18,6 +18,12 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Changed
+- A pack is now the units spawned at its spot (plus its nearest member, so a patrol still counts)
+  rather than every unit of that type within 150 yd; once engaged its membership is locked, and
+  anything attacking the party is tracked as an add without being mistaken for the pack itself.
+  With `startdungeon debug` on, `pack_resolution` records how it was resolved.
+
 ## [0.11.0-alpha] - 2026-10-04
 
 The leader is now a state machine with explicit readiness, pull, recovery and wipe handling

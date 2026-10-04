@@ -779,6 +779,80 @@ namespace
     }
 }
 
+namespace
+{
+    PackUnitFacts U(uint64_t id, bool expected, bool alive, bool inCombat, bool attacking, float dist, float home)
+    {
+        PackUnitFacts u;
+        u.id = id;
+        u.expectedEntry = expected;
+        u.alive = alive;
+        u.inCombat = inCombat;
+        u.attackingParty = attacking;
+        u.distToPack = dist;
+        u.homeDistToPack = home;
+        return u;
+    }
+
+    bool Has(std::vector<uint64_t> const& v, uint64_t id)
+    {
+        for (uint64_t m : v)
+            if (m == id)
+                return true;
+        return false;
+    }
+
+    void TestPackIdentity()
+    {
+        float const radius = 10.0f;
+        // pack A at its spot (ids 1-3), pack B with the same entry 15 yd away (ids 4-6)
+        std::vector<PackUnitFacts> room{U(1, true, true, false, false, 2, 2), U(2, true, true, false, false, 4, 4),
+                                        U(3, true, true, false, false, 5, 5), U(4, true, true, false, false, 15, 15),
+                                        U(5, true, true, false, false, 16, 16), U(6, true, true, false, false, 17, 17)};
+        PackResolution r = ResolvePack(room, {}, radius);
+        Check(r.core.size() == 3 && Has(r.core, 1) && !Has(r.core, 4) && r.rejected == 3,
+              "two packs 15 yd apart, same entry: only the near one is this pack");
+        Check(r.lead == 1, "lead is the nearest live member");
+
+        // tank engages pack A only: lock it, pack B stays out
+        std::vector<uint64_t> locked = r.core;
+        room[0].inCombat = room[1].inCombat = true;
+        room[0].attackingParty = true;
+        r = ResolvePack(room, locked, radius);
+        Check(r.core.size() == 3 && !Has(r.core, 4) && r.observation.engaged == 2, "engaged pack A locked, B not merged");
+
+        // an unexpected add (other entry) joins the fight
+        room.push_back(U(9, false, true, true, true, 25, 40));
+        r = ResolvePack(room, locked, radius);
+        Check(Has(r.adds, 9) && r.adds.size() == 1, "add attacking the party becomes an encounter member");
+        // a pack-B unit pulled into the fight joins as an add, the rest of B does not
+        room[3].inCombat = room[3].attackingParty = true;
+        r = ResolvePack(room, locked, radius);
+        Check(Has(r.adds, 4) && !Has(r.adds, 5) && !Has(r.core, 5) && r.adds.size() == 2,
+              "neighbour that actually joins counts, its idle friends don't");
+
+        // a locked member that died and then despawned/moved out of sight: still bounded and stable
+        std::vector<PackUnitFacts> later{U(2, true, false, false, false, 4, 4), U(3, true, false, false, false, 5, 5)};
+        r = ResolvePack(later, locked, radius);
+        Check(r.core.size() == 2 && r.observation.alive == 0 &&
+                  DecidePackState(PackState::Engaged, r.observation) == PackState::Cleared,
+              "locked members dead (one missing) -> cleared");
+
+        // fighting a boss's trash is not fighting the boss
+        std::vector<PackUnitFacts> bossRoom{U(20, true, true, false, false, 3, 3), U(21, false, true, true, true, 15, 25)};
+        r = ResolvePack(bossRoom, {}, radius);
+        Check(r.observation.engaged == 0 && r.adds.size() == 1 && r.lead == 20,
+              "trash attacking the party is an add; the idle boss is not engaged");
+
+        // a patrolling named mob far from its spot is still the pack (the lead)
+        std::vector<PackUnitFacts> patrol{U(7, true, true, false, false, 90, 0)};
+        r = ResolvePack(patrol, {}, radius);
+        Check(r.lead == 7 && r.core.size() == 1, "patrol away from its spot is still the pack's lead");
+
+        Check(ResolvePack({}, {}, radius).core.empty(), "nothing around -> empty, Unknown");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -795,6 +869,7 @@ int main()
     TestAssembly();
     TestTelemetryBuffer();
     TestObjectivePolicy();
+    TestPackIdentity();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

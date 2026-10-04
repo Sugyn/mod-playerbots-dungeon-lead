@@ -569,6 +569,109 @@ namespace DungeonLeadKernel
         bool rememberedKilled = false; // instance kill memory says this pack is done
     };
 
+    // Which live units make up the pack. Geometry alone merges neighbouring groups in dense rooms,
+    // so membership combines:
+    //  - static identity: the expected entry, and the *spawn* (home) position near the pack's spot
+    //    - plus the nearest such unit as the lead (a patrol away from home is still the pack);
+    //  - runtime identity: once the pack is engaged its members are locked, and any unit attacking
+    //    the party joins as an engaged add.
+    // An expected-entry unit spawned elsewhere and not fighting the party is rejected.
+    struct PackUnitFacts
+    {
+        uint64_t id = 0;
+        bool expectedEntry = false;
+        bool alive = false;
+        bool inCombat = false;
+        bool attackingParty = false;
+        float distToPack = 0.0f;      // current position to the pack's configured spot
+        float homeDistToPack = 0.0f;  // spawn/home position to the pack's configured spot
+    };
+
+    // `observation` describes the pack itself (its core members) - adds are counted separately:
+    // fighting a boss's trash must not look like fighting the boss (see the pull controller's
+    // reset count). Combat with adds already holds the route through the brain's Combat state.
+    struct PackResolution
+    {
+        std::vector<uint64_t> core;     // the pack itself - what gets locked once engaged
+        std::vector<uint64_t> adds;     // other units attacking the party during this fight
+        uint64_t lead = 0;              // nearest live core member (pull target / destination)
+        uint32_t rejected = 0;          // expected-entry units judged not part of this pack
+        PackObservation observation;
+    };
+
+    inline PackResolution ResolvePack(std::vector<PackUnitFacts> const& units, std::vector<uint64_t> const& locked,
+                                      float memberRadius)
+    {
+        PackResolution r;
+        auto isLocked = [&](uint64_t id)
+        {
+            for (uint64_t l : locked)
+                if (l == id)
+                    return true;
+            return false;
+        };
+
+        // the lead: the nearest expected unit (alive preferred) - only relevant before the lock
+        uint64_t nearest = 0;
+        float nearestDist = 0.0f;
+        bool nearestAlive = false;
+        for (PackUnitFacts const& u : units)
+        {
+            if (!u.expectedEntry)
+                continue;
+            bool const better = !nearest || (u.alive && !nearestAlive) ||
+                                (u.alive == nearestAlive && u.distToPack < nearestDist);
+            if (better)
+            {
+                nearest = u.id;
+                nearestDist = u.distToPack;
+                nearestAlive = u.alive;
+            }
+        }
+
+        float leadDist = 0.0f;
+        for (PackUnitFacts const& u : units)
+        {
+            bool member = false;
+            bool add = false;
+            if (!locked.empty())
+            {
+                member = isLocked(u.id);
+                add = !member && u.alive && u.attackingParty;
+            }
+            else if (u.expectedEntry)
+                member = u.id == nearest || u.homeDistToPack <= memberRadius || (u.alive && u.attackingParty);
+            else
+                add = u.alive && u.attackingParty;
+
+            if (!member && !add)
+            {
+                if (u.expectedEntry)
+                    ++r.rejected;
+                continue;
+            }
+            if (add)
+            {
+                r.adds.push_back(u.id);
+                continue;
+            }
+            r.core.push_back(u.id);
+            ++r.observation.found;
+            if (u.alive)
+            {
+                ++r.observation.alive;
+                if (u.inCombat)
+                    ++r.observation.engaged;
+                if (u.expectedEntry && (!r.lead || u.distToPack < leadDist))
+                {
+                    r.lead = u.id;
+                    leadDist = u.distToPack;
+                }
+            }
+        }
+        return r;
+    }
+
     inline PackState DecidePackState(PackState prev, PackObservation const& o)
     {
         if (prev == PackState::Cleared || prev == PackState::Skipped)

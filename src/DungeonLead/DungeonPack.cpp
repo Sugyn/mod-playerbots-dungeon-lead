@@ -10,8 +10,10 @@
 
 #include "Creature.h"
 #include "DungeonRouteMgr.h"
+#include "Group.h"
 #include "Player.h"
 
+#include <algorithm>
 #include <list>
 
 namespace
@@ -19,6 +21,9 @@ namespace
     // How far from the bot the grid search reaches, and how far from the pack position a creature
     // may stand and still count as part of it - same 150 yd the route walk always used.
     constexpr float kPackProbeRange = 150.0f;
+    // A unit spawned this close to the pack's spot is part of it (plus the nearest one, see
+    // DungeonLeadKernel::ResolvePack); farther ones with the same entry belong to another group.
+    constexpr float kPackMemberRadius = 12.0f;
 }
 
 DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)
@@ -56,35 +61,76 @@ DungeonBossStrategy DungeonPacks::BossStrategyFor(DungeonPack const& pack, Creat
     return s;
 }
 
-DungeonPackSighting DungeonPacks::Observe(Player* bot, DungeonPack const& pack, uint32_t instanceId)
+DungeonPackSighting DungeonPacks::Observe(Player* bot, DungeonPack const& pack, uint32_t instanceId,
+                                          std::vector<ObjectGuid> const& locked)
 {
     DungeonPackSighting sighting;
     if (!pack.Exists())
         return sighting;
 
+    // Candidate units: the expected entries around the bot (filtered to the pack's area), and
+    // everything currently attacking a party member.
+    std::vector<Creature*> units;
+    auto addUnit = [&](Creature* c)
+    {
+        if (c && std::find(units.begin(), units.end(), c) == units.end())
+            units.push_back(c);
+    };
     for (uint32_t entry : pack.expectedEntries)
     {
         if (sDungeonRouteMgr.IsStepKilled(instanceId, entry))
             sighting.observation.rememberedKilled = true;
-
         // AzerothCore's grid search is centred on a WorldObject only, so search around the bot and
-        // then keep what stands near the pack's own position - an unrelated creature with the same
-        // entry elsewhere in range must not be mistaken for this pack (review DL-015).
+        // then keep what stands in the pack's area (review DL-015).
         std::list<Creature*> found;
         bot->GetCreatureListWithEntryInGrid(found, entry, kPackProbeRange);
         for (Creature* c : found)
-        {
-            if (c->GetExactDist(pack.x, pack.y, pack.z) > pack.probeRadius)
-                continue;
-            ++sighting.observation.found;
-            if (!c->IsAlive())
-                continue;
-            ++sighting.observation.alive;
-            if (c->IsInCombat())
-                ++sighting.observation.engaged;
-            if (!sighting.firstAlive)
-                sighting.firstAlive = c;
-        }
+            if (c->GetExactDist(pack.x, pack.y, pack.z) <= pack.probeRadius)
+                addUnit(c);
+    }
+    std::vector<Unit const*> partyAttackers;
+    if (Group* group = bot->GetGroup())
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            if (Player* member = ref->GetSource(); member && member->GetMap() == bot->GetMap())
+                for (Unit* attacker : member->getAttackers())
+                    if (Creature* c = attacker ? attacker->ToCreature() : nullptr)
+                    {
+                        addUnit(c);
+                        partyAttackers.push_back(c);
+                    }
+
+    std::vector<DungeonLeadKernel::PackUnitFacts> facts;
+    std::vector<uint64_t> lockedIds;
+    for (ObjectGuid const& g : locked)
+        lockedIds.push_back(g.GetRawValue());
+    for (Creature* c : units)
+    {
+        DungeonLeadKernel::PackUnitFacts f;
+        f.id = c->GetGUID().GetRawValue();
+        f.expectedEntry = std::find(pack.expectedEntries.begin(), pack.expectedEntries.end(), c->GetEntry()) !=
+                          pack.expectedEntries.end();
+        f.alive = c->IsAlive();
+        f.inCombat = c->IsInCombat();
+        f.attackingParty = std::find(partyAttackers.begin(), partyAttackers.end(), c) != partyAttackers.end();
+        f.distToPack = c->GetExactDist(pack.x, pack.y, pack.z);
+        Position const& home = c->GetHomePosition();
+        f.homeDistToPack = home.GetExactDist(pack.x, pack.y, pack.z);
+        facts.push_back(f);
+    }
+
+    DungeonLeadKernel::PackResolution const r = DungeonLeadKernel::ResolvePack(facts, lockedIds, kPackMemberRadius);
+    bool const remembered = sighting.observation.rememberedKilled;
+    sighting.observation = r.observation;
+    sighting.observation.rememberedKilled = remembered;
+    sighting.engagedAdds = uint32_t(r.adds.size());
+    sighting.rejected = r.rejected;
+    for (Creature* c : units)
+    {
+        uint64_t const id = c->GetGUID().GetRawValue();
+        if (std::find(r.core.begin(), r.core.end(), id) != r.core.end())
+            sighting.members.push_back(c->GetGUID());
+        if (id == r.lead)
+            sighting.firstAlive = c;
     }
     return sighting;
 }

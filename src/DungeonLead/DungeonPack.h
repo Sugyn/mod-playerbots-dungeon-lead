@@ -18,6 +18,8 @@
 #include "DungeonLeadKernels.h"
 #include "DungeonRouteTypes.h"
 
+#include "ObjectGuid.h"
+
 #include <string>
 #include <vector>
 
@@ -52,7 +54,10 @@ struct DungeonBossStrategy
 struct DungeonPackSighting
 {
     DungeonLeadKernel::PackObservation observation;
-    Creature* firstAlive = nullptr;  // valid for the current tick only
+    Creature* firstAlive = nullptr;  // the live lead (nearest expected member); current tick only
+    std::vector<ObjectGuid> members;  // the pack itself (what gets locked once engaged)
+    uint32_t engagedAdds = 0;         // other units attacking the party, counted separately
+    uint32_t rejected = 0;            // same-entry units judged to belong elsewhere
 };
 
 namespace DungeonPacks
@@ -61,9 +66,11 @@ namespace DungeonPacks
     // Travel anchors, rows without a creature entry or position.
     DungeonPack ForStep(DungeonRoute const& route, uint32_t stepIndex);
 
-    // Live creatures of `pack` around its position, as seen from `bot`, plus the instance kill
-    // memory for `instanceId`.
-    DungeonPackSighting Observe(Player* bot, DungeonPack const& pack, uint32_t instanceId);
+    // Live units of `pack` as seen from `bot` (DungeonLeadKernel::ResolvePack): expected entries by
+    // spawn position plus the lead, or the `locked` members once engaged, plus any unit attacking
+    // the party; and the instance kill memory for `instanceId`.
+    DungeonPackSighting Observe(Player* bot, DungeonPack const& pack, uint32_t instanceId,
+                                std::vector<ObjectGuid> const& locked = {});
 
     // Generic boss strategy for a live boss of `pack` (route data has no per-boss positions yet).
     DungeonBossStrategy BossStrategyFor(DungeonPack const& pack, Creature const* boss, float leashRadius);

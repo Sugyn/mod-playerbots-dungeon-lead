@@ -82,9 +82,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
         return;
     }
 
-    DungeonPackSighting const sighting = DungeonPacks::Observe(bot, pack, st.instanceId);
-    DungeonLeadKernel::PackState const prevPack = st.packId == pack.id ? st.packState : DungeonLeadKernel::PackState::Unknown;
-    DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prevPack, sighting.observation));
+    DungeonPackSighting const sighting = DungeonLead::TrackPack(botAI, st, pack);
 
     // Pull the target plan's primary (DungeonTargetManager runs first and marks it); fall back to
     // the pack's first live creature when there is no plan.
