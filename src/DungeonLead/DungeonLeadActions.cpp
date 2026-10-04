@@ -1979,7 +1979,11 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             " target=(" + std::to_string(dest.GetPositionX()) + "," + std::to_string(dest.GetPositionY()) + "," +
             std::to_string(dest.GetPositionZ()) + ")" +
             " actual=(" + std::to_string(bot->GetPositionX()) + "," + std::to_string(bot->GetPositionY()) + "," +
-            std::to_string(bot->GetPositionZ()) + ")");
+            std::to_string(bot->GetPositionZ()) + ")" +
+            // the floor under the bot: tells "stuck on terrain" from "fell under the map"
+            // (SM Library, H7: the tank froze at z=0 under an 18 yd floor)
+            " ground=" + std::to_string(bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(),
+                                                          bot->GetPositionZ() + 30.f)));
         DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::PathFailed,
                                    "path");
         return true;

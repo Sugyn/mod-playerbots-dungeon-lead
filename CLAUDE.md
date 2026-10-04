@@ -2886,4 +2886,30 @@ Stale state: AdvanceStep now also clears the target plan; pack/lock, pull, objec
 interaction, anchor (on Travelling) were already cleared per step, and ResetStepState covers a
 retry or a checkpoint restore.
 
+## H7 — Live validation campaign
+
+Status: IN PROGRESS (first pass done 2026-10-04, 60-min full-clear pass running)
+
+Harness: server-only `DungeonLeadSelfTest.inc` (not in the repo) runs a list of dungeons one after
+another with fresh test bots at each dungeon's LFG target level, with a per-run cap; results are
+summarized with `tools/summarize_runs.py`. Matrix: `docs/testing-status.md`.
+
+Failure classes found and fixed (all pushed):
+- session bots leaving the dungeon (upstream "new rpg" teleports, other teleports) ->
+  `fix(dungeon-lead): keep session bots inside the dungeon` (PlayerScript teleport guard)
+- per-tick homebind teleport after the test characters' old group disbanded (AC marks the instance
+  invalid) -> `fix(dungeon-lead): keep party members' instance valid`
+- a straggler stuck on terrain re-opening the same recovery with fresh clocks forever ->
+  `fix(dungeon-lead): treat a relapsing recovery as one episode` (escalation verified live)
+- marking timeouts not counted as pull attempts (unbounded), boss out of sight counted as in
+  range, marking while still in combat -> `fix(dungeon-lead): bound marking failures and pull only
+  in sight`
+
+Open:
+- SM Library: the leader ended under the floor (z=0) after walking back for a dead member; one
+  occurrence. skip_stuck now records the ground height to classify the next one.
+- Pace: ~30 s per trash pack; full clears need 40-60 min.
+- Trash between bosses is fought where the walk meets it (route rows are bosses); SFK's Moonwalker
+  pack wiped a level-20 party 4 times in one run.
+
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS
