@@ -15,6 +15,7 @@
 #include "Group.h"
 #include "Log.h"
 #include "MotionMaster.h"
+#include "PathGenerator.h"
 #include "Player.h"
 #include "Playerbots.h"
 #include "Timer.h"
@@ -122,7 +123,19 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
             if (observed == RecoveryReason::PartyFragmented && who && who->GetMap() == bot->GetMap() &&
                 msInReason >= kRegroupGraceMs &&
                 bot->GetDistance(who) > sDungeonLeadConfig.dungeonLeadPartySoftRange && !bot->isMoving())
-                bot->GetMotionMaster()->MovePoint(0, who->GetPositionX(), who->GetPositionY(), who->GetPositionZ());
+            {
+                // Only along a real path: a plain MovePoint to a straggler the navmesh can't reach
+                // moved the tank straight through rock (H7: Deadmines, SM Library - left with no
+                // ground under it). No path -> stay; the escalation brings the straggler instead.
+                PathGenerator path(bot);
+                path.CalculatePath(who->GetPositionX(), who->GetPositionY(), who->GetPositionZ());
+                if (!(path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END)))
+                {
+                    G3D::Vector3 const& end = path.GetActualEndPosition();
+                    if (bot->GetExactDist(end.x, end.y, end.z) > 5.0f)
+                        bot->GetMotionMaster()->MovePoint(0, end.x, end.y, end.z);
+                }
+            }
             break;
         case RecoveryStep::Escalate:
         {

@@ -1980,7 +1980,9 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         // back to the last spot the walk made progress from, then let the walk try again. If it is
         // stuck from there too, the step fails as before.
         float const backDist = bot->GetExactDist(st.lastGoodX, st.lastGoodY, st.lastGoodZ);
-        if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && backDist < 80.0f)
+        // no ground at all under it (INVALID_HEIGHT): it is inside the rock, any good spot is better
+        bool const noGround = ground <= INVALID_HEIGHT + 1.0f;
+        if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround))
         {
             st.unstuckUsed = true;
             std::string const detail =
