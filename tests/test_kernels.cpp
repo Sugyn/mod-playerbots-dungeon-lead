@@ -601,13 +601,58 @@ namespace
     void TestRecovery()
     {
         RecoveryPolicy const p{60000, 60000};
-        Check(DecideRecovery(RecoveryReason::None, 999999, p) == RecoveryStep::None, "no problem -> nothing to do");
-        Check(DecideRecovery(RecoveryReason::PartyFragmented, 0, p) == RecoveryStep::Act, "new problem -> act");
-        Check(DecideRecovery(RecoveryReason::PartyFragmented, 59999, p) == RecoveryStep::Act, "inside the act window -> act");
-        Check(DecideRecovery(RecoveryReason::MemberLost, 60000, p) == RecoveryStep::Escalate, "act window over -> escalate");
-        Check(DecideRecovery(RecoveryReason::MemberDead, 119999, p) == RecoveryStep::Escalate, "inside escalation -> escalate");
-        Check(DecideRecovery(RecoveryReason::MemberDead, 120000, p) == RecoveryStep::Abort, "escalation over -> abort (bounded)");
-        Check(DecideRecovery(RecoveryReason::LeadershipLost, 500000, p) == RecoveryStep::Abort, "never an endless loop");
+        Check(DecideRecovery(RecoveryReason::None, 999999, 999999, p) == RecoveryStep::None, "no problem -> nothing to do");
+        Check(DecideRecovery(RecoveryReason::PartyFragmented, 0, 0, p) == RecoveryStep::Act, "new problem -> act");
+        Check(DecideRecovery(RecoveryReason::PartyFragmented, 59999, 59999, p) == RecoveryStep::Act, "inside the act window -> act");
+        Check(DecideRecovery(RecoveryReason::MemberLost, 60000, 60000, p) == RecoveryStep::Escalate, "act window over -> escalate");
+        Check(DecideRecovery(RecoveryReason::MemberDead, 119999, 119999, p) == RecoveryStep::Escalate, "inside escalation -> escalate");
+        Check(DecideRecovery(RecoveryReason::MemberDead, 120000, 120000, p) == RecoveryStep::Abort, "escalation over -> abort (bounded)");
+        Check(DecideRecovery(RecoveryReason::LeadershipLost, 500000, 500000, p) == RecoveryStep::Abort, "never an endless loop");
+
+        // H1: a reason change restarts that reason's clock; the episode stays bounded
+        RecoveryTimers t;
+        uint32_t now = 1000;
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, now), "first problem starts a recovery");
+        now += 20000;  // fragmented for 20 s
+        Check(ObserveRecovery(t, RecoveryReason::MemberLost, now), "reason change starts a new recovery");
+        Check(now - t.reasonSince == 0 && t.step == RecoveryStep::None, "fragmented 20 s -> lost: elapsed restarts from 0");
+        Check(now - t.episodeSince == 20000, "the episode clock keeps running across the change");
+        Check(DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Act,
+              "new reason starts at act, not near escalation");
+
+        t = RecoveryTimers();
+        now = 5000;
+        ObserveRecovery(t, RecoveryReason::MemberDead, now);  // healer dead
+        now += 70000;  // past its act window
+        Check(DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Escalate,
+              "dead healer after 70 s -> escalate");
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, now);
+        Check(DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Act,
+              "dead -> fragmented gets its own independent timeout");
+
+        t = RecoveryTimers();
+        now = 0;
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, now);
+        Check(!ObserveRecovery(t, RecoveryReason::PartyFragmented, now + 30000) && t.reasonSince == 0,
+              "same reason again keeps its clock");
+
+        // flapping between two reasons every 50 s never escalates per reason, but the episode cap ends it
+        t = RecoveryTimers();
+        now = 0;
+        RecoveryStep last = RecoveryStep::None;
+        uint32_t abortAt = 0;
+        for (int i = 0; i < 20 && last != RecoveryStep::Abort; ++i)
+        {
+            ObserveRecovery(t, i % 2 ? RecoveryReason::MemberLost : RecoveryReason::PartyFragmented, now);
+            last = DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p);
+            abortAt = now;
+            now += 50000;
+        }
+        Check(last == RecoveryStep::Abort && abortAt < p.EpisodeCapMs() + 50000,
+              "flapping reasons are bounded by the episode cap");
+
+        Check(!ObserveRecovery(t, RecoveryReason::None, now) && t.reason == RecoveryReason::None && t.episodeSince == 0,
+              "problem gone -> clocks cleared");
 
         Check(RecoveryFor(ReadyStatus::Fragmented, true) == RecoveryReason::PartyFragmented, "fragmented -> regroup");
         Check(RecoveryFor(ReadyStatus::MemberLost, true) == RecoveryReason::MemberLost, "lost member -> recovery");

@@ -70,55 +70,55 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
     Player* who = nullptr;
     RecoveryReason const observed = eligible ? Observe(botAI, party, who) : RecoveryReason::None;
 
+    // In combat etc. (not eligible) an open recovery is kept as it is, and its clocks run on. Once
+    // the session is walking on again, whatever it was is resolved.
+    if (!eligible && observed == RecoveryReason::None && st.state != LeadState::Travelling)
+        return true;
+
+    RecoveryReason const previous = st.recovery.reason;
+    uint32 const now = getMSTime();
     if (observed == RecoveryReason::None)
     {
-        if (st.recoveryReason != RecoveryReason::None && eligible)
+        if (previous != RecoveryReason::None)
         {
+            uint32 const ms = getMSTimeDiff(st.recovery.reasonSince, now);
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovery {} complete after {} ms", bot->GetName(),
-                     DungeonLeadKernel::ToString(st.recoveryReason), GetMSTimeDiffToNow(st.recoverySinceTs));
+                     DungeonLeadKernel::ToString(previous), ms);
             DungeonLead::RecordEvent(botAI, "recovery_complete",
-                                     std::string(DungeonLeadKernel::ToString(st.recoveryReason)) +
-                                         " ms=" + std::to_string(GetMSTimeDiffToNow(st.recoverySinceTs)));
+                                     std::string(DungeonLeadKernel::ToString(previous)) + " ms=" + std::to_string(ms));
         }
-        if (eligible || st.state == LeadState::Travelling)
-        {
-            st.recoveryReason = RecoveryReason::None;
-            st.recoveryStep = RecoveryStep::None;
-            st.recoverySinceTs = 0;
-        }
-        return true;  // in combat etc. an open recovery is kept, and its clock keeps running
+        DungeonLeadKernel::ObserveRecovery(st.recovery, observed, now);
+        return true;
     }
 
-    if (st.recoveryReason == RecoveryReason::None)
+    // A new reason gets its own fresh window (it must not inherit an almost-expired timeout); the
+    // episode as a whole stays capped - see DungeonLeadKernel::ObserveRecovery / DecideRecovery.
+    if (DungeonLeadKernel::ObserveRecovery(st.recovery, observed, now))
     {
-        st.recoverySinceTs = getMSTime();
-        st.recoveryStep = RecoveryStep::None;
-    }
-    if (observed != st.recoveryReason)
-    {
-        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovery start: {} ({})", bot->GetName(),
-                 DungeonLeadKernel::ToString(observed), who ? who->GetName() : "-");
-        DungeonLead::RecordEvent(botAI, "recovery_start",
-                                 std::string(DungeonLeadKernel::ToString(observed)) + " member=" +
-                                     (who ? who->GetName() : "-"));
-        st.recoveryReason = observed;
+        std::string detail = std::string(DungeonLeadKernel::ToString(observed)) + " member=" + (who ? who->GetName() : "-");
+        if (previous != RecoveryReason::None)
+            detail += " after=" + std::string(DungeonLeadKernel::ToString(previous));
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovery start: {}", bot->GetName(), detail);
+        DungeonLead::RecordEvent(botAI, "recovery_start", detail);
     }
 
     DungeonLeadKernel::RecoveryPolicy policy;
     policy.actMs = sDungeonLeadConfig.dungeonLeadRecoveryTimeoutSeconds * IN_MILLISECONDS;
     policy.escalateMs = sDungeonLeadConfig.dungeonLeadRecoveryEscalationSeconds * IN_MILLISECONDS;
-    RecoveryStep step = DungeonLeadKernel::DecideRecovery(observed, GetMSTimeDiffToNow(st.recoverySinceTs), policy);
-    if (step == RecoveryStep::Abort && st.recoveryStep != RecoveryStep::Escalate)
+    uint32 const msInReason = getMSTimeDiff(st.recovery.reasonSince, now);
+    RecoveryStep step = DungeonLeadKernel::DecideRecovery(observed, msInReason,
+                                                         getMSTimeDiff(st.recovery.episodeSince, now), policy);
+    if (step == RecoveryStep::Abort && st.recovery.step != RecoveryStep::Escalate)
         step = RecoveryStep::Escalate;  // the clock ran on through a fight: still try the escalation once
-    bool const newStep = step != st.recoveryStep;
-    st.recoveryStep = step;
+    bool const newStep = step != st.recovery.step;
+    st.recovery.step = step;
 
     switch (step)
     {
         case RecoveryStep::Act:
             // Regroup: walk back toward the straggler until it is close enough to follow again.
             if (observed == RecoveryReason::PartyFragmented && who && who->GetMap() == bot->GetMap() &&
-                GetMSTimeDiffToNow(st.recoverySinceTs) >= kRegroupGraceMs &&
+                msInReason >= kRegroupGraceMs &&
                 bot->GetDistance(who) > sDungeonLeadConfig.dungeonLeadPartySoftRange && !bot->isMoving())
                 bot->GetMotionMaster()->MovePoint(0, who->GetPositionX(), who->GetPositionY(), who->GetPositionZ());
             break;

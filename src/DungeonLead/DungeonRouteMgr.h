@@ -211,9 +211,7 @@ struct DungeonLeadState
     bool bossEngaged = false;
     float bossTankX = 0.f, bossTankY = 0.f, bossTankZ = 0.f, bossLeash = 0.f;
     // DungeonRecoveryController: the open recovery (if any), since when, and the last step taken
-    DungeonLeadKernel::RecoveryReason recoveryReason = DungeonLeadKernel::RecoveryReason::None;
-    DungeonLeadKernel::RecoveryStep recoveryStep = DungeonLeadKernel::RecoveryStep::None;
-    uint32 recoverySinceTs = 0;
+    DungeonLeadKernel::RecoveryTimers recovery;
     // Wipe checkpoint: last step confirmed safe (cleared pack / reached travel node), -1 = none.
     int32 checkpointStep = -1;
     uint32 lastLeashLogTs = 0;

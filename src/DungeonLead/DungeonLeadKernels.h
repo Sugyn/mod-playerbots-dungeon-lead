@@ -803,8 +803,9 @@ namespace DungeonLeadKernel
     // ---------------------------------------------------------------------------------------
     //
     // Every recovery is bounded: act, then escalate, then abort the session with a recorded
-    // failure. The timer runs for as long as *some* recovery problem persists, even if its label
-    // changes (fragmented -> lost and back), so flapping can't reset it into an endless loop.
+    // failure. Each reason gets its own fresh window when the reason changes (a new problem must
+    // not inherit an almost-expired timeout), and the episode as a whole - as long as *some*
+    // recovery problem persists - has a hard cap, so flapping between reasons can't loop forever.
     // Ordinary waits (drinking, mana, health, the real player's position) are not recoveries.
 
     enum class RecoveryReason : uint8_t
@@ -853,15 +854,50 @@ namespace DungeonLeadKernel
     {
         uint32_t actMs = 60000;       // RecoveryTimeoutSeconds
         uint32_t escalateMs = 60000;  // RecoveryEscalationSeconds
+        // Cap for one recovery episode across reason changes: two full windows.
+        uint32_t EpisodeCapMs() const { return 2u * (actMs + escalateMs); }
     };
 
-    inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msSinceProblem, RecoveryPolicy const& p)
+    // Recovery clocks. `reasonSince` restarts whenever the reason changes; `episodeSince` only
+    // when a new episode begins (no problem before). Timestamps are getMSTime()-style, compared by
+    // wrap-safe differences.
+    struct RecoveryTimers
+    {
+        RecoveryReason reason = RecoveryReason::None;
+        RecoveryStep step = RecoveryStep::None;  // last step taken for the current reason
+        uint32_t reasonSince = 0;
+        uint32_t episodeSince = 0;
+    };
+
+    // Feed one observation (only while the controller is eligible to judge - in combat an open
+    // recovery is simply kept). Returns true if the reason changed (a new recovery started).
+    inline bool ObserveRecovery(RecoveryTimers& t, RecoveryReason observed, uint32_t now)
+    {
+        if (observed == RecoveryReason::None)
+        {
+            t = RecoveryTimers();
+            return false;
+        }
+        if (t.reason == RecoveryReason::None)
+            t.episodeSince = now;
+        if (observed == t.reason)
+            return false;
+        t.reason = observed;
+        t.reasonSince = now;
+        t.step = RecoveryStep::None;
+        return true;
+    }
+
+    inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msInReason, uint32_t msInEpisode,
+                                       RecoveryPolicy const& p)
     {
         if (observed == RecoveryReason::None)
             return RecoveryStep::None;
-        if (msSinceProblem < p.actMs)
+        if (msInEpisode >= p.EpisodeCapMs())
+            return RecoveryStep::Abort;  // flapping between reasons: the episode as a whole is bounded
+        if (msInReason < p.actMs)
             return RecoveryStep::Act;
-        if (msSinceProblem < p.actMs + p.escalateMs)
+        if (msInReason < p.actMs + p.escalateMs)
             return RecoveryStep::Escalate;
         return RecoveryStep::Abort;
     }

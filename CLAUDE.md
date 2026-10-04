@@ -2713,4 +2713,37 @@ Project (section 38) - open items:
 - Doors/gated bosses are still not waited for.
 - Commits are local; not pushed (left for the user).
 
+---
+
+# HARDENING PROGRESS
+
+Plan: `DUNGEON_LEADER_HARDENING_PLAN.md` (2026-10-04). Its release numbers (v0.6.0-beta.1 ...)
+collide with existing tags (v0.6.0-v0.10.0-alpha); version names to be agreed before tagging.
+
+## H1 — Recovery timer on reason change
+
+Status: DONE (2026-10-04)
+
+Commit:
+`fix(dungeon-lead): reset recovery timeout on reason change`
+
+Validation:
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - 194 checks (10 new: fragmented 20 s -> lost restarts from 0, dead -> fragmented
+  independent window, same reason keeps its clock, flapping bounded by the episode cap, clocks
+  cleared when the problem is gone)
+- Live: Wailing Caverns test party 12 min, no regression (Anacondra, Kresh cleared); no
+  recovery occurred in that run.
+
+Notes:
+- `DungeonLeadKernel::RecoveryTimers` {reason, step, reasonSince, episodeSince} replaces the
+  three loose session fields; `ObserveRecovery` restarts the reason clock and step on a reason
+  change, `DecideRecovery(reason, msInReason, msInEpisode)` keeps per-reason act/escalate/abort
+  and adds an episode cap (2 x (act + escalate)) so flapping between reasons stays bounded -
+  the property the old shared clock gave.
+- The plan's example reasons PullFailed/RouteLost/HealerDead don't exist as recovery reasons
+  here (pull failure is the pull controller's, a dead healer is member_dead); tests use the
+  existing reasons.
+- recovery_start now records the previous reason (`after=`).
+
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS
