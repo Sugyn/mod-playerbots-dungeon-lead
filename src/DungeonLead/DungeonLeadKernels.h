@@ -978,33 +978,77 @@ namespace DungeonLeadKernel
         uint32_t EpisodeCapMs() const { return 2u * (actMs + escalateMs); }
     };
 
+    // The same problem coming back this soon after it cleared is the same episode (a straggler
+    // stuck on terrain is "caught up" each time the leader walks back, and behind again as soon as
+    // the leader walks on).
+    constexpr uint32_t kRecoveryRelapseMs = 90000;
+
     // Recovery clocks. `reasonSince` restarts whenever the reason changes; `episodeSince` only
     // when a new episode begins (no problem before). Timestamps are getMSTime()-style, compared by
-    // wrap-safe differences.
+    // wrap-safe differences. `subject` identifies who the recovery is about (0 = nobody specific).
     struct RecoveryTimers
     {
         RecoveryReason reason = RecoveryReason::None;
         RecoveryStep step = RecoveryStep::None;  // last step taken for the current reason
         uint32_t reasonSince = 0;
         uint32_t episodeSince = 0;
+        uint64_t subject = 0;
+        bool relapse = false;     // the current reason resumed a recently cleared one
+        // Last cleared recovery, to recognise a relapse.
+        RecoveryReason clearedReason = RecoveryReason::None;
+        RecoveryStep clearedStep = RecoveryStep::None;
+        uint32_t clearedReasonSince = 0;
+        uint32_t clearedEpisodeSince = 0;
+        uint64_t clearedSubject = 0;
+        uint32_t clearedAt = 0;
     };
 
     // Feed one observation (only while the controller is eligible to judge - in combat an open
-    // recovery is simply kept). Returns true if the reason changed (a new recovery started).
-    inline bool ObserveRecovery(RecoveryTimers& t, RecoveryReason observed, uint32_t now)
+    // recovery is simply kept). Returns true if the reason changed (a new recovery started); a
+    // relapse of the recovery that cleared less than kRecoveryRelapseMs ago (same reason, same
+    // subject) resumes its clocks and step instead of starting fresh, so it still escalates.
+    inline bool ObserveRecovery(RecoveryTimers& t, RecoveryReason observed, uint32_t now, uint64_t subject = 0)
     {
         if (observed == RecoveryReason::None)
         {
-            t = RecoveryTimers();
+            if (t.reason != RecoveryReason::None)
+            {
+                t.clearedReason = t.reason;
+                t.clearedStep = t.step;
+                t.clearedReasonSince = t.reasonSince;
+                t.clearedEpisodeSince = t.episodeSince;
+                t.clearedSubject = t.subject;
+                t.clearedAt = now;
+            }
+            t.reason = RecoveryReason::None;
+            t.step = RecoveryStep::None;
+            t.reasonSince = t.episodeSince = 0;
+            t.subject = 0;
+            t.relapse = false;
             return false;
+        }
+        if (observed == t.reason)
+            return false;
+        bool const relapse = t.reason == RecoveryReason::None && t.clearedReason == observed &&
+                             t.clearedSubject == subject && uint32_t(now - t.clearedAt) < kRecoveryRelapseMs;
+        if (relapse)
+        {
+            t.reason = observed;
+            t.step = t.clearedStep;
+            t.reasonSince = t.clearedReasonSince;
+            t.episodeSince = t.clearedEpisodeSince;
+            t.subject = subject;
+            t.relapse = true;
+            t.clearedReason = RecoveryReason::None;
+            return true;
         }
         if (t.reason == RecoveryReason::None)
             t.episodeSince = now;
-        if (observed == t.reason)
-            return false;
         t.reason = observed;
         t.reasonSince = now;
         t.step = RecoveryStep::None;
+        t.subject = subject;
+        t.relapse = false;
         return true;
     }
 

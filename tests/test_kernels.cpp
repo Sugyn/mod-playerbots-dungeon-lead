@@ -672,6 +672,36 @@ namespace
         Check(!ObserveRecovery(t, RecoveryReason::None, now) && t.reason == RecoveryReason::None && t.episodeSince == 0,
               "problem gone -> clocks cleared");
 
+        // H7: a straggler stuck on terrain - caught up while the leader walks back, behind again
+        // 20 s after it walks on - is one episode that reaches escalation, not a fresh act forever
+        t = RecoveryTimers();
+        now = 0;
+        bool escalated = false;
+        for (int i = 0; i < 10 && !escalated; ++i)
+        {
+            ObserveRecovery(t, RecoveryReason::PartyFragmented, now, 7);
+            escalated = DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Escalate;
+            now += 12000;
+            ObserveRecovery(t, RecoveryReason::None, now);
+            now += 20000;
+        }
+        Check(escalated && now < 160000, "relapsing straggler escalates within ~2 act windows");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        ObserveRecovery(t, RecoveryReason::None, 10000);
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 30000, 7) && t.relapse && t.reasonSince == 0,
+              "same reason + member soon after -> resumes the old clock");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        ObserveRecovery(t, RecoveryReason::None, 10000);
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 30000, 8);
+        Check(!t.relapse && t.reasonSince == 30000, "another member -> fresh recovery");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        ObserveRecovery(t, RecoveryReason::None, 10000);
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 10000 + kRecoveryRelapseMs, 7);
+        Check(!t.relapse && t.reasonSince == 10000 + kRecoveryRelapseMs, "long after it cleared -> fresh recovery");
+
         Check(RecoveryFor(ReadyStatus::Fragmented, true) == RecoveryReason::PartyFragmented, "fragmented -> regroup");
         Check(RecoveryFor(ReadyStatus::MemberLost, true) == RecoveryReason::MemberLost, "lost member -> recovery");
         Check(RecoveryFor(ReadyStatus::MemberDead, true) == RecoveryReason::MemberDead, "dead member -> recovery");

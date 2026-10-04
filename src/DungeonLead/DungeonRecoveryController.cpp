@@ -93,11 +93,13 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
 
     // A new reason gets its own fresh window (it must not inherit an almost-expired timeout); the
     // episode as a whole stays capped - see DungeonLeadKernel::ObserveRecovery / DecideRecovery.
-    if (DungeonLeadKernel::ObserveRecovery(st.recovery, observed, now))
+    if (DungeonLeadKernel::ObserveRecovery(st.recovery, observed, now, who ? who->GetGUID().GetRawValue() : 0))
     {
         std::string detail = std::string(DungeonLeadKernel::ToString(observed)) + " member=" + (who ? who->GetName() : "-");
         if (previous != RecoveryReason::None)
             detail += " after=" + std::string(DungeonLeadKernel::ToString(previous));
+        if (st.recovery.relapse)
+            detail += " relapse_after_ms=" + std::to_string(getMSTimeDiff(st.recovery.reasonSince, now));
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovery start: {}", bot->GetName(), detail);
         DungeonLead::RecordEvent(botAI, "recovery_start", detail);
     }
