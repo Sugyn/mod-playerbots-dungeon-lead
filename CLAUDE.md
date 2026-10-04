@@ -2718,7 +2718,9 @@ Project (section 38) - open items:
 # HARDENING PROGRESS
 
 Plan: `DUNGEON_LEADER_HARDENING_PLAN.md` (2026-10-04). Its release numbers (v0.6.0-beta.1 ...)
-collide with existing tags (v0.6.0-v0.10.0-alpha); version names to be agreed before tagging.
+collide with existing tags (v0.6.0-v0.10.0-alpha). Agreed with the user 2026-10-04: continue the
+existing numbering, and keep `-alpha` until the CHANGELOG's own `-beta` bar (most non-event
+dungeons live-verified) is met. First hardening release: v0.11.0-alpha (H1-H3).
 
 ## H1 — Recovery timer on reason change
 
