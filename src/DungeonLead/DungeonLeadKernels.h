@@ -1122,6 +1122,92 @@ namespace DungeonLeadKernel
             return ObjectiveFailureAction::Skip;
         return failedRounds < maxRounds ? ObjectiveFailureAction::Retry : ObjectiveFailureAction::Abort;
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Interaction / gating (DungeonInteractionController)
+    // ---------------------------------------------------------------------------------------
+    //
+    // A route can be blocked by something that walking and pulling can't solve. Requested is not
+    // done: success is only ever the world confirming it (the door is open). Bounded by a timeout,
+    // and a failure is reported with its reason instead of the walk thrashing against it.
+
+    enum class InteractionType : uint8_t
+    {
+        None,
+        Door,  // a closed door/gate in the way: wait for its event/key/boss to open it
+    };
+
+    enum class InteractionState : uint8_t
+    {
+        None,
+        Resolving,             // find the object
+        WaitingPrerequisite,   // found, closed - waiting for whatever opens it
+        Interacting,           // we act on it ourselves (no type uses this yet)
+        WaitingConfirmation,   // acted, waiting for the world to show the result
+        Complete,
+        Failed,
+    };
+
+    inline char const* ToString(InteractionType t)
+    {
+        switch (t)
+        {
+            case InteractionType::None: return "none";
+            case InteractionType::Door: return "door";
+        }
+        return "unknown";
+    }
+
+    inline char const* ToString(InteractionState s)
+    {
+        switch (s)
+        {
+            case InteractionState::None:                return "none";
+            case InteractionState::Resolving:           return "resolving";
+            case InteractionState::WaitingPrerequisite: return "waiting_prerequisite";
+            case InteractionState::Interacting:         return "interacting";
+            case InteractionState::WaitingConfirmation: return "waiting_confirmation";
+            case InteractionState::Complete:            return "complete";
+            case InteractionState::Failed:              return "failed";
+        }
+        return "unknown";
+    }
+
+    inline bool InteractionActive(InteractionState s)
+    {
+        return s != InteractionState::None && s != InteractionState::Complete && s != InteractionState::Failed;
+    }
+
+    struct InteractionFacts
+    {
+        InteractionState current = InteractionState::None;
+        uint32_t msInInteraction = 0;  // since it started (one budget for the whole interaction)
+        bool targetFound = false;      // the object still exists
+        bool satisfied = false;        // the world shows it done (door open)
+        bool canAct = false;           // we can perform it ourselves
+    };
+
+    inline InteractionState DecideInteraction(InteractionFacts const& f, uint32_t timeoutMs)
+    {
+        if (!InteractionActive(f.current))
+            return f.current;
+        if (f.satisfied)
+            return InteractionState::Complete;  // confirmed by the world, however it came about
+        if (!f.targetFound)
+            return f.current == InteractionState::Resolving && f.msInInteraction < timeoutMs ? InteractionState::Resolving
+                                                                                            : InteractionState::Failed;
+        if (f.msInInteraction >= timeoutMs)
+            return InteractionState::Failed;
+        switch (f.current)
+        {
+            case InteractionState::Resolving:
+                return f.canAct ? InteractionState::Interacting : InteractionState::WaitingPrerequisite;
+            case InteractionState::Interacting:
+                return InteractionState::WaitingConfirmation;
+            default:
+                return f.current;
+        }
+    }
 }
 
 #endif

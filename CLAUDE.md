@@ -2826,4 +2826,34 @@ Notes:
   units, so the live run exercised the add/lock path, not the rejection path - Tier 2 dungeons
   in H7 will.
 
+## H5 — Interaction controller (doors)
+
+Status: DONE (2026-10-04) - door wait not yet triggered live (see Notes)
+
+Commit:
+`feat(dungeon-lead): add interaction controller`
+
+Validation:
+- Build: PASS (server, CMake reconfigured for the new .cpp, 0 warnings)
+- Tests: PASS - 231 checks (11 new DecideInteraction cases: door already open, closed -> wait,
+  opens after the event -> complete, never opens -> failed, target missing/vanished,
+  act -> wait for confirmation, world-confirmed completion)
+- Live: Shadowfang Keep test party (level 22, 20 min): Rethilgore and Razorclaw cleared, the
+  Courtyard door (opened by its event after Rethilgore) passed; the door wait itself did not
+  trigger because the event had already opened it when the leader got there.
+
+Notes:
+- `src/DungeonLead/DungeonInteractionController.{h,cpp}`, decision
+  `DungeonLeadKernel::DecideInteraction` {None, Resolving, WaitingPrerequisite, Interacting,
+  WaitingConfirmation, Complete, Failed}; only type so far: Door.
+- Data-free: route `door` rows have no entry/position, so the door is found where the walk gets
+  stuck - when MoveRouteTo is about to give up, a closed (GO_STATE_READY) GAMEOBJECT_TYPE_DOOR
+  within 15 yd of the leader and closer to the destination starts a door interaction instead of
+  failing the step. The leader holds; success only when the world shows the door open; after
+  DoorWaitSeconds (120) it fails through `FailObjective` ("door_closed"/"door_gone").
+- The leader never operates doors (dungeon doors are event/key/boss gated). Elevator / NPC /
+  game-object interactions are not implemented - no route data needs them yet (plan: only what
+  routes require).
+- Events: interaction_state; `startdungeon status` shows "waiting at door".
+
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS

@@ -219,6 +219,11 @@ struct DungeonLeadState
     // Wipe checkpoint: last step confirmed safe (cleared pack / reached travel node), -1 = none.
     int32 checkpointStep = -1;
     uint8 objectiveFailures = 0;  // failed rounds on the current step (DungeonLead::FailObjective)
+    // DungeonInteractionController: a route blocker being handled (a closed door)
+    DungeonLeadKernel::InteractionType interactionType = DungeonLeadKernel::InteractionType::None;
+    DungeonLeadKernel::InteractionState interactionState = DungeonLeadKernel::InteractionState::None;
+    ObjectGuid interactionTarget;
+    uint32 interactionSinceTs = 0;
     uint32 lastLeashLogTs = 0;
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->
@@ -332,6 +337,8 @@ struct DungeonLeadState
         pullPackFought = false;
         checkpointStep = -1;
         objectiveFailures = 0;
+        interactionType = DungeonLeadKernel::InteractionType::None;
+        interactionState = DungeonLeadKernel::InteractionState::None;
         bossPackCurrent = bossEngaged = false;
         anchorSet = false;
         targetPrimary = targetSecondary = targetCc = ObjectGuid::Empty;

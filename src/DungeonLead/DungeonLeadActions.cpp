@@ -12,6 +12,7 @@
 #include "DungeonLeadBrain.h"
 #include "DungeonLeadKernels.h"
 #include "DungeonPack.h"
+#include "DungeonInteractionController.h"
 #include "DungeonPullController.h"
 #include "DungeonTelemetryBuffer.h"
 #include "DungeonRecoveryController.h"
@@ -777,6 +778,8 @@ void DungeonLead::GuardActiveSessions()
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
         DungeonTargetManager::Update(botAI);
         DungeonPullController::Update(botAI, party);
+        if (!DungeonInteractionController::Update(botAI))
+            continue;  // session ended (blocked for good)
         if (!DungeonRecoveryController::Update(botAI, party))
             continue;  // session ended (recovery failed)
         if (!DungeonLeadBrain::Update(botAI, party))
@@ -1434,6 +1437,8 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.pullFights = 0;
     st.pullPackFought = false;
     st.objectiveFailures = 0;
+    st.interactionType = DungeonLeadKernel::InteractionType::None;
+    st.interactionState = DungeonLeadKernel::InteractionState::None;
 }
 
 void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
@@ -1467,6 +1472,8 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.bestDist = 0.f;
     st.stuckTs = 0;
     st.stuckAttempts = 0;
+    st.interactionType = DungeonLeadKernel::InteractionType::None;
+    st.interactionState = DungeonLeadKernel::InteractionState::None;
 }
 
 bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, DungeonRouteStep const& step,
@@ -1569,6 +1576,9 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
 
     DungeonRoute const* route = ResolveRoute(st);
+    // Waiting at a closed door (DungeonInteractionController): hold here until it opens or fails.
+    if (route && DungeonLeadKernel::InteractionActive(st.interactionState))
+        return false;
     if (!route)
     {
         if (!st.noRouteTold)
@@ -1849,6 +1859,10 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
     else if (++st.stuckAttempts >= 5 && st.stuckTs &&
              GetMSTimeDiffToNow(st.stuckTs) >= sDungeonLeadConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
     {
+        // A closed door in the way is something to wait for, not a reason to give up on the step.
+        if (DungeonInteractionController::StartIfBlockedByDoor(botAI, st, dest.GetPositionX(), dest.GetPositionY(),
+                                                               dest.GetPositionZ()))
+            return true;
         // Both positions on purpose: `dest` alone (the target's own coordinates, effectively just
         // repeating the already-known route waypoint) was useless for telling where the bot
         // actually ended up stuck versus where it was trying to go - `bot->GetPosition*()` is the
@@ -2027,6 +2041,9 @@ bool StartDungChatShortcutAction::Execute(Event event)
                 << " | pack " << (st.packId ? "#" + std::to_string(st.packId) + " " + DungeonLeadKernel::ToString(st.packState)
                                           : std::string("none"))
                 << " | pull " << DungeonLeadKernel::ToString(st.pullState)
+                << (DungeonLeadKernel::InteractionActive(st.interactionState)
+                        ? std::string(" | waiting at ") + DungeonLeadKernel::ToString(st.interactionType)
+                        : std::string())
                 << " | outcome " << ToString(st.outcome);
             if (st.outcome == DungeonRunOutcome::Partial)
                 out << " (" << ToString(st.failureDomain) << "/" << ToString(st.failureReason) << ")";

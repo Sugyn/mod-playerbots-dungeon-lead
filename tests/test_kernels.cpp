@@ -853,6 +853,46 @@ namespace
     }
 }
 
+namespace
+{
+    InteractionFacts I(InteractionState current, uint32_t ms, bool found, bool satisfied, bool canAct = false)
+    {
+        InteractionFacts f;
+        f.current = current;
+        f.msInInteraction = ms;
+        f.targetFound = found;
+        f.satisfied = satisfied;
+        f.canAct = canAct;
+        return f;
+    }
+
+    void TestInteraction()
+    {
+        uint32_t const timeout = 120000;
+        using S = InteractionState;
+        Check(DecideInteraction(I(S::Resolving, 0, true, true), timeout) == S::Complete, "door already open -> complete");
+        Check(DecideInteraction(I(S::Resolving, 0, true, false), timeout) == S::WaitingPrerequisite,
+              "closed, nothing we can do -> wait for its event/key");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 30000, true, false), timeout) == S::WaitingPrerequisite,
+              "still closed inside the window -> keep waiting");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 45000, true, true), timeout) == S::Complete,
+              "door opens after the boss/event -> complete (world-confirmed)");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, timeout, true, false), timeout) == S::Failed,
+              "never opens -> failed, bounded");
+        Check(DecideInteraction(I(S::Resolving, 1000, false, false), timeout) == S::Resolving,
+              "target not seen yet -> keep resolving");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 1000, false, false), timeout) == S::Failed,
+              "interaction target vanished -> failed");
+        Check(DecideInteraction(I(S::Resolving, 0, true, false, true), timeout) == S::Interacting, "actionable -> interacting");
+        Check(DecideInteraction(I(S::Interacting, 500, true, false, true), timeout) == S::WaitingConfirmation,
+              "acted -> wait for confirmation, not done yet");
+        Check(DecideInteraction(I(S::WaitingConfirmation, 2000, true, true, true), timeout) == S::Complete,
+              "world confirms -> complete");
+        Check(DecideInteraction(I(S::None, 0, false, false), timeout) == S::None && !InteractionActive(S::Complete),
+              "no interaction -> nothing to do");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -870,6 +910,7 @@ int main()
     TestTelemetryBuffer();
     TestObjectivePolicy();
     TestPackIdentity();
+    TestInteraction();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

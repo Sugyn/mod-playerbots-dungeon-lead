@@ -223,3 +223,11 @@ AiPlayerbot.DungeonLead.BossLeashRadius = 25
 #        Default:     2
 
 AiPlayerbot.DungeonLead.ObjectiveRetryRounds = 2
+
+#    AiPlayerbot.DungeonLead.DoorWaitSeconds
+#        Description: When a closed door or gate blocks the way, how long the leader waits for it
+#                      to open (an event, a key, a boss death) before the step counts as failed.
+#                      Range 10-900.
+#        Default:     120
+
+AiPlayerbot.DungeonLead.DoorWaitSeconds = 120

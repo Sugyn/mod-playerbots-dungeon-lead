@@ -18,6 +18,12 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Added
+- Closed doors: when the way is blocked by a closed door or gate, the leader waits for it to open
+  (its event, key or boss) instead of giving up on the step - up to `DoorWaitSeconds` (120), then
+  the step fails with reason `door_closed`. Logged as `interaction_state`.
+- Config: `DoorWaitSeconds` (120).
+
 ### Changed
 - A pack is now the units spawned at its spot (plus its nearest member, so a patrol still counts)
   rather than every unit of that type within 150 yd; once engaged its membership is locked, and
