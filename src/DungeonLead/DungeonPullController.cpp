@@ -100,7 +100,10 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     f.packAlive = sighting.observation.alive > 0;
     f.packEngaged = sighting.observation.engaged > 0;
     f.primaryEngaged = target && target != sighting.firstAlive && target->IsAlive() && target->IsInCombat();
-    f.inPullRange = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange;
+    // In range = close enough AND in sight: a pack one floor down (RFK's ramps) is within 30 yd but
+    // can't be pulled or planned from here - keep approaching instead of failing the marking.
+    f.inPullRange = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange &&
+                    bot->IsWithinLOSInMap(target);
     DungeonLeadKernel::Readiness const ready = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
     f.partyReady = ready.status == DungeonLeadKernel::ReadyStatus::Ready;
     f.targetMarked = skull && skull->IsAlive() && (skull->GetGUID() == st.targetPrimary || IsPackMember(pack, skull));
@@ -129,8 +132,9 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
         st.bossLeash = boss.leashRadius;
     }
 
+    PullState const previous = st.pullState;
     PullState const next = DungeonLeadKernel::DecidePull(f, policy);
-    bool const changed = next != st.pullState;
+    bool const changed = next != previous;
     std::string waitReason;
     if (next == PullState::WaitingParty)
     {
@@ -195,7 +199,12 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
         {
             if (!changed)
                 break;
-            DungeonLead::RecordEvent(botAI, "pull_failed", pack.name + " attempt=" + std::to_string(st.pullAttempts));
+            // A pull that never got its mark placed is a failed try too (attempts otherwise count
+            // only from Initiating) - without this a marking that keeps timing out loops forever.
+            if (previous == PullState::Marking)
+                ++st.pullAttempts;
+            DungeonLead::RecordEvent(botAI, "pull_failed", pack.name + " attempt=" + std::to_string(st.pullAttempts) +
+                                                               " from=" + DungeonLeadKernel::ToString(previous));
             if (st.pullAttempts < policy.maxAttempts)
                 break;  // DecidePull goes back to Approaching for another attempt
 

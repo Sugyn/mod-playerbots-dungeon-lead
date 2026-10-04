@@ -505,6 +505,14 @@ namespace
         f.pullablePack = false;
         Check(DecidePull(f, kPull) == PullState::None, "pack cleared/skipped -> None");
 
+        // H7 (SFK): a CC'd leftover keeps the tank in combat - the next pull waits for it
+        f = Pull(PullState::Approaching);
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "in a fight with something else -> no marking yet");
+        f = Pull(PullState::Established);
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "fight with the pack's trash goes on -> approach, not a new pull");
+
         // brain: pull phases
         ActiveFacts a = Active(LeadState::Travelling);
         a.preparingPull = true;

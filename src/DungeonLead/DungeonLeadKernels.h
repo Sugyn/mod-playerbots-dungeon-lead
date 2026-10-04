@@ -801,7 +801,8 @@ namespace DungeonLeadKernel
                 // the skull is held by someone else's live mark - don't fight over it forever
                 return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Marking;
             default:  // None, Approaching, WaitingParty
-                if (!f.packAlive || !f.inPullRange)
+                // a fight that isn't this pack (trash, a CC'd leftover) finishes first
+                if (!f.packAlive || !f.inPullRange || f.leaderInCombat)
                     return PullState::Approaching;
                 return f.partyReady ? PullState::Marking : PullState::WaitingParty;
         }
