@@ -87,6 +87,10 @@ namespace DungeonLead
     // Called from GuardActiveSessions() on every tick of an active session.
     void RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& st);
 
+    // Re-validates the instance of party members who are in the leader's group and instance but
+    // were marked invalid by AzerothCore after a group change (they would be sent out in 60 s).
+    void KeepInstanceValid(PlayerbotAI* botAI);
+
     // Shared session-start logic behind both the "startdungeon" chat command and the AutoBot
     // Canary controller (DungeonLeadCanary.h) - leadership takeover, follower snapshot, strategy
     // application, state reset, the star icon, logging. Callers do their OWN preconditions first

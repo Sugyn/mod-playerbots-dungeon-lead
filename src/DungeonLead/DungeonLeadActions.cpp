@@ -707,6 +707,31 @@ std::string DungeonLead::DiagnosePath(Player* bot, float dx, float dy, float dz)
 // (the same one RunTestParty teleports parties to), it has no mobs standing on it, and a corpse
 // run from there is an ordinary same-map run that works. recoveryTs throttles this so a member
 // dying over and over cannot be teleported every single tick.
+void DungeonLead::KeepInstanceValid(PlayerbotAI* botAI)
+{
+    // AzerothCore marks a player's instance invalid when a group is left or disbanded while inside
+    // (Group::_homebindIfInstance) and sends them out 60 s later - and only re-validates on rejoining
+    // that same group. Test characters log back into their previous run's group, which then gets
+    // disbanded while they are already in the new dungeon: the whole party was sent out ~40 s into
+    // runs (Ragefire Chasm, Deadmines). A member who is in the leader's group and the leader's
+    // instance does belong there - the same condition AzerothCore's own
+    // Group::_cancelHomebindIfInstance applies.
+    Player* leader = botAI->GetBot();
+    Group* group = leader->GetGroup();
+    if (!group || !InFiveMan(leader))
+        return;
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member->m_InstanceValid || member->IsGameMaster() || member->GetMap() != leader->GetMap())
+            continue;
+        member->m_InstanceValid = true;
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {}: instance marked invalid while in the party's own "
+                 "instance - restored", member->GetName());
+        DungeonLead::RecordEvent(botAI, "instance_validity_restored", member->GetName());
+    }
+}
+
 void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& st)
 {
     Player* leader = botAI ? botAI->GetBot() : nullptr;
@@ -847,6 +872,7 @@ void DungeonLead::GuardActiveSessions()
         // route's entrance rather than where the member died: the entrance is a known-walkable,
         // mob-free spot, and a corpse run from there is an ordinary same-map run that works.
         DungeonLead::RecoverStrandedMembers(botAI, st);
+        DungeonLead::KeepInstanceValid(botAI);
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
