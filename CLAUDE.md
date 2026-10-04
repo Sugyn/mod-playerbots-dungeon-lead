@@ -2856,4 +2856,34 @@ Notes:
   routes require).
 - Events: interaction_state; `startdungeon status` shows "waiting at door".
 
+## H6 — Combined failure paths
+
+Status: DONE (2026-10-04)
+
+Commit:
+`fix(dungeon-lead): harden recovery objective reconciliation`
+
+Validation:
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - 233 checks (2 new: recovery during a door wait doesn't use the door's budget;
+  back at the door its own time still runs out)
+- Live: covered by the H7 runs on this build.
+
+Review of the plan's scenarios against the code:
+- pull fails -> retry: FailObjective Retry (fresh round, step re-observed) - live in H3.
+- mandatory fails permanently -> abort/partial: FailObjective Abort - live in H3.
+- party fragments during an interaction: FIXED - the door's clock (`interactionActiveMs`,
+  `AdvanceInteractionClock`) now only runs while the leader is holding at it (Travelling), so a
+  recovery elsewhere no longer times the door out; the interaction itself is preserved.
+- wipe near an interaction: RestoreCheckpoint -> ResetStepState clears it; it is found again
+  from the world (closed door) when the walk gets stuck there.
+- boss evade: Cleared only when locked core members are dead; a reset counts toward the reset
+  bound and ends in FailObjective (retry, then abort) - no false completion.
+- leadership lost during recovery: Observe() checks leadership first, so leadership_lost takes
+  over the recovery (fresh window, then abort without handback).
+
+Stale state: AdvanceStep now also clears the target plan; pack/lock, pull, objective count,
+interaction, anchor (on Travelling) were already cleared per step, and ResetStepState covers a
+retry or a checkpoint restore.
+
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS

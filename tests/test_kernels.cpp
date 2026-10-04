@@ -890,6 +890,17 @@ namespace
               "world confirms -> complete");
         Check(DecideInteraction(I(S::None, 0, false, false), timeout) == S::None && !InteractionActive(S::Complete),
               "no interaction -> nothing to do");
+
+        // H6: the party fragments while waiting at a door - recovery time is not door time
+        uint32_t ms = 0;
+        ms = AdvanceInteractionClock(ms, 60000, true);    // a minute at the door
+        ms = AdvanceInteractionClock(ms, 300000, false);  // five minutes of recovery elsewhere
+        Check(ms == 60000 && DecideInteraction(I(S::WaitingPrerequisite, ms, true, false), timeout) ==
+                                 S::WaitingPrerequisite,
+              "recovery during a door wait doesn't use up the door's budget");
+        ms = AdvanceInteractionClock(ms, 60000, true);
+        Check(DecideInteraction(I(S::WaitingPrerequisite, ms, true, false), timeout) == S::Failed,
+              "back at the door, its own time still runs out");
     }
 }
 

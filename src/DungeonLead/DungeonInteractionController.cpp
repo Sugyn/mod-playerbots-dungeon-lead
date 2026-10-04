@@ -66,7 +66,8 @@ bool DungeonInteractionController::StartIfBlockedByDoor(PlayerbotAI* botAI, Dung
     st.interactionType = InteractionType::Door;
     st.interactionState = InteractionState::None;
     st.interactionTarget = door->GetGUID();
-    st.interactionSinceTs = getMSTime();
+    st.interactionActiveMs = 0;
+    st.interactionLastTs = getMSTime();
     SetInteraction(botAI, st, InteractionState::Resolving,
                    "target=" + door->GetName() + " entry=" + std::to_string(door->GetEntry()) +
                        " dist=" + std::to_string(int(best)));
@@ -81,10 +82,17 @@ bool DungeonInteractionController::Update(PlayerbotAI* botAI)
     if (!DungeonLeadKernel::InteractionActive(st.interactionState))
         return true;
 
+    // Count only the time the leader is actually holding at it (route walk active = Travelling);
+    // a fight or a recovery in between doesn't use up the wait.
+    uint32 const now = getMSTime();
+    st.interactionActiveMs = DungeonLeadKernel::AdvanceInteractionClock(
+        st.interactionActiveMs, getMSTimeDiff(st.interactionLastTs, now), st.state == DungeonLeadKernel::LeadState::Travelling);
+    st.interactionLastTs = now;
+
     GameObject* go = botAI->GetGameObject(st.interactionTarget);
     DungeonLeadKernel::InteractionFacts f;
     f.current = st.interactionState;
-    f.msInInteraction = GetMSTimeDiffToNow(st.interactionSinceTs);
+    f.msInInteraction = st.interactionActiveMs;
     f.targetFound = go != nullptr;
     f.satisfied = go && go->GetGoState() != GO_STATE_READY;  // the world says it's open
     f.canAct = false;  // dungeon doors are opened by their events/keys, not by us

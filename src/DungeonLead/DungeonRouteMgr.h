@@ -223,7 +223,8 @@ struct DungeonLeadState
     DungeonLeadKernel::InteractionType interactionType = DungeonLeadKernel::InteractionType::None;
     DungeonLeadKernel::InteractionState interactionState = DungeonLeadKernel::InteractionState::None;
     ObjectGuid interactionTarget;
-    uint32 interactionSinceTs = 0;
+    uint32 interactionActiveMs = 0;  // time actually spent holding at it (AdvanceInteractionClock)
+    uint32 interactionLastTs = 0;
     uint32 lastLeashLogTs = 0;
     // 2026-09-16 (DL-013, the actual recovery this time): upstream's death handling is complete
     // and works - BOT_STATE_DEAD installs "dead", which does auto release -> find corpse ->

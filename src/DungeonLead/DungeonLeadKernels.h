@@ -1187,6 +1187,13 @@ namespace DungeonLeadKernel
         bool canAct = false;           // we can perform it ourselves
     };
 
+    // The interaction's own clock only runs while the leader is actually holding at it: time spent
+    // fighting, waiting for the party or recovering a straggler must not use up the door's budget.
+    inline uint32_t AdvanceInteractionClock(uint32_t activeMs, uint32_t deltaMs, bool holdingAtIt)
+    {
+        return holdingAtIt ? activeMs + deltaMs : activeMs;
+    }
+
     inline InteractionState DecideInteraction(InteractionFacts const& f, uint32_t timeoutMs)
     {
         if (!InteractionActive(f.current))

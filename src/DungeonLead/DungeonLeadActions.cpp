@@ -1444,6 +1444,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.objectiveFailures = 0;
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
+    st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;  // that fight's plan is done
 }
 
 void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
