@@ -19,11 +19,20 @@ the MAJOR bar above is met.
 ## [Unreleased]
 
 ### Fixed
+- A bot of a running session can no longer be moved out of the dungeon by another system
+  mid-run (seen live: the leader vanished from Wailing Caverns while the party was drinking;
+  in Ragefire Chasm the whole party kept being sent out through the exit). Real players, the
+  dead and a party whose player has already left are not affected; each case is logged as
+  `unexpected_teleport`.
+- Test bots are only prepared once mod-playerbots has attached their AI (a quick re-login after
+  a release used to fail every profile).
 - The leader and its party no longer wander off with mod-playerbots' RPG behaviour during a run.
   When it couldn't walk to its RPG destination it teleported there - out of the dungeon (seen in
   Shadowfang Keep while the party was drinking).
 
 ### Added
+- `tools/summarize_runs.py`: one summary per run (result, bosses cleared, objective failures,
+  wipes, recoveries, interactions) from the two telemetry CSVs.
 - Closed doors: when the way is blocked by a closed door or gate, the leader waits for it to open
   (its event, key or boss) instead of giving up on the step - up to `DoorWaitSeconds` (120), then
   the step fails with reason `door_closed`. Logged as `interaction_state`.

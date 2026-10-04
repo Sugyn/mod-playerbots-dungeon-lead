@@ -121,6 +121,14 @@ namespace DungeonLead
     // fills) and with `force` at shutdown.
     void FlushTelemetry(bool force = false);
 
+    // Called before any player teleport (PlayerScript hook). False cancels it: a living bot of an
+    // active session must not be moved out of the dungeon by another system mid-run (seen live:
+    // the leader vanished from Shadowfang Keep and Wailing Caverns while the party was drinking).
+    // Real players, the dead, teleports within the map, and a party whose real player has already
+    // left are not touched. Every cancel is recorded as "unexpected_teleport" with its target and
+    // the spell being cast, so the source can be found.
+    bool AllowTeleport(Player* player, uint32 mapId, float x, float y, float z, uint32 options);
+
     // 2026-09-15 (independent architecture review, DL-006): DungeonLeadSessions.csv is a per-event
     // stream - reconstructing "how many runs actually reached Complete" means grouping potentially
     // thousands of interleaved rows by run_id and inferring the ending from whichever event came

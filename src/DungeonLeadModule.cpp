@@ -264,6 +264,20 @@ namespace
     // OnDestroyMap fires for every map/instance the core tears down, dungeon-lead's or not, which
     // is exactly when that instance's kill memory can never be read again - a stock AzerothCore
     // hook, no mod-playerbots involvement at all.
+    // A living bot of an active session must not be moved out of the dungeon mid-run by another
+    // system - see DungeonLead::AllowTeleport.
+    class DungeonLeadPlayerScript : public PlayerScript
+    {
+    public:
+        DungeonLeadPlayerScript() : PlayerScript("DungeonLeadPlayerScript", {PLAYERHOOK_ON_BEFORE_TELEPORT}) {}
+
+        bool OnPlayerBeforeTeleport(Player* player, uint32 mapid, float x, float y, float z, float /*orientation*/,
+                                    uint32 options, Unit* /*target*/) override
+        {
+            return DungeonLead::AllowTeleport(player, mapid, x, y, z, options);
+        }
+    };
+
     class DungeonLeadMapScript : public AllMapScript
     {
     public:
@@ -282,4 +296,5 @@ void AddDungeonLeadScripts()
 {
     new DungeonLeadWorldScript();
     new DungeonLeadMapScript();
+    new DungeonLeadPlayerScript();
 }

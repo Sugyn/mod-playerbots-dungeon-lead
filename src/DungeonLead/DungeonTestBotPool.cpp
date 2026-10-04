@@ -327,7 +327,9 @@ void DungeonLead::TestBotPoolTick()
             continue;
 
         Player* bot = ObjectAccessor::FindPlayer(lease.guid);
-        if (bot && bot->IsInWorld())
+        // In the world is not enough: mod-playerbots attaches the bot's AI a little later (seen
+        // when a character logs in right after its previous release: profiles failed with ai=false).
+        if (bot && bot->IsInWorld() && GET_PLAYERBOT_AI(bot))
         {
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} logged in, preparing profile ({})",
                      lease.name, RoleName(lease.role));
@@ -335,8 +337,14 @@ void DungeonLead::TestBotPoolTick()
             bool const ok = VerifyReady(bot, lease.role);
             lease.state = ok ? TestBotLeaseState::Ready : TestBotLeaseState::Failed;
             lease.stateTs = now;
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][TestBotPool] {} profile prepared, verified={} -> {}",
-                     lease.name, ok, StateName(lease.state));
+            // why a profile failed, not just that it did (seen: a whole party failing when asked to
+            // go down from level 22 to 16)
+            PlayerbotAI* const preparedAI = GET_PLAYERBOT_AI(bot);
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead][TestBotPool] {} profile prepared, verified={} -> {} (level {} wanted {}, ai={}, "
+                     "tank={}, heal={})",
+                     lease.name, ok, StateName(lease.state), bot->GetLevel(), lease.targetLevel, preparedAI != nullptr,
+                     PlayerbotAI::IsTank(bot, true), PlayerbotAI::IsHeal(bot, true));
         }
         else if (GetMSTimeDiffToNow(lease.stateTs) > LOGIN_TIMEOUT_MS)
         {

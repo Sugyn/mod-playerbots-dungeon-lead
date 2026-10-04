@@ -15,6 +15,7 @@
 #include "DungeonInteractionController.h"
 #include "DungeonPullController.h"
 #include "DungeonTelemetryBuffer.h"
+#include "Spell.h"
 #include "DungeonRecoveryController.h"
 #include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
@@ -44,6 +45,7 @@
 #include <cmath>
 #include <list>
 #include <mutex>
+#include <unordered_map>
 #include <sstream>
 
 // ---------------------------------------------------------------------------------------------
@@ -416,6 +418,73 @@ void DungeonLead::FlushTelemetry(bool force)
     for (FILE* f : {sessions, runs, debug})
         if (f)
             fflush(f);
+}
+
+bool DungeonLead::AllowTeleport(Player* player, uint32 mapId, float x, float y, float z, uint32 options)
+{
+    if (!player || IsRealPlayer(player) || IsSelfBot(player) || !player->IsAlive() || !player->IsInWorld())
+        return true;
+    if (mapId == player->GetMapId() || !InFiveMan(player))
+        return true;  // within the map, or not in a dungeon at all
+
+    // Whose session is this bot part of (its own as leader, or its group leader's)?
+    Group* group = player->GetGroup();
+    Player* leader = player;
+    if (!sDungeonRouteMgr.HasState(leader->GetGUID()))
+    {
+        leader = group ? ObjectAccessor::FindPlayer(group->GetLeaderGUID()) : nullptr;
+        if (!leader || !sDungeonRouteMgr.HasState(leader->GetGUID()))
+            return true;
+    }
+    DungeonLeadState const& st = sDungeonRouteMgr.State(leader->GetGUID());
+    if (!DungeonLeadKernel::IsActive(st.state) || leader->GetMapId() != player->GetMapId())
+        return true;
+    // The real player has left the dungeon: following them out is right.
+    PlayerbotAI* leaderAI = GET_PLAYERBOT_AI(leader);
+    if (Player* master = leaderAI ? leaderAI->GetMaster() : nullptr)
+        if (master != leader && IsRealPlayer(master) && master->GetMapId() != player->GetMapId())
+            return true;
+
+    // mod-playerbots' "within area trigger" -> "area trigger" action re-sends the area trigger for a
+    // bot standing in one, every tick (seen in Ragefire Chasm: the whole party at the instance exit).
+    // Forget the remembered trigger so it stops retrying - each retry also used up the bot's action
+    // for that tick, which kept the leader from walking at all.
+    if (PlayerbotAI* playerAI = GET_PLAYERBOT_AI(player))
+        if (AiObjectContext* ctx = playerAI->GetAiObjectContext())
+            ctx->GetValue<LastMovement&>("last area trigger")->Get().lastAreaTrigger = 0;
+
+    // Whatever retries is recorded once per bot per 30 s, with the number of attempts cancelled since.
+    struct CancelLog
+    {
+        uint32 lastTs = 0;
+        uint32 suppressed = 0;
+    };
+    static std::unordered_map<ObjectGuid, CancelLog> cancelLog;  // world/map update threads only
+    static std::mutex cancelLogMutex;
+    uint32 suppressed = 0;
+    {
+        std::lock_guard<std::mutex> lock(cancelLogMutex);
+        CancelLog& entry = cancelLog[player->GetGUID()];
+        if (entry.lastTs && GetMSTimeDiffToNow(entry.lastTs) < 30000)
+        {
+            ++entry.suppressed;
+            return false;
+        }
+        suppressed = entry.suppressed;
+        entry.lastTs = getMSTime();
+        entry.suppressed = 0;
+    }
+
+    Spell const* spell = player->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+    uint32 const spellId = spell && spell->m_spellInfo ? spell->m_spellInfo->Id : 0;
+    std::string const detail = player->GetName() + " to map " + std::to_string(mapId) + " (" +
+                               std::to_string(int(x)) + "," + std::to_string(int(y)) + "," + std::to_string(int(z)) +
+                               ") options=" + std::to_string(options) + " spell=" + std::to_string(spellId) +
+                               " repeats_since_last=" + std::to_string(suppressed);
+    LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] cancelled a teleport out of the dungeon mid-run: {}", detail);
+    if (leaderAI)
+        DungeonLead::RecordEvent(leaderAI, "unexpected_teleport", detail);
+    return false;
 }
 
 bool DungeonLead::InFiveMan(Player* bot)
