@@ -593,6 +593,24 @@ namespace
         Check(p.cc == 1 && p.primary != 1 && p.secondary != 1, "kept CC target stays CC");
 
         Check(PickTargetPlan({}, TargetPlan(), true) == TargetPlan(), "no candidates -> empty plan");
+
+        // H2: fight membership is measured from the combat anchor, not the tank
+        float const radius = 40.0f;
+        auto fight = [](bool combat, bool attacking, float dist)
+        {
+            FightCandidateFacts f;
+            f.inCombat = combat;
+            f.attackingParty = attacking;
+            f.distToAnchor = dist;
+            return f;
+        };
+        Check(IsFightCandidate(fight(true, true, 5.0f), radius), "tank at the anchor: its target counts");
+        // the tank moved 15 yd; a mob 10 yd from the tank's new spot is 50 yd from the anchor
+        Check(!IsFightCandidate(fight(true, false, 50.0f), radius),
+              "neighbour near the moved tank but outside the anchor radius is not promoted");
+        Check(IsFightCandidate(fight(true, false, 35.0f), radius), "pack member still inside the anchor radius counts");
+        Check(IsFightCandidate(fight(true, true, 70.0f), radius), "an add attacking the party counts wherever it stands");
+        Check(!IsFightCandidate(fight(false, false, 3.0f), radius), "idle mob next to the anchor is not part of the fight");
     }
 }
 

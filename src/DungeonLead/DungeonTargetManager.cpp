@@ -80,10 +80,12 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
     float ax = 0.f, ay = 0.f, az = 0.f;
     if (inCombat)
     {
+        // The fight's own anchor (where it began, or the boss's spot), so the candidate area does
+        // not move with the tank into a neighbouring pack; the tank's position only as a fallback.
         haveAnchor = true;
-        ax = bot->GetPositionX();
-        ay = bot->GetPositionY();
-        az = bot->GetPositionZ();
+        ax = st.anchorSet ? st.anchorX : bot->GetPositionX();
+        ay = st.anchorSet ? st.anchorY : bot->GetPositionY();
+        az = st.anchorSet ? st.anchorZ : bot->GetPositionZ();
     }
     else if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
     {
@@ -108,10 +110,19 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
             Creature* c = botAI->GetCreature(guid);
             if (!c || !c->IsAlive() || !c->IsInWorld() || !bot->IsValidAttackTarget(c))
                 continue;
-            if (inCombat && !c->IsInCombat())
-                continue;  // during a fight, only what is part of it
             float const d = c->GetExactDist(ax, ay, az);
-            if (d > radius)
+            if (inCombat)
+            {
+                Unit* victim = c->GetVictim();
+                Player* victimPlayer = victim ? victim->ToPlayer() : nullptr;
+                DungeonLeadKernel::FightCandidateFacts ff;
+                ff.inCombat = c->IsInCombat();
+                ff.attackingParty = victimPlayer && group->IsMember(victimPlayer->GetGUID());
+                ff.distToAnchor = d;
+                if (!DungeonLeadKernel::IsFightCandidate(ff, radius))
+                    continue;
+            }
+            else if (d > radius)
                 continue;
             DungeonLeadKernel::TargetCandidate t;
             t.id = guids.size() + 1;

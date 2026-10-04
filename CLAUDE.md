@@ -2746,4 +2746,25 @@ Notes:
   existing reasons.
 - recovery_start now records the previous reason (`after=`).
 
+## H2 — Combat target selection on the combat anchor
+
+Status: DONE (2026-10-04)
+
+Commit:
+`fix(dungeon-lead): anchor combat target selection`
+
+Validation:
+- Build: PASS (server, 0 warnings)
+- Tests: PASS - 199 checks (5 new IsFightCandidate cases: tank at anchor, neighbour near the
+  moved tank but 50 yd from the anchor rejected, pack member inside the radius kept, add
+  attacking the party kept wherever it stands, idle mob near the anchor rejected)
+- Live: Wailing Caverns test party 12 min: plans built from 1-3 candidates, pulls/CC as before,
+  no skip or recovery failure.
+
+Notes:
+- DungeonTargetManager in combat measures from the session's combat anchor (`anchorX/Y/Z`, or
+  the boss spot in BossCombat) and falls back to the tank position only without an anchor.
+- `DungeonLeadKernel::IsFightCandidate`: in combat AND (within 40 yd of the anchor OR attacking
+  a party member). Same boundary as the leash; pack identity hardening follows in H4.
+
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS

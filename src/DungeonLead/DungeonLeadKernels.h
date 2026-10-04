@@ -754,6 +754,21 @@ namespace DungeonLeadKernel
         return a.id < b.id;
     }
 
+    // During a fight, what belongs to it: units in combat within the radius of the *combat anchor*
+    // (where the fight began - not wherever the tank has moved to, or a neighbouring pack slides
+    // into range), plus any unit attacking a party member wherever it stands (an add that ran in).
+    struct FightCandidateFacts
+    {
+        bool inCombat = false;
+        bool attackingParty = false;  // its victim is a party member
+        float distToAnchor = 0.0f;
+    };
+
+    inline bool IsFightCandidate(FightCandidateFacts const& c, float radius)
+    {
+        return c.inCombat && (c.attackingParty || c.distToAnchor <= radius);
+    }
+
     inline TargetPlan PickTargetPlan(std::vector<TargetCandidate> const& candidates, TargetPlan const& previous,
                                      bool wantCc)
     {
