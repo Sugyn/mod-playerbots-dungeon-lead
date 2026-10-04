@@ -1526,6 +1526,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.bestDist = 0.f;
     st.stuckAttempts = 0;
     st.stuckTs = 0;
+    st.unstuckUsed = false;
     // the next step's pack and pull (if any) start from scratch
     st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
@@ -1573,6 +1574,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.bestDist = 0.f;
     st.stuckTs = 0;
     st.stuckAttempts = 0;
+    st.unstuckUsed = false;
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
 }
@@ -1953,6 +1955,14 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
 
     if (st.bestDist == 0.f || disToDest + 5.0f < st.bestDist)
     {
+        if (st.bestDist != 0.f)
+        {
+            // real progress: this is a spot the walk can path from
+            st.lastGoodSet = true;
+            st.lastGoodX = bot->GetPositionX();
+            st.lastGoodY = bot->GetPositionY();
+            st.lastGoodZ = bot->GetPositionZ();
+        }
         st.bestDist = disToDest;
         st.stuckTs = now;
         st.stuckAttempts = 0;
@@ -1964,6 +1974,30 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         if (DungeonInteractionController::StartIfBlockedByDoor(botAI, st, dest.GetPositionX(), dest.GetPositionY(),
                                                                dest.GetPositionZ()))
             return true;
+        float const ground = bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() + 30.f);
+        // A leader left somewhere it can't path from at all (H7: SM Library at z=0 under the floor,
+        // Deadmines below the tunnel floor - both after a fight, warrior tank): once per step, go
+        // back to the last spot the walk made progress from, then let the walk try again. If it is
+        // stuck from there too, the step fails as before.
+        float const backDist = bot->GetExactDist(st.lastGoodX, st.lastGoodY, st.lastGoodZ);
+        if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && backDist < 80.0f)
+        {
+            st.unstuckUsed = true;
+            std::string const detail =
+                step.boss + " from=(" + std::to_string(int(bot->GetPositionX())) + "," +
+                std::to_string(int(bot->GetPositionY())) + "," + std::to_string(int(bot->GetPositionZ())) +
+                ") ground=" + std::to_string(int(ground)) + " to=(" + std::to_string(int(st.lastGoodX)) + "," +
+                std::to_string(int(st.lastGoodY)) + "," + std::to_string(int(st.lastGoodZ)) + ")";
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} no path from here - back to the last good spot: {}",
+                     bot->GetName(), detail);
+            DungeonLead::RecordEvent(botAI, "leader_unstuck", detail);
+            bot->GetMotionMaster()->Clear();
+            bot->NearTeleportTo(st.lastGoodX, st.lastGoodY, st.lastGoodZ, bot->GetOrientation());
+            st.bestDist = 0.f;
+            st.stuckTs = 0;
+            st.stuckAttempts = 0;
+            return true;
+        }
         // Both positions on purpose: `dest` alone (the target's own coordinates, effectively just
         // repeating the already-known route waypoint) was useless for telling where the bot
         // actually ended up stuck versus where it was trying to go - `bot->GetPosition*()` is the
@@ -1982,8 +2016,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             std::to_string(bot->GetPositionZ()) + ")" +
             // the floor under the bot: tells "stuck on terrain" from "fell under the map"
             // (SM Library, H7: the tank froze at z=0 under an 18 yd floor)
-            " ground=" + std::to_string(bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(),
-                                                          bot->GetPositionZ() + 30.f)));
+            " ground=" + std::to_string(ground));
         DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::PathFailed,
                                    "path");
         return true;

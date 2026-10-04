@@ -181,6 +181,11 @@ struct DungeonLeadState
     uint32 stuckTs = 0;
     uint32 stuckAttempts = 0;
     float bestDist = 0.f;
+    // Last spot the route walk made real progress from, and whether the current step already used
+    // its one move back there (MoveRouteTo: a leader left somewhere with no path at all).
+    bool lastGoodSet = false;
+    float lastGoodX = 0.f, lastGoodY = 0.f, lastGoodZ = 0.f;
+    bool unstuckUsed = false;
     uint32 lastPathLogTs = 0;  // throttle for the "pathing" telemetry line in MoveRouteTo() -
                                 // one line per ~3s per bot, position/target/distance/path-type,
                                 // sent to BOTH LOG_INFO and RecordEvent (CSV -> panel) so the
@@ -318,6 +323,8 @@ struct DungeonLeadState
         stuckTs = 0;
         stuckAttempts = 0;
         bestDist = 0.f;
+        lastGoodSet = false;
+        unstuckUsed = false;
         lastPathLogTs = 0;
         noRouteTold = false;
         doneTold = false;
