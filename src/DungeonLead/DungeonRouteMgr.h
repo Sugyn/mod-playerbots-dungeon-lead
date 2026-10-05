@@ -189,6 +189,8 @@ struct DungeonLeadState
     bool lastGoodSet = false;
     float lastGoodX = 0.f, lastGoodY = 0.f, lastGoodZ = 0.f;
     bool unstuckUsed = false;
+    // Scripted area triggers already fired for this instance run (DungeonLead::FireAreaTriggers).
+    std::unordered_set<uint32> firedAreaTriggers;
     uint32 lastPathLogTs = 0;  // throttle for the "pathing" telemetry line in MoveRouteTo() -
                                 // one line per ~3s per bot, position/target/distance/path-type,
                                 // sent to BOTH LOG_INFO and RecordEvent (CSV -> panel) so the
@@ -328,6 +330,7 @@ struct DungeonLeadState
         bestDist = 0.f;
         lastGoodSet = false;
         unstuckUsed = false;
+        firedAreaTriggers.clear();
         lastPathLogTs = 0;
         noRouteTold = false;
         doneTold = false;

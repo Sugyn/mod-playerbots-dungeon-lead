@@ -91,6 +91,11 @@ namespace DungeonLead
     // were marked invalid by AzerothCore after a group change (they would be sent out in 60 s).
     void KeepInstanceValid(PlayerbotAI* botAI);
 
+    // A bot has no client to send CMSG_AREATRIGGER, so scripted area triggers (a boss turning
+    // hostile, an event starting) never fire for a bot-only party. Fires the scripted, non-teleport
+    // triggers the leader is standing in, once each per instance run.
+    void FireAreaTriggers(PlayerbotAI* botAI, DungeonLeadState& st);
+
     // Shared session-start logic behind both the "startdungeon" chat command and the AutoBot
     // Canary controller (DungeonLeadCanary.h) - leadership takeover, follower snapshot, strategy
     // application, state reset, the star icon, logging. Callers do their OWN preconditions first

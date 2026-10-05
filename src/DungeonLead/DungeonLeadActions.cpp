@@ -30,6 +30,7 @@
 #include "LastMovementValue.h"
 #include "Map.h"
 #include "ObjectAccessor.h"
+#include "ObjectMgr.h"
 #include "PathGenerator.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotOperations.h"
@@ -37,6 +38,7 @@
 #include "Playerbots.h"
 #include "PositionValue.h"
 #include "RtiTargetValue.h"
+#include "ScriptMgr.h"
 #include "Log.h"
 #include "Timer.h"
 
@@ -735,6 +737,47 @@ void DungeonLead::KeepInstanceValid(PlayerbotAI* botAI)
     }
 }
 
+namespace
+{
+    // Scripted, non-teleport area triggers per map, built once from ObjectMgr (ids are small - same
+    // bounded scan as DungeonRouteMgr::GetEntrance). World thread only (GuardActiveSessions).
+    std::vector<AreaTrigger const*> const& ScriptedAreaTriggers(uint32 mapId)
+    {
+        static std::unordered_map<uint32, std::vector<AreaTrigger const*>> cache;
+        auto it = cache.find(mapId);
+        if (it != cache.end())
+            return it->second;
+        std::vector<AreaTrigger const*>& list = cache[mapId];
+        for (uint32 id = 1; id < 20000; ++id)
+        {
+            AreaTrigger const* at = sObjectMgr->GetAreaTrigger(id);
+            if (at && at->map == mapId && sObjectMgr->GetAreaTriggerScriptId(id) &&
+                !sObjectMgr->GetAreaTriggerTeleport(id))
+                list.push_back(at);
+        }
+        return list;
+    }
+}
+
+void DungeonLead::FireAreaTriggers(PlayerbotAI* botAI, DungeonLeadState& st)
+{
+    // H7 / Zul'Farrak: Witch Doctor Zum'rah turns hostile from area trigger 962 (SmartTrigger) on
+    // his spot. Only a client sends that; with bots alone he stayed friendly and every pull failed.
+    Player* leader = botAI->GetBot();
+    if (!leader->IsAlive() || leader->IsInFlight() || !InFiveMan(leader))
+        return;
+    for (AreaTrigger const* at : ScriptedAreaTriggers(leader->GetMapId()))
+    {
+        if (st.firedAreaTriggers.count(at->entry) || !leader->IsInAreaTriggerRadius(at))
+            continue;
+        st.firedAreaTriggers.insert(at->entry);
+        bool const handled = sScriptMgr->OnAreaTrigger(leader, at);
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} area trigger {} fired (handled={})", leader->GetName(),
+                 at->entry, handled);
+        DungeonLead::RecordEvent(botAI, "area_trigger", std::to_string(at->entry) + " handled=" + std::to_string(handled));
+    }
+}
+
 void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& st)
 {
     Player* leader = botAI ? botAI->GetBot() : nullptr;
@@ -876,6 +919,7 @@ void DungeonLead::GuardActiveSessions()
         // mob-free spot, and a corpse run from there is an ordinary same-map run that works.
         DungeonLead::RecoverStrandedMembers(botAI, st);
         DungeonLead::KeepInstanceValid(botAI);
+        DungeonLead::FireAreaTriggers(botAI, st);
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
