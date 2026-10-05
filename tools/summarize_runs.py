@@ -6,7 +6,7 @@ Usage: summarize_runs.py DungeonLeadSessions.csv DungeonLeadRuns.csv [--since "Y
 Prints one block per run: dungeon, outcome and terminal reason (from DungeonLeadRuns.csv),
 bosses cleared, objectives skipped/retried/failed, wipes, recoveries, interactions, pulls and
 the last state - enough to fill the validation matrix in docs/testing-status.md and to classify
-a failure before touching code.
+a failure before touching code. ALERT lines flag what should never happen in a healthy run.
 """
 import csv
 import sys
@@ -28,9 +28,12 @@ def main():
     sessions, runs = args
 
     events = OrderedDict()
+    dropped = 0
     for row in read(sessions)[1:]:
         if len(row) < 9 or row[0] < since:
             continue
+        if row[7] == "telemetry_dropped":
+            dropped += 1
         run_id = row[1]
         if run_id == "0":
             continue
@@ -65,7 +68,28 @@ def main():
             print(f"  recovery: {' | '.join(recoveries[:6])}{' ...' if len(recoveries) > 6 else ''}")
         if interactions:
             print(f"  interaction: {' | '.join(interactions)}")
+        for alert in alerts(kinds, rows):
+            print(f"  ALERT {alert}")
         print()
+    if dropped:
+        print(f"ALERT telemetry_dropped rows: {dropped} (lines were lost)")
+
+
+def alerts(kinds, rows):
+    """Invariants found live in H7: each of these needed a fix when it appeared."""
+    out = []
+    if kinds["unexpected_teleport"]:
+        out.append(f"unexpected_teleport x{kinds['unexpected_teleport']} (something tried to move a session bot out)")
+    if kinds["instance_validity_restored"] > 5:
+        out.append(f"instance_validity_restored x{kinds['instance_validity_restored']} (more than one per member)")
+    if kinds["recovery_failed"]:
+        out.append("recovery_failed (run stopped by the recovery controller)")
+    if kinds["leader_unstuck"]:
+        out.append(f"leader_unstuck x{kinds['leader_unstuck']} (leader was left where it could not path)")
+    for r in rows:
+        if r[7] == "objective_failed" and "requirement=boss" in r[8]:
+            out.append(f"boss objective failed: {r[8]}")
+    return out
 
 
 if __name__ == "__main__":

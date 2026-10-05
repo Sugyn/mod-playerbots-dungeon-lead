@@ -104,6 +104,9 @@ namespace DungeonLead
     // logs it out via the normal LogoutPlayerBot() path, and stops tracking it. `botName` matches
     // on the character name given at Acquire time (case-sensitive, as returned by TestBotPoolStatus).
     std::string ReleaseTestBot(std::string const& botName);
+
+    // ReleaseTestBot() for every tracked lease.
+    std::string ReleaseAllTestBots();
 }
 
 #endif

@@ -787,3 +787,14 @@ std::string DungeonLead::ReleaseTestBot(std::string const& botName)
     g_leases.erase(it);
     return result;
 }
+
+std::string DungeonLead::ReleaseAllTestBots()
+{
+    std::vector<std::string> names;
+    for (TestBotLease const& l : g_leases)
+        names.push_back(l.name);
+    std::string out;
+    for (std::string const& n : names)
+        out += (out.empty() ? "" : ", ") + ReleaseTestBot(n);
+    return out.empty() ? "No leases tracked" : out;
+}

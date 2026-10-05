@@ -11,18 +11,21 @@
  * table - a fresh CommandScript under a new root needs no edit to PlayerbotCommandScript.cpp
  * (AzerothCore's own CommandScript registration is already a patchless extension point).
  *
- * For now: just `canarytest`, enough to drive an on-demand, SOAP-reachable end-to-end test of the
- * ported DungeonLead logic without a live game session - see ADR-004 (docs/architecture/) for why
- * this exists as its own command root instead of extending mod-playerbots' own command table.
+ * `canarytest` drives an on-demand, SOAP-reachable end-to-end test of the DungeonLead logic
+ * without a live game session - see ADR-004 (docs/architecture/) for why this exists as its own
+ * command root instead of extending mod-playerbots' own command table. `validate` runs the live
+ * validation campaign (DungeonValidationCampaign.h, tools/live_validation/README.md).
  */
 
 #include "Chat.h"
 #include "DungeonLead/DungeonLeadCanary.h"
+#include "DungeonLead/DungeonValidationCampaign.h"
 #include "ScriptMgr.h"
 
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 using namespace Acore::ChatCommands;
 
@@ -58,6 +61,43 @@ namespace
         return true;
     }
 
+    // validate <lfgId> [lfgId...] | validate status | validate stop
+    bool HandleDungeonLeadValidateCommand(ChatHandler* handler, char const* args)
+    {
+        std::istringstream iss(args ? args : "");
+        std::string tok;
+        std::vector<uint32> ids;
+        while (iss >> tok)
+        {
+            if (tok == "status")
+            {
+                handler->PSendSysMessage(DungeonLead::ValidationStatus());
+                return true;
+            }
+            if (tok == "stop")
+            {
+                handler->PSendSysMessage(DungeonLead::StopValidation());
+                return true;
+            }
+            try
+            {
+                ids.push_back(static_cast<uint32>(std::stoul(tok)));
+            }
+            catch (std::exception const&)
+            {
+                ids.clear();
+                break;
+            }
+        }
+        if (ids.empty())
+        {
+            handler->PSendSysMessage("Usage: .dungeonlead validate <lfgId> [lfgId...] | status | stop");
+            return true;
+        }
+        handler->PSendSysMessage(DungeonLead::StartValidation(ids));
+        return true;
+    }
+
     class dungeon_lead_commandscript : public CommandScript
     {
     public:
@@ -67,6 +107,7 @@ namespace
         {
             static ChatCommandTable dungeonLeadTable = {
                 {"canarytest", HandleDungeonLeadCanaryTestCommand, SEC_GAMEMASTER, Console::Yes},
+                {"validate", HandleDungeonLeadValidateCommand, SEC_GAMEMASTER, Console::Yes},
             };
             static ChatCommandTable root = {{"dungeonlead", dungeonLeadTable}};
             return root;
