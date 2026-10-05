@@ -171,6 +171,7 @@ private:
     bool WalkUseStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
     bool WalkTalkStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
     bool EventWaitExpired(DungeonLeadState& st);
+    Unit* EventAttacker(Creature* npc);
 };
 
 // Releases a moon (CC) mark nobody manages to actually crowd-control within CcTimeoutSeconds.

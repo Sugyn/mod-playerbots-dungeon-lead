@@ -2069,7 +2069,8 @@ bool DungeonLeadNextAction::EventWaitExpired(DungeonLeadState& st)
     if (st.eventWaitLastTs)
     {
         uint32 const delta = getMSTimeDiff(st.eventWaitLastTs, now);
-        if (delta < 5000)  // consecutive walk ticks; a longer gap was a fight or a recovery
+        // consecutive walk ticks (a talk step asks every 5 s); a longer gap was a fight or a recovery
+        if (delta < 15000)
             st.eventWaitMs += delta;
     }
     st.eventWaitLastTs = now;
@@ -2221,6 +2222,26 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
     return true;
 }
 
+// A hostile fighting `npc` or a non-hostile NPC within 30 yd of it (its crew), nearest first.
+Unit* DungeonLeadNextAction::EventAttacker(Creature* npc)
+{
+    Unit* best = nullptr;
+    for (ObjectGuid const& guid : AI_VALUE(GuidVector, "possible targets"))
+    {
+        Unit* a = botAI->GetUnit(guid);
+        if (!a || !a->IsAlive() || !a->IsInCombat() || !bot->IsValidAttackTarget(a))
+            continue;
+        Unit* victim = a->GetVictim();
+        Creature* defender = victim ? victim->ToCreature() : nullptr;
+        if (!defender || defender->IsHostileTo(bot) || bot->IsValidAttackTarget(defender) ||
+            defender->GetDistance(npc) > 30.0f)
+            continue;
+        if (!best || bot->GetDistance(a) < bot->GetDistance(best))
+            best = a;
+    }
+    return best;
+}
+
 // "talk" step: the leader goes to the NPC (wherever it walked to) and talks to it the way a client
 // does (gossip hello, then the first option). An NPC whose event isn't ready offers no option yet:
 // keep asking until it does - fights in between are the event running - bounded by
@@ -2245,6 +2266,17 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
                  bot->GetName(), step.step, step.boss);
         DungeonLead::RecordEvent(botAI, "talk_not_ours", step.boss);
         DungeonLead::AdvanceStep(st, /*confirmed*/ false);
+        return true;
+    }
+    // The event may already be running and the NPC (or its crew) fighting it - Zul'Farrak: the
+    // waves come up the stairs at Bly's crew the moment the cage opens. A player helps; a bot party
+    // waiting to talk would watch. Attack whatever is fighting the NPC or a friendly NPC near it.
+    if (Unit* attacker = EventAttacker(npc))
+    {
+        if (Group* group = bot->GetGroup())
+            group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), attacker->GetGUID());
+        botAI->DoSpecificAction("attack rti target", Event(), /*silent*/ true);
+        DungeonLead::RecordEvent(botAI, "event_assist", step.boss + " attacker=" + attacker->GetName());
         return true;
     }
     if (bot->GetDistance(npc) > INTERACTION_DISTANCE)
