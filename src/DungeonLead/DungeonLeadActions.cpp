@@ -69,7 +69,7 @@ namespace
     // A closed door this close to the leader that its path goes through (crosses its plane within
     // kDoorHalfWidth of it): mmaps don't know doors, so bots would walk straight through it.
     constexpr float kDoorOnPathRange = 25.0f;
-    constexpr float kDoorHalfWidth = 6.0f;
+    constexpr float kDoorHalfWidth = 3.5f;
 
     GameObject* ClosedDoorOnPath(PlayerbotAI* botAI, Player* bot, float x, float y, float z)
     {
@@ -88,11 +88,17 @@ namespace
         Movement::PointsArray const& pts = path.GetPath();
         for (size_t i = 1; i < pts.size(); ++i)
             for (GameObject* door : doors)
-                if (std::fabs(door->GetPositionZ() - pts[i].z) < 8.0f &&
-                    DungeonLeadKernel::SegmentCrossesDoor(door->GetPositionX(), door->GetPositionY(),
-                                                          door->GetOrientation(), pts[i - 1].x, pts[i - 1].y, pts[i].x,
-                                                          pts[i].y, kDoorHalfWidth))
+            {
+                float t = 0.f;
+                if (!DungeonLeadKernel::SegmentCrossesDoor(door->GetPositionX(), door->GetPositionY(),
+                                                           door->GetOrientation(), pts[i - 1].x, pts[i - 1].y,
+                                                           pts[i].x, pts[i].y, kDoorHalfWidth, &t))
+                    continue;
+                // through the doorway, not over or under it (SFK: a walkway above the cells)
+                float const z = pts[i - 1].z + t * (pts[i].z - pts[i - 1].z);
+                if (z > door->GetPositionZ() - 2.0f && z < door->GetPositionZ() + 5.0f)
                     return door;
+            }
         return nullptr;
     }
     // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
@@ -2356,6 +2362,13 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             G3D::Vector3 const& endPos = path.GetActualEndPosition();
             float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
             if (endDistToDest + 5.0f < disToDest)
+                return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
+            // A full path cut at the point limit (SHORT, not INCOMPLETE) is a real way there even when
+            // its first stretch leads away - a detour (Deadmines: from the upper level near the
+            // entrance down to the cove the way first goes back west). Rejecting it left the leader
+            // standing with "no path" (H7, twice at the same spot).
+            if ((type & PATHFIND_SHORT) && !(type & PATHFIND_INCOMPLETE) &&
+                bot->GetExactDist(endPos.x, endPos.y, endPos.z) > 5.0f)
                 return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
         }
     }

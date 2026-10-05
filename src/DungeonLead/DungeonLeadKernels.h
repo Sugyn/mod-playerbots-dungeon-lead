@@ -1324,7 +1324,7 @@ namespace DungeonLeadKernel
     // crossing point within `halfWidth` of the door. A path along a wall of closed doors (cells)
     // never crosses their planes.
     inline bool SegmentCrossesDoor(float px, float py, float orientation, float ax, float ay, float bx, float by,
-                                   float halfWidth)
+                                   float halfWidth, float* crossingT = nullptr)
     {
         float const nx = std::cos(orientation), ny = std::sin(orientation);
         float const da = (ax - px) * nx + (ay - py) * ny;
@@ -1333,6 +1333,8 @@ namespace DungeonLeadKernel
             return false;
         float const t = da / (da - db);
         float const cx = ax + t * (bx - ax) - px, cy = ay + t * (by - ay) - py;
+        if (crossingT)
+            *crossingT = t;
         return cx * cx + cy * cy <= halfWidth * halfWidth;
     }
 }

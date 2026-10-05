@@ -881,6 +881,13 @@ namespace
               "path along the corridor past a cell door does not cross it");
         Check(!SegmentCrossesDoor(0.f, 0.f, 0.f, -5.f, 20.f, 5.f, 20.f, 6.f),
               "crossing the door's plane far from the door doesn't count");
+        // live (SFK): from the walkway above the cells down to Rethilgore - crosses a cell's plane
+        // 8.6 yd from the cell door: not through the door
+        Check(!SegmentCrossesDoor(-244.14f, 2134.41f, -0.375f, -237.35f, 2133.24f, -252.09f, 2123.11f, 3.5f),
+              "passing a cell 8 yd from its door is not walking through it");
+        float t = -1.f;
+        SegmentCrossesDoor(0.f, 0.f, 0.f, -2.f, 0.f, 2.f, 0.f, 3.5f, &t);
+        Check(t > 0.49f && t < 0.51f, "crossing parameter reported for the height check");
 
         for (uint32_t rounds = 1; rounds <= 3; ++rounds)
             Check(DecideObjectiveFailure(R::Optional, rounds, 2) == ObjectiveFailureAction::Skip,
