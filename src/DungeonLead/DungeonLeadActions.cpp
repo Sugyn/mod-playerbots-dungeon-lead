@@ -2357,7 +2357,9 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             std::to_string(bot->GetPositionZ()) + ")" +
             // the floor under the bot: tells "stuck on terrain" from "fell under the map"
             // (SM Library, H7: the tank froze at z=0 under an 18 yd floor)
-            " ground=" + std::to_string(ground));
+            " ground=" + std::to_string(ground) + " path: " + DungeonLead::DiagnosePath(bot, dest.GetPositionX(),
+                                                                                      dest.GetPositionY(),
+                                                                                      dest.GetPositionZ()));
         DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Navigation, DungeonFailureReason::PathFailed,
                                    "path");
         return true;
@@ -2373,7 +2375,10 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
     if (disToDest < kPathFinderDis)
         return MoveTo(dest.GetMapId(), dx, dy, dz, false, false, false, true);
 
-    uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
+    // SHORT = a path cut at the point limit (a long way): as usable as a whole one. Without it every
+    // destination more than ~300 yd of path away was "unreachable" (Deadmines, H7: the leader stood
+    // on the upper level unable to head for the cove).
+    uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY | PATHFIND_SHORT;
     {
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
