@@ -2091,13 +2091,22 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
         return true;
     }
 
-    // a key the lock needs, and who in the party has it
+    // a key the lock needs, and who in the party has it; or a lock that opens by hand, which the
+    // client opens by casting the matching "Opening" spell (a chest: that is what loots it)
     Player* user = bot;
     uint32 keyItem = 0;
+    uint32 openSpell = 0;
     if (LockEntry const* lock = sLockStore.LookupEntry(go->GetGOInfo()->GetLockId()))
-        for (uint8 i = 0; i < MAX_LOCK_CASE && !keyItem; ++i)
-            if (lock->Type[i] == LOCK_KEY_ITEM && lock->Index[i])
+        for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+        {
+            if (lock->Type[i] == LOCK_KEY_ITEM && lock->Index[i] && !keyItem)
                 keyItem = lock->Index[i];
+            else if (lock->Type[i] == LOCK_KEY_SKILL && lock->Skill[i] == 0 && !openSpell)
+                openSpell = lock->Index[i] == LOCKTYPE_OPEN         ? 3365u   // Opening
+                            : lock->Index[i] == LOCKTYPE_QUICK_OPEN ? 6247u   // Opening (quick)
+                            : lock->Index[i] == LOCKTYPE_OPEN_KNEELING ? 6478u  // Opening (kneeling)
+                                                                    : 0u;
+        }
     if (keyItem)
     {
         user = nullptr;
@@ -2128,18 +2137,27 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
         if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(keyItem))
             if (proto->Spells[0].SpellId > 0)
                 keySpell = sSpellMgr->GetSpellInfo(proto->Spells[0].SpellId);
+    SpellInfo const* opening = !keySpell && openSpell ? sSpellMgr->GetSpellInfo(openSpell) : nullptr;
     if (keySpell)
     {
         SpellCastTargets targets;
         targets.SetGOTarget(go);
         user->CastSpell(targets, keySpell, nullptr, TRIGGERED_FULL_MASK, user->GetItemByEntry(keyItem));
     }
+    else if (opening)
+    {
+        SpellCastTargets targets;
+        targets.SetGOTarget(go);
+        user->CastSpell(targets, opening, nullptr, TRIGGERED_FULL_MASK);
+    }
     else
         go->Use(user);
 
     // A chest: take what is in it, the way a client does (autostore each slot, release).
+    int lootSlots = -1;  // -1: nothing was looted (not a chest, or no loot window opened)
     if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST && user->GetLootGUID() == go->GetGUID())
     {
+        lootSlots = int(go->loot.items.size());
         for (uint8 slot = 0; slot < go->loot.items.size(); ++slot)
         {
             WorldPacket take(CMSG_AUTOSTORE_LOOT_ITEM, 1);
@@ -2151,9 +2169,13 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
         user->GetSession()->HandleLootReleaseOpcode(release);
     }
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} used {} (entry {}) via {}{}", bot->GetName(), go->GetName(),
-             step.entry, user->GetName(), keySpell ? " (key spell)" : "");
+             step.entry, user->GetName(), keySpell ? " (key spell)" : opening ? " (opening)" : "");
     DungeonLead::RecordEvent(botAI, "use", step.boss + " entry=" + std::to_string(step.entry) + " by=" + user->GetName() +
-                                           (keyItem ? " key=" + std::to_string(keyItem) : ""));
+                                           (keyItem ? " key=" + std::to_string(keyItem) : "") +
+                                           (opening ? " opening=" + std::to_string(openSpell) : "") +
+                                           (go->GetGoType() == GAMEOBJECT_TYPE_CHEST
+                                                ? " loot_slots=" + std::to_string(lootSlots)
+                                                : ""));
     DungeonLead::AdvanceStep(st, /*confirmed*/ true);
     return true;
 }
