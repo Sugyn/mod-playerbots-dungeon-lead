@@ -28,6 +28,7 @@ per-dungeon status.
 2. Re-run CMake (`cmake ..`) — module directories are only picked up at configure time.
 3. Build + install `worldserver` as usual.
 4. Load the route data: `mysql acore_playerbots < sql/playerbots_dungeon_route.sql`
+   (updating an existing install: apply the new files in `sql/updates/` instead)
 5. Restart `worldserver`.
 
 Needs mod-playerbots already built and working, mmaps generated for the maps you'll use this on

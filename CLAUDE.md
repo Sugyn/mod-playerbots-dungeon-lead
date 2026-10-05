@@ -2319,9 +2319,11 @@ and keeps no counts of its own).
 Next objective (from the 2026-10-05 audit):
 1. P0 documentation truth: README, this file (history moved to `docs/history/`) - done 2026-10-05.
 2. P0 reproducible validation: `.dungeonlead validate` + `tools/live_validation/` - done 2026-10-05.
-3. P1 route metadata: an explicit requirement column (optional/required/boss) in the route data,
-   `required` only where live evidence shows trash gates progress; explicit interaction target
-   metadata for door/interaction rows (entry + position) instead of the 15 yd heuristic.
+3. P1 route metadata - done in code 2026-10-05: kind `required` (no rows yet - add only where a
+   live run shows trash gating progress); door rows with gameobject entry + position (Deadmines,
+   SFK, Scholomance; `sql/updates/2026_10_05_00_route_door_targets.sql` must be applied to the
+   server DB before it takes effect there); door heuristic requires the door near the leader ->
+   destination line.
 4. P1/P2 interactions driven by real blockers: first actionable type (`GameObjectUse`) once a live
    run is blocked by a lever/clickable object.
 5. P2 coverage: full runs of SM Armory, SM Cathedral, Zul'Farrak; then tier 3 (BFD, Stockade,

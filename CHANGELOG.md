@@ -18,6 +18,23 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Added
+- `.dungeonlead validate <lfgId...>` (GM/console): runs a list of dungeons with fresh bot-only test
+  parties, one result line per dungeon - the live validation campaign, previously a server-side
+  patch. Dungeon sets and procedure in `tools/live_validation/`; `tools/summarize_runs.py` now
+  prints ALERT lines for states that should never occur.
+- Route kind `required`: trash that gates progress. Fought like an optional stop, but never
+  skipped - retried, then the run ends partial.
+- Door rows can name their game object (entry + position): the leader goes to that door, moves on
+  once it is open and waits while it is closed. Deadmines, Shadowfang Keep and Scholomance have
+  theirs (`sql/updates/2026_10_05_00_route_door_targets.sql` for existing installs).
+
+### Changed
+- A closed door only counts as blocking the way when it is near the line to where the leader is
+  going, not merely nearby.
+- README, CLAUDE.md and the testing status describe the current state; the 2026-10-03
+  implementation record moved to `docs/history/`.
+
 ## [0.12.0-alpha] - 2026-10-05
 
 Hardening rounds H4-H7: pack identity, closed doors, combined failure paths, and the first live
