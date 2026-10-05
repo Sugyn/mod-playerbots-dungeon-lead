@@ -34,7 +34,7 @@ DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)
     DungeonRouteStep const& step = route.steps[stepIndex];
     DungeonRouteNodeType const type = step.NodeType();
     // a door's entry is a game object, not creatures to fight
-    if (!step.HasPosition() || type == DungeonRouteNodeType::Travel || type == DungeonRouteNodeType::Door)
+    if (!step.HasPosition() || type == DungeonRouteNodeType::Travel || step.IsInteractionStep())
         return pack;
 
     pack.id = stepIndex + 1;

@@ -92,14 +92,15 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 24,Zul'Farrak,209,0,0,-,1,boss,Theka the Martyr,7272,1778,859.7,8.9,spawn,
 24,Zul'Farrak,209,0,0,-,2,boss,Antu'sul,8127,1815.8,670.4,15,spawn,
 24,Zul'Farrak,209,0,0,-,3,boss,Witch Doctor Zum'rah,7271,1912.2,1016.1,11.6,spawn,
-24,Zul'Farrak,209,0,0,-,4,boss,Sandfury Executioner,7274,1886.8,1289.9,46,spawn,pyramid top
-24,Zul'Farrak,209,0,0,-,5,event,Sergeant Bly,7604,1882.9,1299.3,48.4,spawn,"stairs event (Divino-matic Rod), spawns Nekrum + Sezz'ziz"
-24,Zul'Farrak,209,0,0,-,6,event,Nekrum Gutchewer,7796,NULL,NULL,NULL,script,
-24,Zul'Farrak,209,0,0,-,7,event,Shadowpriest Sezz'ziz,,,,,unknown,
-24,Zul'Farrak,209,0,0,-,8,door,End Door,146084,1854.53,1142.89,16.0846,gameobject,opens when Sergeant Bly dies (pyramid event); Ukorz is behind it
-24,Zul'Farrak,209,0,0,-,9,boss,Chief Ukorz Sandscalp,7267,1727.5,1017.3,54.9,spawn,with Ruuzlu
-24,Zul'Farrak,209,0,0,-,10,optional,Hydromancer Velratha,7795,1698.2,1210.7,9.4,spawn,
-24,Zul'Farrak,209,0,0,-,11,optional,Gahz'rilla,,,,,unknown,Mallet summon
+24,Zul'Farrak,209,0,0,-,4,boss,Sandfury Executioner,7274,1886.8,1289.9,46,spawn,"pyramid top, drops Executioner's Key"
+24,Zul'Farrak,209,0,0,-,5,use,Troll Cage,141070,1890.96,1294.47,48.1535,gameobject,opened with Executioner's Key - starts the pyramid event (waves on the stairs)
+24,Zul'Farrak,209,0,0,-,6,talk,Sergeant Bly,7604,1882.9,1299.3,48.4,spawn,"gossip once the crew is downstairs - he and his crew turn hostile, Weegli blows the End Door"
+24,Zul'Farrak,209,0,0,-,7,event,Nekrum Gutchewer,7796,NULL,NULL,NULL,script,wave 3
+24,Zul'Farrak,209,0,0,-,8,event,Shadowpriest Sezz'ziz,,,,,unknown,wave 3
+24,Zul'Farrak,209,0,0,-,9,door,End Door,146084,1854.53,1142.89,16.0846,gameobject,blown by Weegli after the Bly talk; Ukorz is behind it
+24,Zul'Farrak,209,0,0,-,10,boss,Chief Ukorz Sandscalp,7267,1727.5,1017.3,54.9,spawn,with Ruuzlu
+24,Zul'Farrak,209,0,0,-,11,optional,Hydromancer Velratha,7795,1698.2,1210.7,9.4,spawn,
+24,Zul'Farrak,209,0,0,-,12,optional,Gahz'rilla,,,,,unknown,Mallet summon
 26,Maraudon - Orange Crystals,349,0,0,Foulspore Cavern,1,boss,Noxxion,13282,1130.4,-191.3,-80,spawn,Orange Crystals
 26,Maraudon - Orange Crystals,349,0,0,Foulspore Cavern,2,boss,Razorlash,12258,978.9,-10.2,-62.5,spawn,
 272,Maraudon - Purple Crystals,349,0,0,Wicked Grotto,1,boss,Lord Vyletongue,12236,748.9,-219.6,-47.7,spawn,Purple Crystals

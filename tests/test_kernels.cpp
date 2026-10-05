@@ -856,6 +856,15 @@ namespace
         Check(ClassifyRouteStep(DungeonRouteKind::Required, 4424) == DungeonRouteNodeType::Pull,
               "required trash is fought like a pull");
         Check(ClassifyRequirement(DungeonRouteKind::Door, 16397) == R::Required, "a door is never skipped");
+        // use / talk steps (Zul'Farrak pyramid event: cage, Sergeant Bly)
+        Check(ParseRouteKind("use") == DungeonRouteKind::Use && ParseRouteKind("talk") == DungeonRouteKind::Talk,
+              "kinds 'use' and 'talk' parse");
+        Check(ClassifyRouteStep(DungeonRouteKind::Use, 141070) == DungeonRouteNodeType::Interaction &&
+                  ClassifyRouteStep(DungeonRouteKind::Talk, 7604) == DungeonRouteNodeType::Interaction,
+              "use/talk are interaction nodes");
+        Check(ClassifyRequirement(DungeonRouteKind::Use, 141070) == R::Required &&
+                  ClassifyRequirement(DungeonRouteKind::Talk, 7604) == R::Required,
+              "an event that gates progress is never skipped");
         Check(DecideObjectiveFailure(R::Required, 1, 2) == ObjectiveFailureAction::Retry &&
                   DecideObjectiveFailure(R::Required, 2, 2) == ObjectiveFailureAction::Abort,
               "required objective: retry, then abort - never skip");

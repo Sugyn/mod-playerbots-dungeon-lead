@@ -168,6 +168,9 @@ private:
     DungeonRoute const* ResolveRoute(DungeonLeadState& st);
     bool MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
     bool WalkDoorStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
+    bool WalkUseStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
+    bool WalkTalkStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
+    bool EventWaitExpired(DungeonLeadState& st);
 };
 
 // Releases a moon (CC) mark nobody manages to actually crowd-control within CcTimeoutSeconds.

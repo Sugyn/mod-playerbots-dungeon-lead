@@ -35,10 +35,17 @@ struct DungeonRouteStep
     {
         return HasPosition() && (kind == DungeonRouteKind::Boss || kind == DungeonRouteKind::Optional ||
                                   kind == DungeonRouteKind::Required || kind == DungeonRouteKind::HeroicOnly ||
-                                  kind == DungeonRouteKind::Event || kind == DungeonRouteKind::Door);
+                                  kind == DungeonRouteKind::Event || kind == DungeonRouteKind::Door ||
+                                  kind == DungeonRouteKind::Use || kind == DungeonRouteKind::Talk);
     }
     // A door row with a position names its game object (entry = gameobject entry, not a creature).
     bool IsDoorObject() const { return kind == DungeonRouteKind::Door; }
+    // Steps whose entry is not a creature to kill (a game object, or an NPC to talk to): no pack,
+    // no kill memory.
+    bool IsInteractionStep() const
+    {
+        return kind == DungeonRouteKind::Door || kind == DungeonRouteKind::Use || kind == DungeonRouteKind::Talk;
+    }
 
     // Policy boundary for "must this be satisfied for the run to count as Complete rather than
     // Partial" - kept as one named function instead of repeating `kind == Boss` at every call
@@ -189,6 +196,11 @@ struct DungeonLeadState
     bool lastGoodSet = false;
     float lastGoodX = 0.f, lastGoodY = 0.f, lastGoodZ = 0.f;
     bool unstuckUsed = false;
+    // use/talk steps: time spent waiting at the step for its event (route walk ticks only), and
+    // the last gossip attempt.
+    uint32 eventWaitMs = 0;
+    uint32 eventWaitLastTs = 0;
+    uint32 talkTriedTs = 0;
     // Scripted area triggers already fired for this instance run (DungeonLead::FireAreaTriggers).
     std::unordered_set<uint32> firedAreaTriggers;
     uint32 lastPathLogTs = 0;  // throttle for the "pathing" telemetry line in MoveRouteTo() -

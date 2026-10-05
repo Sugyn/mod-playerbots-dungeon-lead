@@ -127,14 +127,15 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 1. **Theka the Martyr** — entry 7272 @ (1778, 859.7, 8.9)
 2. **Antu'sul** — entry 8127 @ (1815.8, 670.4, 15)
 3. **Witch Doctor Zum'rah** — entry 7271 @ (1912.2, 1016.1, 11.6)
-4. **Sandfury Executioner** — entry 7274 @ (1886.8, 1289.9, 46) — pyramid top
-5. **Sergeant Bly** **[event]** — entry 7604 @ (1882.9, 1299.3, 48.4) — stairs event (Divino-matic Rod), spawns Nekrum + Sezz'ziz
-6. **Nekrum Gutchewer** **[event]** `script` — entry 7796 (no static spawn)
-7. **Shadowpriest Sezz'ziz** **[event]** `unknown`
-8. **End Door** **[door]** `gameobject` — entry 146084 @ (1854.53, 1142.89, 16.0846) — opens when Sergeant Bly dies (pyramid event); Ukorz is behind it
-9. **Chief Ukorz Sandscalp** — entry 7267 @ (1727.5, 1017.3, 54.9) — with Ruuzlu
-10. **Hydromancer Velratha** *(optional)* — entry 7795 @ (1698.2, 1210.7, 9.4)
-11. **Gahz'rilla** *(optional)* `unknown` — Mallet summon
+4. **Sandfury Executioner** — entry 7274 @ (1886.8, 1289.9, 46) — pyramid top, drops Executioner's Key
+5. **Troll Cage** `gameobject` — entry 141070 @ (1890.96, 1294.47, 48.1535) — opened with Executioner's Key - starts the pyramid event (waves on the stairs)
+6. **Sergeant Bly** — entry 7604 @ (1882.9, 1299.3, 48.4) — gossip once the crew is downstairs - he and his crew turn hostile, Weegli blows the End Door
+7. **Nekrum Gutchewer** **[event]** `script` — entry 7796 (no static spawn) — wave 3
+8. **Shadowpriest Sezz'ziz** **[event]** `unknown` — wave 3
+9. **End Door** **[door]** `gameobject` — entry 146084 @ (1854.53, 1142.89, 16.0846) — blown by Weegli after the Bly talk; Ukorz is behind it
+10. **Chief Ukorz Sandscalp** — entry 7267 @ (1727.5, 1017.3, 54.9) — with Ruuzlu
+11. **Hydromancer Velratha** *(optional)* — entry 7795 @ (1698.2, 1210.7, 9.4)
+12. **Gahz'rilla** *(optional)* `unknown` — Mallet summon
 ### Maraudon - Orange Crystals (LFD 26, map 349)
 
 1. [Foulspore Cavern] **Noxxion** — entry 13282 @ (1130.4, -191.3, -80) — Orange Crystals

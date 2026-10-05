@@ -22,6 +22,8 @@
 #include "DungeonPartyState.h"
 
 #include "Creature.h"
+#include "DBCStores.h"
+#include "GossipDef.h"
 #include "CreatureData.h"
 #include "Event.h"
 #include "Formations.h"
@@ -41,6 +43,8 @@
 #include "ScriptMgr.h"
 #include "Log.h"
 #include "Timer.h"
+#include "WorldPacket.h"
+#include "WorldSession.h"
 
 #include <algorithm>
 #include <atomic>
@@ -71,7 +75,8 @@ namespace
              botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects no los")->Get())
             if (GameObject* go = botAI->GetGameObject(guid))
                 if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY &&
-                    bot->GetDistance(go) <= kDoorOnPathRange)
+                    bot->GetDistance(go) <= kDoorOnPathRange &&
+                    go->GetExactDist(x, y, z) > 4.0f)  // the destination itself (a cage to use)
                     doors.push_back(go);
         if (doors.empty())
             return nullptr;
@@ -1604,6 +1609,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.stuckAttempts = 0;
     st.stuckTs = 0;
     st.unstuckUsed = false;
+    st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     // the next step's pack and pull (if any) start from scratch
     st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
@@ -1653,6 +1659,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.stuckTs = 0;
     st.stuckAttempts = 0;
     st.unstuckUsed = false;
+    st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     st.ccFailed.clear();
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
@@ -1783,7 +1790,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // is a Travel node and must stay, or routes that need it stop being walkable (DL-011).
         bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
                     (s.NodeType() == DungeonRouteNodeType::Pull && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
-                    (s.entry && !s.IsDoorObject() && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
+                    (s.entry && !s.IsInteractionStep() && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;
         ++st.stepIndex;
@@ -1900,6 +1907,10 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
 
     if (step.NodeType() == DungeonRouteNodeType::Door)
         return WalkDoorStep(st, dest, step);
+    if (step.kind == DungeonRouteKind::Use)
+        return WalkUseStep(st, dest, step);
+    if (step.kind == DungeonRouteKind::Talk)
+        return WalkTalkStep(st, dest, step);
 
     // Pack nodes (pull/boss/interaction) advance only once their pack is Cleared (or Skipped
     // below) - never just because the tank reached the coordinate. Travel nodes have no pack.
@@ -2020,6 +2031,132 @@ bool DungeonLeadNextAction::WalkDoorStep(DungeonLeadState& st, WorldPosition con
         return true;
     }
     DungeonInteractionController::StartForDoor(botAI, st, door, "route");
+    return true;
+}
+
+// Time a use/talk step has waited for its event - counted only while the route walk runs here
+// (Travelling), so the fights an event brings don't use it up. True once EventWaitSeconds is spent.
+bool DungeonLeadNextAction::EventWaitExpired(DungeonLeadState& st)
+{
+    uint32 const now = getMSTime();
+    if (st.eventWaitLastTs)
+    {
+        uint32 const delta = getMSTimeDiff(st.eventWaitLastTs, now);
+        if (delta < 5000)  // consecutive walk ticks; a longer gap was a fight or a recovery
+            st.eventWaitMs += delta;
+    }
+    st.eventWaitLastTs = now;
+    return st.eventWaitMs >= sDungeonLeadConfig.dungeonLeadEventWaitSeconds * IN_MILLISECONDS;
+}
+
+// "use" step: the leader goes to the object; if its lock takes a key, a party member holding it
+// uses it (that's who could, in the client); otherwise the leader. Done once used.
+bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
+{
+    float const dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+    if (dist > INTERACTION_DISTANCE)
+        return MoveRouteTo(st, dest, step);
+
+    GameObject* go = bot->FindNearestGameObject(step.entry, 15.0f);
+    if (!go)
+    {
+        DungeonLead::RecordEvent(botAI, "use_failed", step.boss + " not found");
+        DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                   DungeonFailureReason::ObjectiveTimeout, "use_target_missing");
+        return true;
+    }
+
+    // a key the lock needs, and who in the party has it
+    Player* user = bot;
+    uint32 keyItem = 0;
+    if (LockEntry const* lock = sLockStore.LookupEntry(go->GetGOInfo()->GetLockId()))
+        for (uint8 i = 0; i < MAX_LOCK_CASE && !keyItem; ++i)
+            if (lock->Type[i] == LOCK_KEY_ITEM && lock->Index[i])
+                keyItem = lock->Index[i];
+    if (keyItem)
+    {
+        user = nullptr;
+        if (Group* group = bot->GetGroup())
+            for (GroupReference* ref = group->GetFirstMember(); ref && !user; ref = ref->next())
+                if (Player* m = ref->GetSource())
+                    if (m->IsAlive() && m->GetMap() == bot->GetMap() && m->HasItemCount(keyItem, 1))
+                        user = m;
+        if (!user)
+        {
+            if (!st.arrivedTold)
+            {
+                st.arrivedTold = true;
+                DungeonLead::RecordEvent(botAI, "use_waiting", step.boss + " key=" + std::to_string(keyItem));
+                botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " needs a key nobody here has - waiting");
+            }
+            if (EventWaitExpired(st))
+                DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                           DungeonFailureReason::ObjectiveTimeout, "use_no_key");
+            return true;
+        }
+    }
+
+    go->Use(user);
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} used {} (entry {}) via {}", bot->GetName(), go->GetName(),
+             step.entry, user->GetName());
+    DungeonLead::RecordEvent(botAI, "use", step.boss + " entry=" + std::to_string(step.entry) + " by=" + user->GetName() +
+                                           (keyItem ? " key=" + std::to_string(keyItem) : ""));
+    DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+    return true;
+}
+
+// "talk" step: the leader goes to the NPC (wherever it walked to) and talks to it the way a client
+// does (gossip hello, then the first option). An NPC whose event isn't ready offers no option yet:
+// keep asking until it does - fights in between are the event running - bounded by
+// EventWaitSeconds.
+bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
+{
+    Creature* npc = bot->FindNearestCreature(step.entry, 250.0f, /*alive*/ true);
+    if (!npc)
+    {
+        if (EventWaitExpired(st))
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                       DungeonFailureReason::ObjectiveTimeout, "talk_target_missing");
+        else if (bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()) > INTERACTION_DISTANCE)
+            return MoveRouteTo(st, dest, step);
+        return true;
+    }
+    if (bot->GetDistance(npc) > INTERACTION_DISTANCE)
+        return MoveRouteTo(st, WorldPosition(npc), step);
+
+    if (st.talkTriedTs && GetMSTimeDiffToNow(st.talkTriedTs) < 5000)
+        return true;
+    st.talkTriedTs = getMSTime();
+
+    bot->StopMoving();
+    bot->SetFacingToObject(npc);
+    WorldPacket hello(CMSG_GOSSIP_HELLO);
+    hello << npc->GetGUID();
+    bot->GetSession()->HandleGossipHelloOpcode(hello);
+
+    GossipMenu& menu = bot->PlayerTalkClass->GetGossipMenu();
+    if (menu.Empty() || menu.GetSenderGUID() != npc->GetGUID())
+    {
+        if (!st.arrivedTold)
+        {
+            st.arrivedTold = true;
+            DungeonLead::RecordEvent(botAI, "talk_waiting", step.boss);
+        }
+        bot->PlayerTalkClass->SendCloseGossip();
+        if (EventWaitExpired(st))
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                       DungeonFailureReason::ObjectiveTimeout, "talk_not_available");
+        return true;
+    }
+
+    WorldPacket select(CMSG_GOSSIP_SELECT_OPTION);
+    select << npc->GetGUID() << uint32(menu.GetMenuId()) << uint32(0);
+    bot->GetSession()->HandleGossipSelectOptionOpcode(select);
+    bot->PlayerTalkClass->SendCloseGossip();
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} talked to {} (menu {})", bot->GetName(), npc->GetName(),
+             menu.GetMenuId());
+    DungeonLead::RecordEvent(botAI, "talk", step.boss + " menu=" + std::to_string(menu.GetMenuId()));
+    DungeonLead::AdvanceStep(st, /*confirmed*/ true);
     return true;
 }
 

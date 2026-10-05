@@ -30,6 +30,8 @@ enum class DungeonRouteKind : uint8_t
     Required,  // trash that gates progress (an event, a door): fought like optional, never skipped
     HeroicOnly,
     Event,
+    Use,   // use a game object (entry = gameobject): a cage, a lever - with the key if its lock needs one
+    Talk,  // talk to an NPC (entry = creature) and pick its gossip option to start an event
     Door,
     Skip,
     Unknown,  // failed to parse - never walkable or mandatory, always a load-time LOG_ERROR
@@ -43,6 +45,8 @@ inline DungeonRouteKind ParseRouteKind(std::string const& s)
     if (s == "heroic_only") return DungeonRouteKind::HeroicOnly;
     if (s == "event") return DungeonRouteKind::Event;
     if (s == "door") return DungeonRouteKind::Door;
+    if (s == "use") return DungeonRouteKind::Use;
+    if (s == "talk") return DungeonRouteKind::Talk;
     if (s == "skip") return DungeonRouteKind::Skip;
     return DungeonRouteKind::Unknown;
 }
@@ -93,7 +97,9 @@ inline DungeonRouteNodeType ClassifyRouteStep(DungeonRouteKind kind, uint32_t en
         case DungeonRouteKind::HeroicOnly: return DungeonRouteNodeType::Boss;
         case DungeonRouteKind::Optional:
         case DungeonRouteKind::Required:   return DungeonRouteNodeType::Pull;
-        case DungeonRouteKind::Event:      return DungeonRouteNodeType::Interaction;
+        case DungeonRouteKind::Event:
+        case DungeonRouteKind::Use:
+        case DungeonRouteKind::Talk:       return DungeonRouteNodeType::Interaction;
         case DungeonRouteKind::Door:       return DungeonRouteNodeType::Door;
         case DungeonRouteKind::Skip:
         case DungeonRouteKind::Unknown:    return DungeonRouteNodeType::Travel;
@@ -132,7 +138,9 @@ inline DungeonObjectiveRequirement ClassifyRequirement(DungeonRouteKind kind, ui
     {
         case DungeonRouteKind::Boss:     return DungeonObjectiveRequirement::Boss;
         case DungeonRouteKind::Required:
-        case DungeonRouteKind::Door:     return DungeonObjectiveRequirement::Required;  // nothing past it is reachable
+        case DungeonRouteKind::Door:
+        case DungeonRouteKind::Use:
+        case DungeonRouteKind::Talk:     return DungeonObjectiveRequirement::Required;  // nothing past it is reachable
         default:                         return DungeonObjectiveRequirement::Optional;
     }
 }

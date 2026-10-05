@@ -231,3 +231,11 @@ AiPlayerbot.DungeonLead.ObjectiveRetryRounds = 2
 #        Default:     120
 
 AiPlayerbot.DungeonLead.DoorWaitSeconds = 120
+
+#    AiPlayerbot.DungeonLead.EventWaitSeconds
+#        Description: How long a "use" or "talk" route step may wait for its event (a key in the
+#                      party, the NPC offering its gossip option) before it counts as failed. Only
+#                      time spent waiting at the step counts, not fights. Range 60-1800.
+#        Default:     600
+
+AiPlayerbot.DungeonLead.EventWaitSeconds = 600
