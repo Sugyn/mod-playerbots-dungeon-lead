@@ -111,9 +111,10 @@
 24	-	5	event	Sergeant Bly	stairs event (Divino-matic Rod), spawns Nekrum + Sezz'ziz
 24	-	6	event	Nekrum Gutchewer
 24	-	7	event	Shadowpriest Sezz'ziz
-24	-	8	boss	Chief Ukorz Sandscalp	with Ruuzlu
-24	-	9	optional	Hydromancer Velratha
-24	-	10	optional	Gahz'rilla	Mallet summon
+24	-	8	door	End Door	opens when Sergeant Bly dies (pyramid event); Ukorz is behind it
+24	-	9	boss	Chief Ukorz Sandscalp	with Ruuzlu
+24	-	10	optional	Hydromancer Velratha
+24	-	11	optional	Gahz'rilla	Mallet summon
 # Maraudon LFD wings (src: icy-veins hub + almarsguides; patch 4.0.3a notes: Tinkerer Gizlock "moved from Earth Song Falls to the Wicked Grotto" -> in 3.3.5a he is in Earth Song Falls. Celebras the Cursed was not part of any 3.3.5 LFD wing.)
 26	Foulspore Cavern	1	boss	Noxxion	Orange Crystals
 26	Foulspore Cavern	2	boss	Razorlash

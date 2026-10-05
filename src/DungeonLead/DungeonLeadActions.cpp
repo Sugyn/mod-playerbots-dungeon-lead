@@ -59,6 +59,34 @@ namespace
     constexpr float kPathFinderDis = 70.0f;     // below this, hand the destination straight to mmaps
     constexpr float kDoorSightRange = 60.0f;    // a route door's state is read from this far
     constexpr float kDoorWaitDistance = 8.0f;   // wait at a closed route door from this close
+    // A closed door this close to the leader that its path goes through (crosses its plane within
+    // kDoorHalfWidth of it): mmaps don't know doors, so bots would walk straight through it.
+    constexpr float kDoorOnPathRange = 25.0f;
+    constexpr float kDoorHalfWidth = 6.0f;
+
+    GameObject* ClosedDoorOnPath(PlayerbotAI* botAI, Player* bot, float x, float y, float z)
+    {
+        std::vector<GameObject*> doors;
+        for (ObjectGuid const& guid :
+             botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects no los")->Get())
+            if (GameObject* go = botAI->GetGameObject(guid))
+                if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY &&
+                    bot->GetDistance(go) <= kDoorOnPathRange)
+                    doors.push_back(go);
+        if (doors.empty())
+            return nullptr;
+        PathGenerator path(bot);
+        path.CalculatePath(x, y, z);
+        Movement::PointsArray const& pts = path.GetPath();
+        for (size_t i = 1; i < pts.size(); ++i)
+            for (GameObject* door : doors)
+                if (std::fabs(door->GetPositionZ() - pts[i].z) < 8.0f &&
+                    DungeonLeadKernel::SegmentCrossesDoor(door->GetPositionX(), door->GetPositionY(),
+                                                          door->GetOrientation(), pts[i - 1].x, pts[i - 1].y, pts[i].x,
+                                                          pts[i].y, kDoorHalfWidth))
+                    return door;
+        return nullptr;
+    }
     // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
     // member dying repeatedly isn't yanked every tick, short enough that a real wipe is back on
     // its feet well inside WipeRecoverySeconds.
@@ -2114,6 +2142,12 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
     }
 
     float const dx = dest.GetPositionX(), dy = dest.GetPositionY(), dz = dest.GetPositionZ();
+    // Don't walk through a closed door (ZF: through the End Door, skipping the pyramid event).
+    if (GameObject* door = ClosedDoorOnPath(botAI, bot, dx, dy, dz))
+    {
+        DungeonInteractionController::StartForDoor(botAI, st, door, "on_path");
+        return true;
+    }
     if (disToDest < kPathFinderDis)
         return MoveTo(dest.GetMapId(), dx, dy, dz, false, false, false, true);
 

@@ -863,6 +863,15 @@ namespace
         Check(DistanceToSegment2D(5, 2, 0, 0, 10, 0) < 2.01f, "door 2 yd off the corridor line is on the way");
         Check(DistanceToSegment2D(5, 14, 0, 0, 10, 0) > 10.f, "side-room door 14 yd off the line is not");
         Check(DistanceToSegment2D(-3, 0, 0, 0, 10, 0) > 2.99f, "behind the leader measures to the leader");
+        // walking through a closed door (live, ZF End Door): plane crossing, not just nearness
+        // SFK Courtyard Door at (-242.6, 2159.05), orientation -1.946 - the way north goes through it
+        Check(SegmentCrossesDoor(-242.6f, 2159.05f, -1.946f, -243.f, 2145.f, -241.f, 2172.f, 6.f),
+              "path north through the Courtyard Door crosses it");
+        // SFK cells at (-244.1, 2134.4), orientation -0.375, lined along the corridor wall
+        Check(!SegmentCrossesDoor(-244.1f, 2134.4f, -0.375f, -251.f, 2120.f, -240.f, 2147.f, 6.f),
+              "path along the corridor past a cell door does not cross it");
+        Check(!SegmentCrossesDoor(0.f, 0.f, 0.f, -5.f, 20.f, 5.f, 20.f, 6.f),
+              "crossing the door's plane far from the door doesn't count");
 
         for (uint32_t rounds = 1; rounds <= 3; ++rounds)
             Check(DecideObjectiveFailure(R::Optional, rounds, 2) == ObjectiveFailureAction::Skip,

@@ -1311,6 +1311,24 @@ namespace DungeonLeadKernel
         float const cx = ax + t * dx - px, cy = ay + t * dy - py;
         return std::sqrt(cx * cx + cy * cy);
     }
+
+    // Whether the walk segment A-B goes through a door at P facing `orientation` (a door object's
+    // orientation is the normal of its plane - checked against the SFK cells, which line a wall
+    // with their orientation perpendicular to it): A and B on opposite sides of the plane, and the
+    // crossing point within `halfWidth` of the door. A path along a wall of closed doors (cells)
+    // never crosses their planes.
+    inline bool SegmentCrossesDoor(float px, float py, float orientation, float ax, float ay, float bx, float by,
+                                   float halfWidth)
+    {
+        float const nx = std::cos(orientation), ny = std::sin(orientation);
+        float const da = (ax - px) * nx + (ay - py) * ny;
+        float const db = (bx - px) * nx + (by - py) * ny;
+        if ((da > 0.f && db > 0.f) || (da < 0.f && db < 0.f) || da == db)
+            return false;
+        float const t = da / (da - db);
+        float const cx = ax + t * (bx - ax) - px, cy = ay + t * (by - ay) - py;
+        return cx * cx + cy * cy <= halfWidth * halfWidth;
+    }
 }
 
 #endif

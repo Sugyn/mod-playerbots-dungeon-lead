@@ -14,19 +14,25 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. **Lady Anacondra** — entry 3671 @ (-67.8, 122.6, -92.8) — Screaming Gully
 2. **Kresh** *(optional)* — entry 3653 @ (-64.4, 319.1, -106.7) — river turtle
-3. **Verdan the Everliving** *(optional)* — entry 5775 @ (-81.9, 32.3, -31)
-4. **Lord Serpentis** — entry 3673 @ (-120.2, -24.6, -28.6)
-5. **Lord Pythas** — entry 3670 @ (36.8, -241.1, -79.5)
-6. **Skum** *(optional)* — entry 3674 @ (-285.6, -313, -69.2)
-7. **Lord Cobrahn** — entry 3669 @ (-151.1, 414.4, -72.6)
-8. **Disciple of Naralex** **[event]** — entry 3678 @ (-135, 125.4, -78.1) — escort from entrance after 4 Fanglords -> spawns Mutanus
-9. **Mutanus the Devourer** **[event]** `script` — entry 3654 (no static spawn) — script-spawned by escort
+3. **Cobrahn approach (bridge)** *(optional)* `derived` — entry 1 @ (-104.533, 427.733, -99.2298) — 2026-09-15 pathcheck bridge: Kresh->Cobrahn direct stops exactly here (55y short); from here Cobrahn is NORMAL (0.1y). entry=1 (GM-only waypoint template
+4. **Lord Cobrahn** — entry 3669 @ (-151.1, 414.4, -72.6) — Fanglord 1/4. Dead-end: pathcheck confirms NOPATH from here to Verdan/Serpentis/Pythas/Skum/Naralex - must return via step 3 bridge.
+5. **Cobrahn return (bridge)** *(optional)* `derived` — entry 1 @ (-104.533, 427.733, -99.2298) — Same point as step 3 reverse leg - required Cobrahn->Verdan direct is NOPATH.
+6. **Verdan approach (bridge)** *(optional)* `derived` — entry 1 @ (-55.7333, 67.4667, -85.9882) — 2026-09-15 pathcheck bridge hub chokepoint (also reached from Kresh/Naralex directly); Verdan from here is exact (0.08y).
+7. **Verdan the Everliving** *(optional)* — entry 5775 @ (-81.9, 32.3, -31) — Fanglord 2/4.
+8. **Lord Serpentis** — entry 3673 @ (-120.2, -24.6, -28.6) — Fanglord 3/4. Direct from Verdan NORMAL/exact (0.02y) - no bridge needed.
+9. **Pythas approach (bridge)** *(optional)* `derived` — entry 1 @ (-101.333, -42.6667, -22.0857) — 2026-09-15 pathcheck bridge: exact stop point of direct Serpentis->Pythas path (248y short); Pythas from here is exact (0.08y).
+10. **Lord Pythas** — entry 3670 @ (36.8, -241.1, -79.5) — Fanglord 4/4 - all 4 Fanglords dead after this Naralex escort can spawn.
+11. **Skum** *(optional)* — entry 3674 @ (-285.6, -313, -69.2) — Direct from Pythas NORMAL/exact (0.01y) despite 330y distance. Dead-end past here: NOPATH onward must return via Pythas.
+12. **Pythas return (bridge)** *(optional)* `derived` — entry 1 @ (36.8, -241.1, -79.5) — Same coords as step 10. entry=1 dummy - reusing Pythas entry here skipped this waypoint (dead-boss fast path). Skum->Naralex is NOPATH.
+13. **Naralex approach (bridge)** *(optional)* `derived` — entry 1 @ (-162.133, 92.2667, -76.0141) — 2026-09-15 pathcheck bridge: exact stop point of direct Pythas->Naralex path (43y short); Naralex from here is exact (0.08y).
+14. **Disciple of Naralex** **[event]** — entry 3678 @ (-135, 125.4, -78.1) — escort from entrance after 4 Fanglords -> spawns Mutanus
+15. **Mutanus the Devourer** **[event]** `script` — entry 3654 (no static spawn) — script-spawned by escort
 ### Deadmines (LFD 6, map 36)
 
 1. **Rhahk'Zor** — entry 644 @ (-192.9, -448.2, 54.4)
 2. **Sneed's Shredder** — entry 642 @ (-289.5, -513, 49.7) — Sneed pops out after shredder dies (script)
 3. **Gilnid** — entry 1763 @ (-177.4, -574.5, 19.3)
-4. **Iron door to Ironclad Cove** **[door]** — Defias Gunpowder on cannon / rogue lockpick
+4. **Iron door to Ironclad Cove** **[door]** `gameobject` — entry 16397 @ (-100.502, -668.771, 7.41049) — Defias Gunpowder on cannon / rogue lockpick
 5. **Mr. Smite** — entry 646 @ (-22.8, -797.3, 20.4) — stealthed elites first
 6. **Captain Greenskin** — entry 647 @ (-59.6, -820.1, 41.6) — on ship
 7. **Edwin VanCleef** — entry 639 @ (-87.4, -819.9, 39.3) — cabin, adds
@@ -34,7 +40,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 ### Shadowfang Keep (LFD 8, map 33)
 
 1. **Rethilgore** — entry 3914 @ (-252.1, 2123.1, 81.2)
-2. **Courtyard door** **[door]** — opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
+2. **Courtyard door** **[door]** `gameobject` — entry 18895 @ (-242.581, 2159.05, 90.6226) — opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
 3. **Razorclaw the Butcher** — entry 3886 @ (-202.6, 2258, 76.3)
 4. **Baron Silverlaine** — entry 3887 @ (-275.3, 2297.4, 76.2)
 5. **Commander Springvale** — entry 4278 @ (-222.6, 2259.4, 102.8)
@@ -125,9 +131,10 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 5. **Sergeant Bly** **[event]** — entry 7604 @ (1882.9, 1299.3, 48.4) — stairs event (Divino-matic Rod), spawns Nekrum + Sezz'ziz
 6. **Nekrum Gutchewer** **[event]** `script` — entry 7796 (no static spawn)
 7. **Shadowpriest Sezz'ziz** **[event]** `unknown`
-8. **Chief Ukorz Sandscalp** — entry 7267 @ (1727.5, 1017.3, 54.9) — with Ruuzlu
-9. **Hydromancer Velratha** *(optional)* — entry 7795 @ (1698.2, 1210.7, 9.4)
-10. **Gahz'rilla** *(optional)* `unknown` — Mallet summon
+8. **End Door** **[door]** `gameobject` — entry 146084 @ (1854.53, 1142.89, 16.0846) — opens when Sergeant Bly dies (pyramid event); Ukorz is behind it
+9. **Chief Ukorz Sandscalp** — entry 7267 @ (1727.5, 1017.3, 54.9) — with Ruuzlu
+10. **Hydromancer Velratha** *(optional)* — entry 7795 @ (1698.2, 1210.7, 9.4)
+11. **Gahz'rilla** *(optional)* `unknown` — Mallet summon
 ### Maraudon - Orange Crystals (LFD 26, map 349)
 
 1. [Foulspore Cavern] **Noxxion** — entry 13282 @ (1130.4, -191.3, -80) — Orange Crystals
@@ -198,7 +205,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 1. **Kirtonos the Herald** *(optional)* `script` — entry 10506 (no static spawn) — summon (Blood of Innocents)
 2. **Jandice Barov** — entry 10503 @ (268.2, 73.6, 95.9)
 3. **Rattlegore** — entry 11622 @ (137.1, 171.7, 96) — drops Viewing Room Key
-4. **Viewing Room door** **[door]** — Rattlegore key
+4. **Viewing Room door** **[door]** `gameobject` — entry 175167 @ (174.378, 77.9398, 104.802) — Rattlegore key
 5. **Marduk Blackpool** — entry 10433 @ (150.4, 116.2, 104.7)
 6. **Vectus** — entry 10432 @ (143.5, 99.1, 104.7)
 7. **The Ravenian** — entry 10507 @ (103.3, -1.7, 75.2)
