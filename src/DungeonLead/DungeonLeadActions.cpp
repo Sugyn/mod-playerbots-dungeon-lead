@@ -2373,6 +2373,21 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
     float disToDest = bot->GetDistance(dest);
     uint32 now = getMSTime();
 
+    // Sunk under the floor (Deadmines, by the factory: the leader ends a few yards below the walkway
+    // it walked on, off the mesh, with no path anywhere): put it back on the floor right above it.
+    if (!bot->isMoving())
+    {
+        float const floorZ = bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() + 8.0f);
+        if (floorZ > INVALID_HEIGHT + 1.0f && floorZ - bot->GetPositionZ() > 2.5f && floorZ - bot->GetPositionZ() < 8.0f)
+        {
+            DungeonLead::RecordEvent(botAI, "leader_to_floor",
+                                     step.boss + " z=" + std::to_string(int(bot->GetPositionZ())) + " floor=" +
+                                         std::to_string(int(floorZ)));
+            bot->NearTeleportTo(bot->GetPositionX(), bot->GetPositionY(), floorZ + 0.5f, bot->GetOrientation());
+            return true;
+        }
+    }
+
     // Actual walking telemetry - not just milestone events (reached/stuck/mark). Task from the
     // user 2026-09-13: "pathfinding is the only job right now - log every step, evaluate it,
     // only then fix anything." Throttled to ~1 line per 3s per bot (this function can otherwise
