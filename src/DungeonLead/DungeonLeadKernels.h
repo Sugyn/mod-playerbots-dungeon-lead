@@ -336,7 +336,13 @@ namespace DungeonLeadKernel
             return {ReadyStatus::MemberLost, cohesion.offender};
 
         if (purpose == ReadyPurpose::Walk && AnyInCombat(f))
+        {
+            // who is fighting - a fight nobody can see the end of has to be traceable to a member
+            for (size_t i = 0; i < f.members.size(); ++i)
+                if (f.members[i].alive && f.members[i].sameMap && f.members[i].inCombat)
+                    return {ReadyStatus::PartyInCombat, int(i)};
             return {ReadyStatus::PartyInCombat, -1};
+        }
 
         float lowestHealerMana = 100.0f;
         for (PartyMemberFacts const& m : f.members)

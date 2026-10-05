@@ -1419,7 +1419,23 @@ bool DungeonLeadNextAction::isUseful()
     char const* wait = ready.status == DungeonLeadKernel::ReadyStatus::Ready ? nullptr : DungeonLeadKernel::ToString(ready.status);
     std::string waitDetail;
     if (Player* offender = party.Member(ready.offender))
+    {
         waitDetail = offender->GetName();
+        // a fight that doesn't end: who is it with, and how far away
+        if (ready.status == DungeonLeadKernel::ReadyStatus::PartyInCombat)
+        {
+            Unit* nearest = nullptr;
+            for (Unit* a : offender->getAttackers())
+                if (!nearest || offender->GetDistance(a) < offender->GetDistance(nearest))
+                    nearest = a;
+            waitDetail += " attackers=" + std::to_string(offender->getAttackers().size());
+            if (nearest)
+                waitDetail += " nearest=" + nearest->GetName() + " dist=" + std::to_string(int(offender->GetDistance(nearest))) +
+                              " evading=" + std::to_string(nearest->ToCreature() && nearest->ToCreature()->IsInEvadeMode());
+            if (Unit* victim = offender->GetVictim())
+                waitDetail += " victim=" + victim->GetName();
+        }
+    }
 
     if (st.state != DungeonLeadKernel::LeadState::Travelling)
     {
