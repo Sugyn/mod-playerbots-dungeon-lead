@@ -116,7 +116,8 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
                 Unit* victim = c->GetVictim();
                 Player* victimPlayer = victim ? victim->ToPlayer() : nullptr;
                 DungeonLeadKernel::FightCandidateFacts ff;
-                ff.inCombat = c->IsInCombat();
+                // an enemy totem in the fight area counts even when it isn't flagged in combat
+                ff.inCombat = c->IsInCombat() || c->IsTotem();
                 ff.attackingParty = victimPlayer && group->IsMember(victimPlayer->GetGUID());
                 ff.distToAnchor = d;
                 if (!DungeonLeadKernel::IsFightCandidate(ff, radius))
@@ -130,6 +131,9 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
             t.caster = c->getPowerType() == POWER_MANA;
             t.elite = IsElite(c);
             t.distToAnchor = d;
+            t.healthPct = uint8(c->GetHealthPct());
+            t.totem = c->IsTotem();
+            t.controlled = c->HasBreakableByDamageCrowdControlAura();
             candidates.push_back(t);
             guids.push_back(guid);
         }
@@ -155,6 +159,18 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
     ObjectGuid const primary = guidOf(plan.primary);
     ObjectGuid const secondary = guidOf(plan.secondary);
     ObjectGuid const cc = guidOf(plan.cc);
+
+    // Our CC target dropped out of the plan while still alive (it is the last enemy): take the moon
+    // off so the party kills it now instead of waiting for the CC to break.
+    if (!st.targetCc.IsEmpty() && cc.IsEmpty() && st.ccGuid == st.targetCc && idOf(st.targetCc))
+    {
+        if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
+            group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} released - last enemy left", bot->GetName(),
+                 NameOf(botAI, st.ccGuid));
+        DungeonLead::RecordEvent(botAI, "cc_released", NameOf(botAI, st.ccGuid) + " reason=last_enemy");
+        st.ccGuid.Clear();
+    }
     if (primary != st.targetPrimary || secondary != st.targetSecondary || cc != st.targetCc)
     {
         st.targetPrimary = primary;

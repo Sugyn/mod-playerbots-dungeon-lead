@@ -17,6 +17,7 @@
 
 #include "DungeonRouteTypes.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -824,7 +825,15 @@ namespace DungeonLeadKernel
         bool caster = false;    // mana user
         bool elite = false;
         float distToAnchor = 0.0f;
+        uint8_t healthPct = 100;
+        bool totem = false;       // enemy totem: dies in a hit or two, and some hurt the whole party
+        bool controlled = false;  // under breakable crowd control right now (a sheep, a sap, ...)
     };
+
+    // A new CC target must be (nearly) untouched: crowd-controlling a mob the party has already
+    // half killed only stops the party from finishing it (seen live: polymorph on the last,
+    // almost dead mob, everyone waiting for it to break).
+    constexpr uint8_t kCcMinHealthPct = 70;
 
     struct TargetPlan
     {
@@ -840,6 +849,10 @@ namespace DungeonLeadKernel
 
     inline int TargetRank(TargetCandidate const& c)
     {
+        if (c.controlled)
+            return 6;  // never break a CC for a kill target while anything else is up
+        if (c.totem)
+            return -1;
         if (c.boss)
             return 0;
         if (c.caster && c.elite)
@@ -896,16 +909,27 @@ namespace DungeonLeadKernel
         };
 
         TargetPlan plan;
-        // CC first among the kept slots: a kept CC target must not be promoted to a kill target.
+        // CC first among the kept slots: a kept CC target must not be promoted to a kill target -
+        // until it is the only enemy left; then it is released and becomes the kill target.
         TargetCandidate const* keptCc = wantCc && previous.cc ? find(previous.cc) : nullptr;
-        if (keptCc && keptCc->elite && !keptCc->boss)
+        if (keptCc && keptCc->elite && !keptCc->boss && candidates.size() > 1)
             plan.cc = keptCc->id;
+        // A mob already crowd controlled (an earlier moon, a class AI's own sheep) keeps the moon
+        // rather than a second mob being controlled and the first one broken.
+        if (wantCc && !plan.cc && candidates.size() > 1)
+            plan.cc = best([&](TargetCandidate const& c) { return c.controlled && !c.boss; });
 
-        plan.primary = previous.primary && previous.primary != plan.cc && find(previous.primary)
+        // A kept primary holds its slot - except against a totem, which goes first.
+        TargetCandidate const* keptPrimary = previous.primary ? find(previous.primary) : nullptr;
+        bool const totemUp = std::any_of(candidates.begin(), candidates.end(),
+                                         [&](TargetCandidate const& c) { return c.totem && c.id != plan.cc; });
+        plan.primary = keptPrimary && previous.primary != plan.cc && !keptPrimary->controlled &&
+                               (keptPrimary->totem || !totemUp)
                            ? previous.primary
                            : best([&](TargetCandidate const& c) { return c.id != plan.cc; });
-        plan.secondary = previous.secondary && previous.secondary != plan.primary && previous.secondary != plan.cc &&
-                                 find(previous.secondary)
+        TargetCandidate const* keptSecondary = previous.secondary ? find(previous.secondary) : nullptr;
+        plan.secondary = keptSecondary && previous.secondary != plan.primary && previous.secondary != plan.cc &&
+                                 !keptSecondary->controlled
                              ? previous.secondary
                              : best([&](TargetCandidate const& c) { return c.id != plan.primary && c.id != plan.cc; });
         if (wantCc && !plan.cc)
@@ -913,7 +937,8 @@ namespace DungeonLeadKernel
             // Only worth it with more than two enemies: CC the best remaining elite that is
             // neither kill target.
             uint64_t const cc = best([&](TargetCandidate const& c)
-                { return c.elite && !c.boss && c.id != plan.primary && c.id != plan.secondary; });
+                { return c.elite && !c.boss && c.healthPct >= kCcMinHealthPct && c.id != plan.primary &&
+                         c.id != plan.secondary; });
             if (cc && candidates.size() > 2)
                 plan.cc = cc;
         }

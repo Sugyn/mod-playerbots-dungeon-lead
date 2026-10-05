@@ -602,6 +602,35 @@ namespace
 
         Check(PickTargetPlan({}, TargetPlan(), true) == TargetPlan(), "no candidates -> empty plan");
 
+        // live report 2026-10-05: polymorph on the last, almost dead mob held the whole party
+        std::vector<TargetCandidate> lastOne{T(1, false, false, true, 5)};
+        p = PickTargetPlan(lastOne, prevCc, true);
+        Check(p.cc == 0 && p.primary == 1, "CC'd mob is the only enemy left -> released, it is the kill target");
+        std::vector<TargetCandidate> hurt = pack;
+        hurt[0].healthPct = 30;  // the would-be CC target, already half dead
+        p = PickTargetPlan(hurt, TargetPlan(), true);
+        Check(p.cc == 0, "no new CC on a mob the party has already damaged");
+        hurt[0].healthPct = 90;
+        Check(PickTargetPlan(hurt, TargetPlan(), true).cc == 1, "a fresh elite still gets CC");
+
+        // live report 2026-10-05 (Zul'Farrak): lava totems left standing, a sheep given the skull
+        std::vector<TargetCandidate> withTotem = pack;
+        withTotem.push_back(T(9, false, false, false, 20));
+        withTotem.back().totem = true;
+        TargetPlan prevKill;
+        prevKill.primary = 3;
+        p = PickTargetPlan(withTotem, prevKill, true);
+        Check(p.primary == 9, "an enemy totem takes the skull, even from the kept primary");
+        std::vector<TargetCandidate> sheep = trash;  // 10 normal, 11 caster, 12 elite
+        sheep[1].controlled = true;                  // the caster is a sheep already
+        p = PickTargetPlan(sheep, TargetPlan(), true);
+        Check(p.primary != 11 && p.secondary != 11, "a crowd-controlled mob is not a kill target while others are up");
+        Check(p.cc == 11, "the mob already under CC keeps the moon");
+        TargetPlan prevSheep;
+        prevSheep.primary = 11;
+        sheep[1].controlled = true;
+        Check(PickTargetPlan(sheep, prevSheep, false).primary != 11, "a kept primary that got sheeped is replaced");
+
         // H2: fight membership is measured from the combat anchor, not the tank
         float const radius = 40.0f;
         auto fight = [](bool combat, bool attacking, float dist)
