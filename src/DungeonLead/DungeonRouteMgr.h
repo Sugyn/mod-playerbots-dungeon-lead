@@ -201,6 +201,9 @@ struct DungeonLeadState
     uint32 eventWaitMs = 0;
     uint32 eventWaitLastTs = 0;
     uint32 talkTriedTs = 0;
+    // where the talk step's NPC was last seen and since when it hasn't moved
+    float talkNpcX = 0.f, talkNpcY = 0.f;
+    uint32 talkNpcStillSince = 0;
     // Scripted area triggers already fired for this instance run (DungeonLead::FireAreaTriggers).
     std::unordered_set<uint32> firedAreaTriggers;
     uint32 lastPathLogTs = 0;  // throttle for the "pathing" telemetry line in MoveRouteTo() -

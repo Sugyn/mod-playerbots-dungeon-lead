@@ -67,6 +67,7 @@ namespace
     constexpr float kPathFinderDis = 70.0f;     // below this, hand the destination straight to mmaps
     constexpr float kDoorSightRange = 60.0f;    // a route door's state is read from this far
     constexpr float kDoorWaitDistance = 8.0f;   // wait at a closed route door from this close
+    constexpr uint32 kTalkStillMs = 20000;      // a talk step's NPC stands still this long first
     // A closed door this close to the leader that its path goes through (crosses its plane within
     // kDoorHalfWidth of it): mmaps don't know doors, so bots would walk straight through it.
     constexpr float kDoorOnPathRange = 25.0f;
@@ -1637,6 +1638,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.stuckTs = 0;
     st.unstuckUsed = false;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
+    st.talkNpcStillSince = 0;
     // the next step's pack and pull (if any) start from scratch
     st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
@@ -1687,6 +1689,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.stuckAttempts = 0;
     st.unstuckUsed = false;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
+    st.talkNpcStillSince = 0;
     st.ccFailed.clear();
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
@@ -2281,6 +2284,25 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
     }
     if (bot->GetDistance(npc) > INTERACTION_DISTANCE)
         return MoveRouteTo(st, WorldPosition(npc), step);
+
+    // Never talk to an NPC on the move: gossip pauses it for Creature.MovingStopTimeForPlayer
+    // (3 min) - Zul'Farrak: asked every 5 s on its way to the stairs, Weegli never got there and the
+    // waves never came. Only once it has stood still for a while.
+    uint32 const nowMs = getMSTime();
+    if (!st.talkNpcStillSince || std::hypot(npc->GetPositionX() - st.talkNpcX, npc->GetPositionY() - st.talkNpcY) > 1.0f ||
+        npc->isMoving())
+    {
+        st.talkNpcX = npc->GetPositionX();
+        st.talkNpcY = npc->GetPositionY();
+        st.talkNpcStillSince = nowMs;
+        EventWaitExpired(st);  // the event is running - its time counts
+        return true;
+    }
+    if (getMSTimeDiff(st.talkNpcStillSince, nowMs) < kTalkStillMs)
+    {
+        EventWaitExpired(st);
+        return true;
+    }
 
     if (st.talkTriedTs && GetMSTimeDiffToNow(st.talkTriedTs) < 5000)
         return true;
