@@ -96,6 +96,7 @@ namespace
         // So anyone already inside is sent out via TeleportToEntryPoint() first, and only enters
         // once they are genuinely on another map.
         bool entryNeedsExit = false;
+        TeamId team = TEAM_NEUTRAL;  // from the race; a test party is one faction (AcquireBot)
     };
 
     // Session-scoped, in-memory - resets on restart, same as every other Dungeon Lead session
@@ -260,7 +261,7 @@ namespace
         } while (accIds->NextRow());
 
         QueryResult chars = CharacterDatabase.Query(
-            "SELECT guid, name, account FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 20",
+            "SELECT guid, name, account, race FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 40",
             classId, idList.str());
         if (!chars)
         {
@@ -268,27 +269,36 @@ namespace
             return false;
         }
 
-        struct Candidate { ObjectGuid guid; std::string name; uint32 accountId; };
+        struct Candidate { ObjectGuid guid; std::string name; uint32 accountId; TeamId team; };
         std::vector<Candidate> candidates;
         do
         {
             Field* f = chars->Fetch();
             candidates.push_back({ObjectGuid::Create<HighGuid::Player>(f[0].Get<uint32>()),
-                                   f[1].Get<std::string>(), f[2].Get<uint32>()});
+                                   f[1].Get<std::string>(), f[2].Get<uint32>(),
+                                   Player::TeamIdForRace(f[3].Get<uint8>())});
         } while (chars->NextRow());
 
         std::set<uint32> leasedAccounts;
         for (TestBotLease const& l : g_leases)
             leasedAccounts.insert(l.accountId);
 
-        // Two passes: first only candidates whose account isn't already leased (spreads
-        // AccountInstancesPerHour load across accounts - see the struct comment on accountId),
-        // then fall back to any offline candidate if every account among the first 20 rows is
-        // already in use. Never refuse an acquisition just to keep the spread - degrade gracefully.
-        for (bool requireFreshAccount : {true, false})
+        // One faction per party, the first lease's: a mixed party isn't a real one, and the other
+        // faction's members attack faction NPCs the run needs (Shadowfang Keep: the Horde bots
+        // killed Sorcerer Ashcrombe, the Alliance prisoner who opens the courtyard door).
+        TeamId const partyTeam = g_leases.empty() ? TEAM_NEUTRAL : g_leases.front().team;
+
+        // Passes: same faction and a fresh account first (fresh accounts spread
+        // AccountInstancesPerHour load - see the struct comment on accountId), then same faction on
+        // any account, then anything. Never refuse an acquisition - degrade gracefully, and say so.
+        for (int pass = 0; pass < 3; ++pass)
         {
+            bool const requireFreshAccount = pass == 0;
+            bool const requireTeam = pass < 2 && partyTeam != TEAM_NEUTRAL;
             for (Candidate const& c : candidates)
             {
+                if (requireTeam && c.team != partyTeam)
+                    continue;
                 bool const alreadyLeased = std::any_of(g_leases.begin(), g_leases.end(),
                     [&](TestBotLease const& l) { return l.guid == c.guid; });
                 if (alreadyLeased)
@@ -299,10 +309,13 @@ namespace
                 sRandomPlayerbotMgr.AddPlayerBot(c.guid, 0);
                 g_leases.push_back({c.guid, c.name, role, classId, DungeonLead::TestBotLeaseState::LoggingIn,
                                      getMSTime(), targetLevel, c.accountId});
+                g_leases.back().team = c.team;
                 LOG_INFO("playerbots.dungeonlead",
-                         "[DungeonLead][TestBotPool] acquiring {} as {} (class {}, target level {}, account {}{})",
+                         "[DungeonLead][TestBotPool] acquiring {} as {} (class {}, target level {}, account {}, {}{}{})",
                          c.name, RoleName(role), classId, targetLevel, c.accountId,
-                         requireFreshAccount ? "" : " - REUSED, no fresh account left in this batch");
+                         c.team == TEAM_ALLIANCE ? "alliance" : "horde",
+                         requireFreshAccount ? "" : " - REUSED, no fresh account left in this batch",
+                         partyTeam != TEAM_NEUTRAL && c.team != partyTeam ? " - OTHER FACTION, none of the party's left" : "");
                 outMessage = "Acquiring " + c.name + " (" + RoleName(role) + ") - logging in, check status shortly";
                 return true;
             }

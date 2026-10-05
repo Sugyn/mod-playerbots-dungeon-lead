@@ -20,6 +20,8 @@
 #include "Playerbots.h"
 #include "Timer.h"
 
+#include <cmath>
+
 using DungeonLeadKernel::LeadState;
 using DungeonLeadKernel::RecoveryReason;
 using DungeonLeadKernel::RecoveryStep;
@@ -127,13 +129,21 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                 // Only along a real path: a plain MovePoint to a straggler the navmesh can't reach
                 // moved the tank straight through rock (H7: Deadmines, SM Library - left with no
                 // ground under it). No path -> stay; the escalation brings the straggler instead.
+                // Follow exactly the computed points: a MovePoint would path again on its own and
+                // fall back to a straight line when that fails (Deadmines: the leader, standing off
+                // the mesh after a wipe, walked into the rock). Not from off the mesh at all
+                // (FARFROMPOLY_START is not an accepted type).
                 PathGenerator path(bot);
                 path.CalculatePath(who->GetPositionX(), who->GetPositionY(), who->GetPositionZ());
-                if (!(path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END)))
+                if (!(path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END)) &&
+                    path.GetPath().size() > 1)
                 {
                     G3D::Vector3 const& end = path.GetActualEndPosition();
                     if (bot->GetExactDist(end.x, end.y, end.z) > 5.0f)
-                        bot->GetMotionMaster()->MovePoint(0, end.x, end.y, end.z);
+                    {
+                        Movement::PointsArray points = path.GetPath();
+                        bot->GetMotionMaster()->MoveSplinePath(&points);
+                    }
                 }
             }
             break;
@@ -141,6 +151,18 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
         {
             if (!newStep)
                 break;
+            // Never bring anyone to a leader that is itself off the ground (inside the rock): wait
+            // for it to be put back on its feet (MoveRouteTo's last-good-spot move) and escalate
+            // then - Deadmines: four members were brought into the rock with it.
+            float const ground = bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() + 2.0f);
+            if (ground <= INVALID_HEIGHT + 1.0f || std::fabs(bot->GetPositionZ() - ground) > 5.0f)
+            {
+                st.recovery.step = RecoveryStep::Act;  // try the escalation again next tick
+                DungeonLead::RecordEvent(botAI, "recovery_escalate_deferred",
+                                         std::string(DungeonLeadKernel::ToString(observed)) + " leader_off_ground z=" +
+                                             std::to_string(int(bot->GetPositionZ())) + " ground=" + std::to_string(int(ground)));
+                break;
+            }
             bool const movable = who && IsBotMember(who) && who->IsAlive() &&
                                  (observed == RecoveryReason::PartyFragmented || observed == RecoveryReason::MemberLost);
             std::string detail = std::string(DungeonLeadKernel::ToString(observed)) + " member=" +
