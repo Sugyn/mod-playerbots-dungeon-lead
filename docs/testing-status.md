@@ -8,25 +8,25 @@ one itself, so key/lever doors still end the objective. See `data/routes.tsv` fo
 
 ## Live validation (2026-10-04/05)
 
-Best run per dungeon. Two passes: 25 min per dungeon (all 11), then up to 60 min for the Tier 1
-dungeons plus RFK, SM Library and RFD. Test parties stop after 45 min (`canary_timeout`), which
-ended some of the long runs. OK = exercised and behaved correctly, `-` = not exercised.
+Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) and door opening
+are on since 2026-10-05; Deadmines, Shadowfang Keep and Zul'Farrak were run with them.
+OK = exercised and behaved correctly, `-` = not exercised.
 Levels (definitions in `tools/live_validation/README.md`): Smoke, Partial, Full route, Verified
 (full route twice without a failure that needed a fix), Blocked. None is Verified yet.
 
 | Dungeon | Level | Bosses | Pulls | Recovery | Wipe | Door | Result |
 |---|---|---|---|---|---|---|---|
 | Ragefire Chasm | Full route | 4/4 | OK | OK (escalated) | OK (1) | - | complete, 41 min |
-| Deadmines | Partial | 6/7 (to Edwin VanCleef; Cookie optional) | OK | OK | - | OK (Ironclad Cove) | 45 min test cap after VanCleef |
+| Deadmines | Partial | 6/7 (to Edwin VanCleef) | OK | OK | OK | OK (Heavy Doors opened, gunpowder + cannon blow the Iron Clad Door) | the cannon event runs; a full run with it after the latest fixes is pending |
 | Wailing Caverns | Partial | 6 (Anacondra, Kresh, Cobrahn, Verdan, Serpentis, Pythas) | OK | OK | OK (1) | - | 45 min test cap; one `leader_unstuck` |
-| Shadowfang Keep | Partial | 6 (to Fenrus) | OK | OK | OK (1) | OK (Courtyard) | 45 min test cap; one 25 min run hit the wipe limit at the Moonwalker pack |
+| Shadowfang Keep | Full route | 8/8 (to Archmage Arugal) | OK | OK | OK (3) | OK (prisoner talked to after his cell's lever, Courtyard Door, Sorcerer and Arugal doors) | complete, 46 min |
 | Razorfen Kraul | Partial | 4 (Roogug, Aggem, Ramtusk, Jargba) | OK | OK | OK (1) | - | 45 min test cap |
 | SM Graveyard | Full route | 2 (Vishas, Thalnos) | OK | - | - | - | complete; rare spawns not present were skipped as optional |
 | SM Library | Full route | 2/2 | OK | - | - | - | complete, 24 min |
 | Razorfen Downs | Full route | 3 (Mordresh, Glutton, Amnennar) | OK | OK | - | - | complete, 39 min; Ragglesnout (rare) not present |
-| SM Armory | Smoke | 0 | OK | - | - | - | 25 min cap (369 yd of trash before Herod) |
-| SM Cathedral | Smoke | 0 | OK | - | - | - | 25 min cap |
-| Zul'Farrak | Smoke | 0 | OK | - | - | - | 25 min cap |
+| SM Armory | Full route | 1/1 (Herod) | OK | - | - | - | complete, 21 min |
+| SM Cathedral | Full route | 3/3 (Fairbanks, Mograine, Whitemane) | OK | OK | - | - | complete, 26 min |
+| Zul'Farrak | Partial | 4 (Theka, Antu'sul, Zum'rah, Executioner) | OK | OK | - | event: key, cage, waves, Bly talk run; End Door pending | partial - the pyramid event is being finished |
 
 Pace: trash is cleared pack by pack (~30 s per pack incl. the post-combat gate), so a full clear
 takes 25-60 minutes.
@@ -51,12 +51,12 @@ takes 25-60 minutes.
 | Vanilla | Ragefire Chasm | Live: Full route (see matrix) |
 | Vanilla | Razorfen Downs | Live: Full route (see matrix) — has a door/gate |
 | Vanilla | Razorfen Kraul | Live: Partial (see matrix) |
-| Vanilla | Scarlet Monastery - Armory | Live: Smoke (see matrix) |
-| Vanilla | Scarlet Monastery - Cathedral | Live: Smoke (see matrix) — has a door/gate |
+| Vanilla | Scarlet Monastery - Armory | Live: Full route (see matrix) |
+| Vanilla | Scarlet Monastery - Cathedral | Live: Full route (see matrix) — has a door/gate |
 | Vanilla | Scarlet Monastery - Graveyard | Live: Full route (see matrix) |
 | Vanilla | Scarlet Monastery - Library | Live: Full route (see matrix) |
 | Vanilla | Scholomance | Data ready, untested — has a door/gate |
-| Vanilla | Shadowfang Keep | Live: Partial (see matrix) — has a door/gate |
+| Vanilla | Shadowfang Keep | Live: Full route (see matrix) — has a door/gate |
 | Vanilla | Stormwind Stockade | Data ready, untested |
 | Vanilla | Stratholme - Main Gate | Data ready, untested — has a door/gate |
 | Vanilla | Stratholme - Service Entrance | Data ready, untested — has a door/gate |
@@ -65,7 +65,7 @@ takes 25-60 minutes.
 | Vanilla | The Headless Horseman | Data ready, untested — has a door/gate |
 | Vanilla | Uldaman | Data ready, untested — has a door/gate |
 | Vanilla | Wailing Caverns | Live: Partial (see matrix) |
-| Vanilla | Zul'Farrak | Live: Smoke (see matrix) — has a door/gate |
+| Vanilla | Zul'Farrak | Live: Partial (see matrix) — has a door/gate |
 | TBC | Auchenai Crypts | Data ready, untested |
 | TBC | Blood Furnace | Data ready, untested — has a door/gate |
 | TBC | Hellfire Ramparts | Data ready, untested |

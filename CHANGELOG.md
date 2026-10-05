@@ -29,6 +29,31 @@ the MAJOR bar above is met.
   once it is open and waits while it is closed. Deadmines, Shadowfang Keep and Scholomance have
   theirs (`sql/updates/2026_10_05_00_route_door_targets.sql` for existing installs).
 
+- Route steps `use` and `talk`, both never skipped. `use`: go to a game object and use it the way
+  a client does - a hand lock is opened with its Opening spell (a chest is then looted), a key lock
+  by the party member holding the key, a key with its own spell casts it on the object (the
+  Deadmines cannon); a key nobody has is looted from a corpse nearby. `talk`: go to the NPC and
+  pick its gossip option once it offers it; while waiting, the party fights whatever attacks the
+  NPC or its friends; an NPC hostile to the leader (the other faction's prisoner) is skipped.
+- Dungeon events run end to end: Deadmines (gunpowder, cannon, Iron Clad Door), Shadowfang Keep
+  (the prisoner opens the Courtyard Door), Zul'Farrak (Executioner's Key, cage, stairs waves,
+  Weegli, Sergeant Bly). `sql/updates/2026_10_05_0[1-5]_*.sql` for existing installs.
+- Scripted area triggers the leader stands in are fired (bots have no client to send them):
+  Witch Doctor Zum'rah turns hostile.
+- Config: `EventWaitSeconds` (600) - how long a use/talk step waits for its event.
+
+### Fixed
+- Bots no longer walk through closed doors (mmaps don't know doors): the leader stops at a closed
+  door its path crosses and waits for it - and opens it once, as a player could (a hand lock, a
+  key, a lever on its side of the door).
+- Target plan: an enemy totem takes the skull first; a crowd-controlled mob is not a kill target
+  while others are up; no new CC on a hurt mob, none on a mob it failed on, and the CC is released
+  when its mob is the last enemy (watched live: the party waited for a polymorph to break).
+- The recovery walk-back follows the computed path (it walked the tank into the rock) and the
+  escalation waits while the leader itself is off the ground.
+- Long paths (cut at the point limit) count as reachable; detours that first lead away are taken.
+- Test parties are one faction (the other faction's bots killed an event NPC).
+
 ### Changed
 - A closed door only counts as blocking the way when it is near the line to where the leader is
   going, not merely nearby.
