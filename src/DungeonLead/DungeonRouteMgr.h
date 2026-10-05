@@ -245,6 +245,7 @@ struct DungeonLeadState
     DungeonLeadKernel::InteractionType interactionType = DungeonLeadKernel::InteractionType::None;
     DungeonLeadKernel::InteractionState interactionState = DungeonLeadKernel::InteractionState::None;
     ObjectGuid interactionTarget;
+    bool interactionActed = false;   // the one attempt to open it ourselves was made
     uint32 interactionActiveMs = 0;  // time actually spent holding at it (AdvanceInteractionClock)
     uint32 interactionLastTs = 0;
     uint32 lastLeashLogTs = 0;

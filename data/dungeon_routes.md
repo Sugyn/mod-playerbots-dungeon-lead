@@ -40,14 +40,16 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 ### Shadowfang Keep (LFD 8, map 33)
 
 1. **Rethilgore** — entry 3914 @ (-252.1, 2123.1, 81.2)
-2. **Courtyard door** **[door]** `gameobject` — entry 18895 @ (-242.581, 2159.05, 90.6226) — opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
-3. **Razorclaw the Butcher** — entry 3886 @ (-202.6, 2258, 76.3)
-4. **Baron Silverlaine** — entry 3887 @ (-275.3, 2297.4, 76.2)
-5. **Commander Springvale** — entry 4278 @ (-222.6, 2259.4, 102.8)
-6. **Odo the Blindwatcher** — entry 4279 @ (-236.7, 2146.1, 100.1)
-7. **Fenrus the Devourer** — entry 4274 @ (-135.6, 2168.7, 128.8)
-8. **Wolf Master Nandos** — entry 3927 @ (-120.7, 2162, 155.8) — kills opens Arugal's door
-9. **Archmage Arugal** — entry 4275 @ (-76.8, 2152.4, 155.8)
+2. **Deathstalker Adamant** — entry 3849 @ (-243.712, 2113.72, 81.2629) — Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
+3. **Sorcerer Ashcrombe** — entry 3850 @ (-240.904, 2122.55, 81.2629) — Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore
+4. **Courtyard door** **[door]** `gameobject` — entry 18895 @ (-242.581, 2159.05, 90.6226) — opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
+5. **Razorclaw the Butcher** — entry 3886 @ (-202.6, 2258, 76.3)
+6. **Baron Silverlaine** — entry 3887 @ (-275.3, 2297.4, 76.2)
+7. **Commander Springvale** — entry 4278 @ (-222.6, 2259.4, 102.8)
+8. **Odo the Blindwatcher** — entry 4279 @ (-236.7, 2146.1, 100.1)
+9. **Fenrus the Devourer** — entry 4274 @ (-135.6, 2168.7, 128.8)
+10. **Wolf Master Nandos** — entry 3927 @ (-120.7, 2162, 155.8) — kills opens Arugal's door
+11. **Archmage Arugal** — entry 4275 @ (-76.8, 2152.4, 155.8)
 ### Blackfathom Deeps (LFD 10, map 48)
 
 1. **Ghamoo-ra** — entry 4887 @ (-442.4, 211.8, -52.6)

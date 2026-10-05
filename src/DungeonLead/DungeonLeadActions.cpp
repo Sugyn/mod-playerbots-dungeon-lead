@@ -2121,6 +2121,16 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
             return MoveRouteTo(st, dest, step);
         return true;
     }
+    // Faction-specific NPCs (SFK's prisoners: Adamant for the Horde, Ashcrombe for the Alliance) -
+    // the route lists both; the one hostile to the leader isn't ours to talk to.
+    if (npc->IsHostileTo(bot))
+    {
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}': hostile to us, not ours to talk to",
+                 bot->GetName(), step.step, step.boss);
+        DungeonLead::RecordEvent(botAI, "talk_not_ours", step.boss);
+        DungeonLead::AdvanceStep(st, /*confirmed*/ false);
+        return true;
+    }
     if (bot->GetDistance(npc) > INTERACTION_DISTANCE)
         return MoveRouteTo(st, WorldPosition(npc), step);
 

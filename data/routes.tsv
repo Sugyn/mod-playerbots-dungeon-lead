@@ -34,14 +34,16 @@
 6	-	8	optional	Cookie	after VanCleef
 # Shadowfang Keep (src: warcraft.wiki.gg/Shadowfang_Keep_(Classic))
 8	-	1	boss	Rethilgore
-8	-	2	door	Courtyard door	opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
-8	-	3	boss	Razorclaw the Butcher
-8	-	4	boss	Baron Silverlaine
-8	-	5	boss	Commander Springvale
-8	-	6	boss	Odo the Blindwatcher
-8	-	7	boss	Fenrus the Devourer
-8	-	8	boss	Wolf Master Nandos	kills opens Arugal's door
-8	-	9	boss	Archmage Arugal
+8	-	2	talk	Deathstalker Adamant	Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
+8	-	3	talk	Sorcerer Ashcrombe	Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore
+8	-	4	door	Courtyard door	opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
+8	-	5	boss	Razorclaw the Butcher
+8	-	6	boss	Baron Silverlaine
+8	-	7	boss	Commander Springvale
+8	-	8	boss	Odo the Blindwatcher
+8	-	9	boss	Fenrus the Devourer
+8	-	10	boss	Wolf Master Nandos	kills opens Arugal's door
+8	-	11	boss	Archmage Arugal
 # Blackfathom Deeps (src: warcraft.wiki.gg/Blackfathom_Deeps_(Classic))
 10	-	1	boss	Ghamoo-ra
 10	-	2	optional	Lady Sarevess	side cavern

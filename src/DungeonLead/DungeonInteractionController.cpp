@@ -11,6 +11,8 @@
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonRouteMgr.h"
+#include "DBCStores.h"
+#include "Group.h"
 #include "GameObject.h"
 #include "Log.h"
 #include "Player.h"
@@ -27,6 +29,61 @@ namespace
     // ... and "on the way" = this close to the straight line from the leader to its destination, so
     // a side-room door next to the corridor isn't taken for the blocker.
     constexpr float kDoorOffLine = 10.0f;
+    // a lever this close to a door is taken to be that door's lever
+    constexpr float kLeverRange = 8.0f;
+
+    // How a player would open this door: who acts, on what. A lock that opens by hand (no skill) ->
+    // the leader on the door; a key lock -> the party member with the key, on the door; otherwise a
+    // lever next to the door on the leader's side. Event doors (no lock, no lever) -> nobody.
+    bool FindOpener(PlayerbotAI* botAI, GameObject* door, Player*& actor, GameObject*& target, std::string& how)
+    {
+        Player* bot = botAI->GetBot();
+        actor = nullptr;
+        target = nullptr;
+        if (LockEntry const* lock = sLockStore.LookupEntry(door->GetGOInfo()->GetLockId()))
+            for (uint8 i = 0; i < MAX_LOCK_CASE && !actor; ++i)
+            {
+                if (lock->Type[i] == LOCK_KEY_SKILL && lock->Skill[i] == 0 &&
+                    (lock->Index[i] == LOCKTYPE_OPEN || lock->Index[i] == LOCKTYPE_QUICK_OPEN ||
+                     lock->Index[i] == LOCKTYPE_OPEN_KNEELING))
+                {
+                    actor = bot;
+                    how = "by_hand";
+                }
+                else if (lock->Type[i] == LOCK_KEY_ITEM && lock->Index[i])
+                    if (Group* group = bot->GetGroup())
+                        for (GroupReference* ref = group->GetFirstMember(); ref && !actor; ref = ref->next())
+                            if (Player* m = ref->GetSource())
+                                if (m->IsAlive() && m->GetMap() == bot->GetMap() && m->HasItemCount(lock->Index[i], 1))
+                                {
+                                    actor = m;
+                                    how = "key=" + std::to_string(lock->Index[i]);
+                                }
+            }
+        if (actor)
+        {
+            target = door;
+            return true;
+        }
+
+        for (ObjectGuid const& guid :
+             botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects no los")->Get())
+        {
+            GameObject* go = botAI->GetGameObject(guid);
+            if (!go || go->GetGoType() != GAMEOBJECT_TYPE_BUTTON || go->GetDistance(door) > kLeverRange ||
+                go->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) ||
+                // a lever behind the door isn't reachable from here
+                DungeonLeadKernel::SegmentCrossesDoor(door->GetPositionX(), door->GetPositionY(), door->GetOrientation(),
+                                                      bot->GetPositionX(), bot->GetPositionY(), go->GetPositionX(),
+                                                      go->GetPositionY(), 50.0f))
+                continue;
+            actor = bot;
+            target = go;
+            how = "lever=" + std::to_string(go->GetEntry());
+            return true;
+        }
+        return false;
+    }
 
     void SetInteraction(PlayerbotAI* botAI, DungeonLeadState& st, InteractionState next, std::string const& detail)
     {
@@ -79,6 +136,7 @@ void DungeonInteractionController::StartForDoor(PlayerbotAI* botAI, DungeonLeadS
     st.interactionType = InteractionType::Door;
     st.interactionState = InteractionState::None;
     st.interactionTarget = door->GetGUID();
+    st.interactionActed = false;
     st.interactionActiveMs = 0;
     st.interactionLastTs = getMSTime();
     SetInteraction(botAI, st, InteractionState::Resolving,
@@ -107,9 +165,21 @@ bool DungeonInteractionController::Update(PlayerbotAI* botAI)
     f.msInInteraction = st.interactionActiveMs;
     f.targetFound = go != nullptr;
     f.satisfied = go && go->GetGoState() != GO_STATE_READY;  // the world says it's open
-    f.canAct = false;  // dungeon doors are opened by their events/keys, not by us
+    // Open it the way a player could, once; event doors (no lock, no lever) are only waited for.
+    Player* actor = nullptr;
+    GameObject* opener = nullptr;
+    std::string how;
+    f.canAct = go && !st.interactionActed && FindOpener(botAI, go, actor, opener, how);
     InteractionState const next =
         DungeonLeadKernel::DecideInteraction(f, sDungeonLeadConfig.dungeonLeadDoorWaitSeconds * IN_MILLISECONDS);
+    if (next == InteractionState::Interacting && actor && opener)
+    {
+        st.interactionActed = true;
+        opener->Use(actor);
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} opening {} - {} by {}", bot->GetName(), go->GetName(), how,
+                 actor->GetName());
+        DungeonLead::RecordEvent(botAI, "door_opened_by_us", go->GetName() + " " + how + " by=" + actor->GetName());
+    }
     if (next == st.interactionState)
         return true;
     SetInteraction(botAI, st, next, "ms=" + std::to_string(f.msInInteraction));
