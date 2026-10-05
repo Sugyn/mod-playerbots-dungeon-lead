@@ -15,6 +15,7 @@
 #include "NewRpgBaseAction.h"
 
 class Creature;
+class Unit;
 struct DungeonPack;
 struct DungeonPackSighting;
 class PlayerbotAI;
@@ -95,6 +96,11 @@ namespace DungeonLead
     // hostile, an event starting) never fire for a bot-only party. Fires the scripted, non-teleport
     // triggers the leader is standing in, once each per instance run.
     void FireAreaTriggers(PlayerbotAI* botAI, DungeonLeadState& st);
+
+    // While a talk step waits on its event, attack what fights its NPC or the NPC's friends, in any
+    // state but a fight or a wipe (GuardActiveSessions, 2 s).
+    void AssistEvent(PlayerbotAI* botAI, DungeonLeadState& st);
+    Unit* FindEventAttacker(PlayerbotAI* botAI, Creature* npc);
 
     // Shared session-start logic behind both the "startdungeon" chat command and the AutoBot
     // Canary controller (DungeonLeadCanary.h) - leadership takeover, follower snapshot, strategy

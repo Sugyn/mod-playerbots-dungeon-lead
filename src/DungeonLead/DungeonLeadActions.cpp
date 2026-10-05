@@ -825,6 +825,30 @@ void DungeonLead::FireAreaTriggers(PlayerbotAI* botAI, DungeonLeadState& st)
     }
 }
 
+void DungeonLead::AssistEvent(PlayerbotAI* botAI, DungeonLeadState& st)
+{
+    // A talk step's event fights on whatever the session is doing - Zul'Farrak: a member died
+    // early in the waves, the party sat in its recovery, and Weegli died with the crew fighting alone
+    // (no Weegli, no End Door). Out of combat and not wiped, the party joins the fight.
+    using DungeonLeadKernel::LeadState;
+    Player* bot = botAI->GetBot();
+    if (!bot->IsAlive() || bot->IsInCombat() || st.paused || !DungeonLeadKernel::IsActive(st.state) ||
+        st.state == LeadState::WipeRecovery || st.state == LeadState::Completing)
+        return;
+    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
+    if (!route || st.stepIndex >= route->steps.size() || route->steps[st.stepIndex].kind != DungeonRouteKind::Talk)
+        return;
+    Creature* npc = bot->FindNearestCreature(route->steps[st.stepIndex].entry, 250.0f, /*alive*/ true);
+    Unit* attacker = npc ? FindEventAttacker(botAI, npc) : nullptr;
+    if (!attacker)
+        return;
+    if (Group* group = bot->GetGroup())
+        group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), attacker->GetGUID());
+    botAI->DoSpecificAction("attack rti target", Event(), /*silent*/ true);
+    DungeonLead::RecordEvent(botAI, "event_assist", npc->GetName() + " attacker=" + attacker->GetName() +
+                                                        " state=" + DungeonLeadKernel::ToString(st.state));
+}
+
 void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& st)
 {
     Player* leader = botAI ? botAI->GetBot() : nullptr;
@@ -967,6 +991,7 @@ void DungeonLead::GuardActiveSessions()
         DungeonLead::RecoverStrandedMembers(botAI, st);
         DungeonLead::KeepInstanceValid(botAI);
         DungeonLead::FireAreaTriggers(botAI, st);
+        DungeonLead::AssistEvent(botAI, st);
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
@@ -2228,8 +2253,14 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
 // A hostile fighting `npc` or a non-hostile NPC within 30 yd of it (its crew), nearest first.
 Unit* DungeonLeadNextAction::EventAttacker(Creature* npc)
 {
+    return DungeonLead::FindEventAttacker(botAI, npc);
+}
+
+Unit* DungeonLead::FindEventAttacker(PlayerbotAI* botAI, Creature* npc)
+{
+    Player* bot = botAI->GetBot();
     Unit* best = nullptr;
-    for (ObjectGuid const& guid : AI_VALUE(GuidVector, "possible targets"))
+    for (ObjectGuid const& guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get())
     {
         Unit* a = botAI->GetUnit(guid);
         if (!a || !a->IsAlive() || !a->IsInCombat() || !bot->IsValidAttackTarget(a))
@@ -2378,7 +2409,16 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
     if (!bot->isMoving())
     {
         float const floorZ = bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() + 8.0f);
+        bool offMesh = false;
         if (floorZ > INVALID_HEIGHT + 1.0f && floorZ - bot->GetPositionZ() > 2.5f && floorZ - bot->GetPositionZ() < 8.0f)
+        {
+            // only when it really is off the mesh - in a tunnel under a bridge the surface above is
+            // not where it belongs (Deadmines, Rhahk'Zor's tunnel)
+            PathGenerator probe(bot);
+            probe.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+            offMesh = probe.GetPathType() & (PATHFIND_NOPATH | PATHFIND_FARFROMPOLY_START);
+        }
+        if (offMesh)
         {
             DungeonLead::RecordEvent(botAI, "leader_to_floor",
                                      step.boss + " z=" + std::to_string(int(bot->GetPositionZ())) + " floor=" +
