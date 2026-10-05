@@ -1,33 +1,33 @@
 # Per-dungeon testing status
 
-Live runs use a bot-only test party (`DungeonTestBotPool`) at the dungeon's LFG target level,
-25 minutes per dungeon, on the current build. Dungeons not listed in the matrix have route data
-validated against the world/travelnode databases but no live run yet. "Has a door/gate" means the
-route has a `door`/`event` step; the leader now waits at a closed door (up to `DoorWaitSeconds`)
-but never opens one itself, so key/lever doors still end the objective. See `data/routes.tsv`
-for the exact step.
+Live runs use a bot-only test party (`DungeonTestBotPool`) at the dungeon's LFG target level on
+the current build. Dungeons not listed in the matrix have route data validated against the
+world/travelnode databases but no live run yet. "Has a door/gate" means the route has a
+`door`/`event` step; the leader waits at a closed door (up to `DoorWaitSeconds`) but never opens
+one itself, so key/lever doors still end the objective. See `data/routes.tsv` for the exact step.
 
-## Live validation (2026-10-04)
+## Live validation (2026-10-04/05)
 
-Bosses = killed within the 25 min cap. Every column: OK = exercised and behaved correctly,
-`-` = not exercised in that run.
+Best run per dungeon. Two passes: 25 min per dungeon (all 11), then up to 60 min for the Tier 1
+dungeons plus RFK, SM Library and RFD. Test parties stop after 45 min (`canary_timeout`), which
+ended some of the long runs. OK = exercised and behaved correctly, `-` = not exercised.
 
-| Dungeon | Bosses | Route | Pulls | Recovery | Wipe | Door | Result |
-|---|---|---|---|---|---|---|---|
-| Ragefire Chasm | 2/4 (Oggleflint, Taragaman) | OK | OK | OK (straggler escalated) | - | - | cap |
-| Deadmines | 3 (Rhahk'Zor, Sneed's Shredder, Gilnid) | OK | OK | - | - | - | cap |
-| Wailing Caverns | 2 (Lady Anacondra, Kresh) | OK | OK | - | - | - | cap |
-| Shadowfang Keep | 4 (Rethilgore, Razorclaw, Silverlaine, Springvale) | OK | OK | OK (escalated) | OK (1 wipe recovered) | OK (Courtyard) | cap; a second run hit the wipe limit (4 wipes at the Moonwalker pack before Razorclaw) |
-| Razorfen Kraul | 2 (Roogug, Aggem Thorncurse) | OK | OK | OK (escalated) | OK | - | cap |
-| SM Graveyard | 2 (Vishas, Thalnos) | OK | OK | - | - | - | complete; rare spawns not present were skipped as optional |
-| SM Library | 1 (Houndmaster Loksey) | path failure to Arcanist Doan (leader ended under the floor) | OK | OK | - | - | cap, Doan objective in retry |
-| SM Armory | 0 | OK | OK | - | - | - | cap (369 yd of trash before Herod) |
-| SM Cathedral | 0 | OK | OK | - | - | - | cap |
-| Razorfen Downs | 2 (Mordresh Fire Eye, Glutton) | OK | OK | OK (escalated) | - | - | cap |
-| Zul'Farrak | 0 | OK | OK | - | - | - | cap |
+| Dungeon | Bosses | Pulls | Recovery | Wipe | Door | Result |
+|---|---|---|---|---|---|---|
+| Ragefire Chasm | 4/4 | OK | OK (escalated) | OK (1) | - | complete, 41 min |
+| Deadmines | 6/7 (to Edwin VanCleef; Cookie optional) | OK | OK | - | OK (Ironclad Cove) | 45 min test cap after VanCleef |
+| Wailing Caverns | 6 (Anacondra, Kresh, Cobrahn, Verdan, Serpentis, Pythas) | OK | OK | OK (1) | - | 45 min test cap; one `leader_unstuck` |
+| Shadowfang Keep | 6 (to Fenrus) | OK | OK | OK (1) | OK (Courtyard) | 45 min test cap; one 25 min run hit the wipe limit at the Moonwalker pack |
+| Razorfen Kraul | 4 (Roogug, Aggem, Ramtusk, Jargba) | OK | OK | OK (1) | - | 45 min test cap |
+| SM Graveyard | 2 (Vishas, Thalnos) | OK | - | - | - | complete; rare spawns not present were skipped as optional |
+| SM Library | 2/2 | OK | - | - | - | complete, 24 min |
+| Razorfen Downs | 3 (Mordresh, Glutton, Amnennar) | OK | OK | - | - | complete, 39 min; Ragglesnout (rare) not present |
+| SM Armory | 0 | OK | - | - | - | 25 min cap (369 yd of trash before Herod) |
+| SM Cathedral | 0 | OK | - | - | - | 25 min cap |
+| Zul'Farrak | 0 | OK | - | - | - | 25 min cap |
 
-What limits these runs is pace: trash is cleared pack by pack (~30 s per pack incl. the
-post-combat gate), so a full clear needs 40-60 minutes in most of these dungeons.
+Pace: trash is cleared pack by pack (~30 s per pack incl. the post-combat gate), so a full clear
+takes 25-60 minutes.
 
 64 base dungeons; heroics share their normal counterpart's route/status.
 
@@ -46,13 +46,13 @@ post-combat gate), so a full clear needs 40-60 minutes in most of these dungeons
 | Vanilla | Maraudon - Orange Crystals | Data ready, untested |
 | Vanilla | Maraudon - Pristine Waters | Data ready, untested |
 | Vanilla | Maraudon - Purple Crystals | Data ready, untested |
-| Vanilla | Ragefire Chasm | Live-tested, partial (see matrix) |
-| Vanilla | Razorfen Downs | Live-tested, partial (see matrix) — has a door/gate |
+| Vanilla | Ragefire Chasm | Live-tested, full route completed (see matrix) |
+| Vanilla | Razorfen Downs | Live-tested, full route completed (see matrix) — has a door/gate |
 | Vanilla | Razorfen Kraul | Live-tested, partial (see matrix) |
 | Vanilla | Scarlet Monastery - Armory | Live-tested, partial (see matrix) |
 | Vanilla | Scarlet Monastery - Cathedral | Live-tested, partial (see matrix) — has a door/gate |
-| Vanilla | Scarlet Monastery - Graveyard | Live-tested, partial (see matrix) |
-| Vanilla | Scarlet Monastery - Library | Live-tested, partial (see matrix) |
+| Vanilla | Scarlet Monastery - Graveyard | Live-tested, full route completed (see matrix) |
+| Vanilla | Scarlet Monastery - Library | Live-tested, full route completed (see matrix) |
 | Vanilla | Scholomance | Data ready, untested — has a door/gate |
 | Vanilla | Shadowfang Keep | Live-tested, partial (see matrix) — has a door/gate |
 | Vanilla | Stormwind Stockade | Data ready, untested |

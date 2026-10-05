@@ -18,6 +18,12 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+## [0.12.0-alpha] - 2026-10-05
+
+Hardening rounds H4-H7: pack identity, closed doors, combined failure paths, and the first live
+validation campaign across 11 dungeons, with the failures it found fixed. Still `-alpha`: most
+dungeons in the route table have no live run yet.
+
 ### Fixed
 - A bot of a running session can no longer be moved out of the dungeon by another system
   mid-run (seen live: the leader vanished from Wailing Caverns while the party was drinking;
@@ -29,8 +35,26 @@ the MAJOR bar above is met.
 - The leader and its party no longer wander off with mod-playerbots' RPG behaviour during a run.
   When it couldn't walk to its RPG destination it teleported there - out of the dungeon (seen in
   Shadowfang Keep while the party was drinking).
+- Party members no longer get sent to their homebind every tick about a minute into a run.
+  AzerothCore marks a player's instance invalid when they leave or disband a group inside it,
+  which test characters did on joining; the session restores the flag for members standing in the
+  party's own instance (`instance_validity_restored`).
+- A straggler stuck on terrain no longer keeps the party walking back and forth until the run
+  times out: the same recovery coming back within 90 s continues its clock, so the straggler is
+  brought to the leader. The escalation brings every bot straggler, and someone new falling behind
+  afterwards gets a recovery of its own instead of ending the run as `recovery_failed`.
+- The walk back to a straggler follows a computed path; a straight move to an unreachable member
+  could put the tank inside the rock (SM Library, Deadmines). If the leader still ends up where it
+  can't path from, it is moved back to the last spot it made progress from, once per step
+  (`leader_unstuck`).
+- A pull no longer retries forever when its mark can't be placed: a marking timeout counts as a
+  failed attempt, a boss out of sight (one floor down in Razorfen Kraul) is approached instead of
+  marked, and no new pull is started while the tank is still fighting.
 
 ### Added
+- Live validation in 11 dungeons with bot-only test parties: Ragefire Chasm, SM Graveyard,
+  SM Library and Razorfen Downs completed; Deadmines to VanCleef, Shadowfang Keep to Fenrus,
+  Wailing Caverns to Pythas within the 45 min test cap. Matrix in `docs/testing-status.md`.
 - `tools/summarize_runs.py`: one summary per run (result, bosses cleared, objective failures,
   wipes, recoveries, interactions) from the two telemetry CSVs.
 - Closed doors: when the way is blocked by a closed door or gate, the leader waits for it to open

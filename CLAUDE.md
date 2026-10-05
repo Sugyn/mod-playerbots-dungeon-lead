@@ -2888,11 +2888,16 @@ retry or a checkpoint restore.
 
 ## H7 — Live validation campaign
 
-Status: IN PROGRESS (first pass done 2026-10-04, 60-min full-clear pass running)
+Status: DONE for the first validation set (2026-10-05); more dungeons remain untested
 
 Harness: server-only `DungeonLeadSelfTest.inc` (not in the repo) runs a list of dungeons one after
 another with fresh test bots at each dungeon's LFG target level, with a per-run cap; results are
 summarized with `tools/summarize_runs.py`. Matrix: `docs/testing-status.md`.
+
+Passes: 11 dungeons x 25 min, then 7 dungeons x 60 min (test parties stop at 45 min).
+Completed routes: Ragefire Chasm, SM Graveyard, SM Library, Razorfen Downs. Deadmines to VanCleef,
+Shadowfang Keep to Fenrus, Wailing Caverns to Pythas, Razorfen Kraul to Jargba within 45 min.
+No objective/recovery failure in the final 60-min pass.
 
 Failure classes found and fixed (all pushed):
 - session bots leaving the dungeon (upstream "new rpg" teleports, other teleports) ->
@@ -2900,16 +2905,20 @@ Failure classes found and fixed (all pushed):
 - per-tick homebind teleport after the test characters' old group disbanded (AC marks the instance
   invalid) -> `fix(dungeon-lead): keep party members' instance valid`
 - a straggler stuck on terrain re-opening the same recovery with fresh clocks forever ->
-  `fix(dungeon-lead): treat a relapsing recovery as one episode` (escalation verified live)
+  `fix(dungeon-lead): treat a relapsing recovery as one episode`
+- escalation brought only the farthest straggler, the next one ran the recovery out ->
+  `fix(dungeon-lead): escalate every straggler, not only the farthest`
 - marking timeouts not counted as pull attempts (unbounded), boss out of sight counted as in
   range, marking while still in combat -> `fix(dungeon-lead): bound marking failures and pull only
   in sight`
+- tank inside the rock / under the floor (SM Library, Deadmines): the regroup walk-back was a
+  straight MovePoint -> `fix(dungeon-lead): regroup walk-back only along a real path`, plus a
+  bounded move back to the last good spot (`leader_unstuck`, seen once in WC, worked)
 
 Open:
-- SM Library: the leader ended under the floor (z=0) after walking back for a dead member; one
-  occurrence. skip_stuck now records the ground height to classify the next one.
-- Pace: ~30 s per trash pack; full clears need 40-60 min.
-- Trash between bosses is fought where the walk meets it (route rows are bosses); SFK's Moonwalker
-  pack wiped a level-20 party 4 times in one run.
+- SM Armory, Cathedral, Zul'Farrak: only 25-min runs (no boss reached); the rest of the route
+  table has no live run.
+- Pace: ~30 s per trash pack.
+- Trash between bosses is fought where the walk meets it (route rows are bosses).
 
 # END OF AUTHORITATIVE CLAUDE CODE INSTRUCTIONS
