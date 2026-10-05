@@ -21,11 +21,13 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 6,Deadmines,36,0,0,-,1,boss,Rhahk'Zor,644,-192.9,-448.2,54.4,spawn,
 6,Deadmines,36,0,0,-,2,boss,Sneed's Shredder,642,-289.5,-513,49.7,spawn,Sneed pops out after shredder dies (script)
 6,Deadmines,36,0,0,-,3,boss,Gilnid,1763,-177.4,-574.5,19.3,spawn,
-6,Deadmines,36,0,0,-,4,door,Iron door to Ironclad Cove,16397,-100.502,-668.771,7.41049,gameobject,Defias Gunpowder on cannon / rogue lockpick
-6,Deadmines,36,0,0,-,5,boss,Mr. Smite,646,-22.8,-797.3,20.4,spawn,stealthed elites first
-6,Deadmines,36,0,0,-,6,boss,Captain Greenskin,647,-59.6,-820.1,41.6,spawn,on ship
-6,Deadmines,36,0,0,-,7,boss,Edwin VanCleef,639,-87.4,-819.9,39.3,spawn,"cabin, adds"
-6,Deadmines,36,0,0,-,8,optional,Cookie,645,-67.6,-853.7,17.1,spawn,after VanCleef
+6,Deadmines,36,0,0,-,4,use,Defias Gunpowder,17155,-106.409,-617.284,13.8495,gameobject,powder keg - opening it brings Defias Taskmasters
+6,Deadmines,36,0,0,-,5,use,Defias Cannon,16398,-107.562,-659.674,7.21211,gameobject,loaded with the gunpowder - blows the Iron Clad Door
+6,Deadmines,36,0,0,-,6,door,Iron door to Ironclad Cove,16397,-100.502,-668.771,7.41049,gameobject,Defias Gunpowder on cannon / rogue lockpick
+6,Deadmines,36,0,0,-,7,boss,Mr. Smite,646,-22.8,-797.3,20.4,spawn,stealthed elites first
+6,Deadmines,36,0,0,-,8,boss,Captain Greenskin,647,-59.6,-820.1,41.6,spawn,on ship
+6,Deadmines,36,0,0,-,9,boss,Edwin VanCleef,639,-87.4,-819.9,39.3,spawn,"cabin, adds"
+6,Deadmines,36,0,0,-,10,optional,Cookie,645,-67.6,-853.7,17.1,spawn,after VanCleef
 8,Shadowfang Keep,33,0,0,-,1,boss,Rethilgore,3914,-252.1,2123.1,81.2,spawn,
 8,Shadowfang Keep,33,0,0,-,2,talk,Deathstalker Adamant,3849,-243.712,2113.72,81.2629,spawn,Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
 8,Shadowfang Keep,33,0,0,-,3,talk,Sorcerer Ashcrombe,3850,-240.904,2122.55,81.2629,spawn,Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore

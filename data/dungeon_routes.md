@@ -32,11 +32,13 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 1. **Rhahk'Zor** — entry 644 @ (-192.9, -448.2, 54.4)
 2. **Sneed's Shredder** — entry 642 @ (-289.5, -513, 49.7) — Sneed pops out after shredder dies (script)
 3. **Gilnid** — entry 1763 @ (-177.4, -574.5, 19.3)
-4. **Iron door to Ironclad Cove** **[door]** `gameobject` — entry 16397 @ (-100.502, -668.771, 7.41049) — Defias Gunpowder on cannon / rogue lockpick
-5. **Mr. Smite** — entry 646 @ (-22.8, -797.3, 20.4) — stealthed elites first
-6. **Captain Greenskin** — entry 647 @ (-59.6, -820.1, 41.6) — on ship
-7. **Edwin VanCleef** — entry 639 @ (-87.4, -819.9, 39.3) — cabin, adds
-8. **Cookie** *(optional)* — entry 645 @ (-67.6, -853.7, 17.1) — after VanCleef
+4. **Defias Gunpowder** `gameobject` — entry 17155 @ (-106.409, -617.284, 13.8495) — powder keg - opening it brings Defias Taskmasters
+5. **Defias Cannon** `gameobject` — entry 16398 @ (-107.562, -659.674, 7.21211) — loaded with the gunpowder - blows the Iron Clad Door
+6. **Iron door to Ironclad Cove** **[door]** `gameobject` — entry 16397 @ (-100.502, -668.771, 7.41049) — Defias Gunpowder on cannon / rogue lockpick
+7. **Mr. Smite** — entry 646 @ (-22.8, -797.3, 20.4) — stealthed elites first
+8. **Captain Greenskin** — entry 647 @ (-59.6, -820.1, 41.6) — on ship
+9. **Edwin VanCleef** — entry 639 @ (-87.4, -819.9, 39.3) — cabin, adds
+10. **Cookie** *(optional)* — entry 645 @ (-67.6, -853.7, 17.1) — after VanCleef
 ### Shadowfang Keep (LFD 8, map 33)
 
 1. **Rethilgore** — entry 3914 @ (-252.1, 2123.1, 81.2)

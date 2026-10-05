@@ -41,6 +41,9 @@
 #include "PositionValue.h"
 #include "RtiTargetValue.h"
 #include "ScriptMgr.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
+#include "Spell.h"
 #include "Log.h"
 #include "Timer.h"
 #include "WorldPacket.h"
@@ -2096,9 +2099,37 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
         }
     }
 
-    go->Use(user);
-    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} used {} (entry {}) via {}", bot->GetName(), go->GetName(),
-             step.entry, user->GetName());
+    // A key whose item has its own spell (Deadmines: the gunpowder loads and fires the cannon) is
+    // used by casting that spell on the object; anything else is a plain use.
+    SpellInfo const* keySpell = nullptr;
+    if (keyItem)
+        if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(keyItem))
+            if (proto->Spells[0].SpellId > 0)
+                keySpell = sSpellMgr->GetSpellInfo(proto->Spells[0].SpellId);
+    if (keySpell)
+    {
+        SpellCastTargets targets;
+        targets.SetGOTarget(go);
+        user->CastSpell(targets, keySpell, nullptr, TRIGGERED_FULL_MASK, user->GetItemByEntry(keyItem));
+    }
+    else
+        go->Use(user);
+
+    // A chest: take what is in it, the way a client does (autostore each slot, release).
+    if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST && user->GetLootGUID() == go->GetGUID())
+    {
+        for (uint8 slot = 0; slot < go->loot.items.size(); ++slot)
+        {
+            WorldPacket take(CMSG_AUTOSTORE_LOOT_ITEM, 1);
+            take << slot;
+            user->GetSession()->HandleAutostoreLootItemOpcode(take);
+        }
+        WorldPacket release(CMSG_LOOT_RELEASE, 8);
+        release << go->GetGUID();
+        user->GetSession()->HandleLootReleaseOpcode(release);
+    }
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} used {} (entry {}) via {}{}", bot->GetName(), go->GetName(),
+             step.entry, user->GetName(), keySpell ? " (key spell)" : "");
     DungeonLead::RecordEvent(botAI, "use", step.boss + " entry=" + std::to_string(step.entry) + " by=" + user->GetName() +
                                            (keyItem ? " key=" + std::to_string(keyItem) : ""));
     DungeonLead::AdvanceStep(st, /*confirmed*/ true);
