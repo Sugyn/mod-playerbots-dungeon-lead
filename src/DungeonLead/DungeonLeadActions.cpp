@@ -2263,10 +2263,21 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
     GossipMenu& menu = bot->PlayerTalkClass->GetGossipMenu();
     if (menu.Empty() || menu.GetSenderGUID() != npc->GetGUID())
     {
-        if (!st.arrivedTold)
+        // what the NPC is doing while we wait - an event that never offers the option has to be
+        // traceable (where it stands, whether it offers gossip at all)
+        if (!st.arrivedTold || GetMSTimeDiffToNow(st.arrivedTs) >= 30000)
         {
             st.arrivedTold = true;
-            DungeonLead::RecordEvent(botAI, "talk_waiting", step.boss);
+            st.arrivedTs = getMSTime();
+            DungeonLead::RecordEvent(botAI, "talk_waiting",
+                                     step.boss + " npc=(" + std::to_string(int(npc->GetPositionX())) + "," +
+                                         std::to_string(int(npc->GetPositionY())) + "," +
+                                         std::to_string(int(npc->GetPositionZ())) + ") dist=" +
+                                         std::to_string(int(bot->GetDistance(npc))) + " gossip_flag=" +
+                                         std::to_string(npc->HasNpcFlag(UNIT_NPC_FLAG_GOSSIP)) + " faction=" +
+                                         std::to_string(npc->GetFaction()) + " moving=" +
+                                         std::to_string(npc->isMoving()) + " waited_ms=" +
+                                         std::to_string(st.eventWaitMs));
         }
         bot->PlayerTalkClass->SendCloseGossip();
         if (EventWaitExpired(st))
