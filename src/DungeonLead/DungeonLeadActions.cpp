@@ -29,6 +29,7 @@
 #include "Formations.h"
 #include "Group.h"
 #include "LFGMgr.h"
+#include "LootMgr.h"
 #include "LastMovementValue.h"
 #include "Map.h"
 #include "ObjectAccessor.h"
@@ -2117,15 +2118,45 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
                         user = m;
         if (!user)
         {
+            if (EventWaitExpired(st))
+            {
+                DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                           DungeonFailureReason::ObjectiveTimeout, "use_no_key");
+                return true;
+            }
+            // Nobody has it: a corpse nearby that holds it (Zul'Farrak: the Executioner's Key) is
+            // looted by the leader, as a player would - the bots' own looting may never pick it up.
+            for (ObjectGuid const& guid : AI_VALUE(GuidVector, "nearest corpses"))
+            {
+                Creature* corpse = botAI->GetCreature(guid);
+                if (!corpse || corpse->IsAlive())
+                    continue;
+                auto const it = std::find_if(corpse->loot.items.begin(), corpse->loot.items.end(),
+                                             [&](LootItem const& li) { return li.itemid == keyItem && !li.is_looted; });
+                if (it == corpse->loot.items.end())
+                    continue;
+                if (bot->GetDistance(corpse) > INTERACTION_DISTANCE)
+                    return MoveRouteTo(st, WorldPosition(corpse), step);
+                WorldPacket open(CMSG_LOOT, 8);
+                open << corpse->GetGUID();
+                bot->GetSession()->HandleLootOpcode(open);
+                WorldPacket take(CMSG_AUTOSTORE_LOOT_ITEM, 1);
+                take << uint8(it - corpse->loot.items.begin());
+                bot->GetSession()->HandleAutostoreLootItemOpcode(take);
+                WorldPacket release(CMSG_LOOT_RELEASE, 8);
+                release << corpse->GetGUID();
+                bot->GetSession()->HandleLootReleaseOpcode(release);
+                DungeonLead::RecordEvent(botAI, "key_looted",
+                                         std::to_string(keyItem) + " from=" + corpse->GetName() +
+                                             " have=" + std::to_string(bot->HasItemCount(keyItem, 1)));
+                return true;  // next tick: the key holder (if it worked) uses the object
+            }
             if (!st.arrivedTold)
             {
                 st.arrivedTold = true;
                 DungeonLead::RecordEvent(botAI, "use_waiting", step.boss + " key=" + std::to_string(keyItem));
                 botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " needs a key nobody here has - waiting");
             }
-            if (EventWaitExpired(st))
-                DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
-                                           DungeonFailureReason::ObjectiveTimeout, "use_no_key");
             return true;
         }
     }
