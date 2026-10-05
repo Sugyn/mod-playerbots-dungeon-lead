@@ -814,6 +814,19 @@ namespace
         Check(ClassifyRequirement(DungeonRouteKind::Optional, 3654) == R::Optional, "optional trash -> Optional");
         Check(ClassifyRequirement(DungeonRouteKind::Boss, 1) == R::Optional, "path anchor is never mandatory");
         Check(ClassifyRequirement(DungeonRouteKind::Event, 42) == R::Optional, "event row -> Optional");
+        // audit 2026-10-05: explicit requirement in the route data
+        Check(ParseRouteKind("required") == DungeonRouteKind::Required, "kind 'required' parses");
+        Check(ClassifyRequirement(DungeonRouteKind::Required, 4424) == R::Required, "required trash -> Required");
+        Check(ClassifyRouteStep(DungeonRouteKind::Required, 4424) == DungeonRouteNodeType::Pull,
+              "required trash is fought like a pull");
+        Check(ClassifyRequirement(DungeonRouteKind::Door, 16397) == R::Required, "a door is never skipped");
+        Check(DecideObjectiveFailure(R::Required, 1, 2) == ObjectiveFailureAction::Retry &&
+                  DecideObjectiveFailure(R::Required, 2, 2) == ObjectiveFailureAction::Abort,
+              "required objective: retry, then abort - never skip");
+        // door heuristic: on the way = near the line leader -> destination
+        Check(DistanceToSegment2D(5, 2, 0, 0, 10, 0) < 2.01f, "door 2 yd off the corridor line is on the way");
+        Check(DistanceToSegment2D(5, 14, 0, 0, 10, 0) > 10.f, "side-room door 14 yd off the line is not");
+        Check(DistanceToSegment2D(-3, 0, 0, 0, 10, 0) > 2.99f, "behind the leader measures to the leader");
 
         for (uint32_t rounds = 1; rounds <= 3; ++rounds)
             Check(DecideObjectiveFailure(R::Optional, rounds, 2) == ObjectiveFailureAction::Skip,

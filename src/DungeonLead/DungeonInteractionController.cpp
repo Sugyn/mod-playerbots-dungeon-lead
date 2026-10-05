@@ -24,6 +24,9 @@ namespace
 {
     // A closed door this close to the leader, on the way to where it was going, is the blocker.
     constexpr float kDoorSearchRange = 15.0f;
+    // ... and "on the way" = this close to the straight line from the leader to its destination, so
+    // a side-room door next to the corridor isn't taken for the blocker.
+    constexpr float kDoorOffLine = 10.0f;
 
     void SetInteraction(PlayerbotAI* botAI, DungeonLeadState& st, InteractionState next, std::string const& detail)
     {
@@ -55,24 +58,33 @@ bool DungeonInteractionController::StartIfBlockedByDoor(PlayerbotAI* botAI, Dung
         if (!go || go->GetGoType() != GAMEOBJECT_TYPE_DOOR || go->GetGoState() != GO_STATE_READY)
             continue;
         float const d = bot->GetDistance(go);
-        if (d > best || go->GetExactDist(x, y, z) >= botToDest)
+        if (d > best || go->GetExactDist(x, y, z) >= botToDest ||
+            DungeonLeadKernel::DistanceToSegment2D(go->GetPositionX(), go->GetPositionY(), bot->GetPositionX(),
+                                                   bot->GetPositionY(), x, y) > kDoorOffLine)
             continue;  // too far, or not on the way
         best = d;
         door = go;
     }
     if (!door)
         return false;
+    StartForDoor(botAI, st, door, "blocked");
+    return true;
+}
 
+void DungeonInteractionController::StartForDoor(PlayerbotAI* botAI, DungeonLeadState& st, GameObject* door,
+                                                char const* how)
+{
+    if (DungeonLeadKernel::InteractionActive(st.interactionState))
+        return;
     st.interactionType = InteractionType::Door;
     st.interactionState = InteractionState::None;
     st.interactionTarget = door->GetGUID();
     st.interactionActiveMs = 0;
     st.interactionLastTs = getMSTime();
     SetInteraction(botAI, st, InteractionState::Resolving,
-                   "target=" + door->GetName() + " entry=" + std::to_string(door->GetEntry()) +
-                       " dist=" + std::to_string(int(best)));
+                   "target=" + door->GetName() + " entry=" + std::to_string(door->GetEntry()) + " found=" + how +
+                       " dist=" + std::to_string(int(botAI->GetBot()->GetDistance(door))));
     botAI->TellMasterNoFacing("Dungeon lead: " + door->GetName() + " is closed - waiting for it to open");
-    return true;
 }
 
 bool DungeonInteractionController::Update(PlayerbotAI* botAI)

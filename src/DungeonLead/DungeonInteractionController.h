@@ -18,6 +18,7 @@
 #ifndef MOD_DUNGEONLEAD_INTERACTIONCONTROLLER_H
 #define MOD_DUNGEONLEAD_INTERACTIONCONTROLLER_H
 
+class GameObject;
 class PlayerbotAI;
 struct DungeonLeadState;
 
@@ -26,6 +27,9 @@ namespace DungeonInteractionController
     // From the route walk when it is about to give up on reaching (x, y, z): if a closed door
     // between the leader and that point explains it, start a door interaction and return true.
     bool StartIfBlockedByDoor(PlayerbotAI* botAI, DungeonLeadState& st, float x, float y, float z);
+
+    // Wait at a known closed door (a route door step names it); `how` goes into the telemetry.
+    void StartForDoor(PlayerbotAI* botAI, DungeonLeadState& st, GameObject* door, char const* how);
 
     // From GuardActiveSessions() (2 s): advance an active interaction. Returns false if it ended
     // the session (via the objective failure policy) - the caller must not touch it any more.

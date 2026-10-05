@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 
-VALID_KINDS = {"boss", "optional", "heroic_only", "event", "door", "skip"}
+VALID_KINDS = {"boss", "optional", "required", "heroic_only", "event", "door", "skip"}
 
 
 def load_lfg_dungeons():

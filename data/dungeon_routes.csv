@@ -21,13 +21,13 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 6,Deadmines,36,0,0,-,1,boss,Rhahk'Zor,644,-192.9,-448.2,54.4,spawn,
 6,Deadmines,36,0,0,-,2,boss,Sneed's Shredder,642,-289.5,-513,49.7,spawn,Sneed pops out after shredder dies (script)
 6,Deadmines,36,0,0,-,3,boss,Gilnid,1763,-177.4,-574.5,19.3,spawn,
-6,Deadmines,36,0,0,-,4,door,Iron door to Ironclad Cove,,,,,-,Defias Gunpowder on cannon / rogue lockpick
+6,Deadmines,36,0,0,-,4,door,Iron door to Ironclad Cove,16397,-100.502,-668.771,7.41049,gameobject,Defias Gunpowder on cannon / rogue lockpick
 6,Deadmines,36,0,0,-,5,boss,Mr. Smite,646,-22.8,-797.3,20.4,spawn,stealthed elites first
 6,Deadmines,36,0,0,-,6,boss,Captain Greenskin,647,-59.6,-820.1,41.6,spawn,on ship
 6,Deadmines,36,0,0,-,7,boss,Edwin VanCleef,639,-87.4,-819.9,39.3,spawn,"cabin, adds"
 6,Deadmines,36,0,0,-,8,optional,Cookie,645,-67.6,-853.7,17.1,spawn,after VanCleef
 8,Shadowfang Keep,33,0,0,-,1,boss,Rethilgore,3914,-252.1,2123.1,81.2,spawn,
-8,Shadowfang Keep,33,0,0,-,2,door,Courtyard door,,,,,-,opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
+8,Shadowfang Keep,33,0,0,-,2,door,Courtyard door,18895,-242.581,2159.05,90.6226,gameobject,opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
 8,Shadowfang Keep,33,0,0,-,3,boss,Razorclaw the Butcher,3886,-202.6,2258,76.3,spawn,
 8,Shadowfang Keep,33,0,0,-,4,boss,Baron Silverlaine,3887,-275.3,2297.4,76.2,spawn,
 8,Shadowfang Keep,33,0,0,-,5,boss,Commander Springvale,4278,-222.6,2259.4,102.8,spawn,
@@ -153,7 +153,7 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 2,Scholomance,289,0,0,-,1,optional,Kirtonos the Herald,10506,NULL,NULL,NULL,script,summon (Blood of Innocents)
 2,Scholomance,289,0,0,-,2,boss,Jandice Barov,10503,268.2,73.6,95.9,spawn,
 2,Scholomance,289,0,0,-,3,boss,Rattlegore,11622,137.1,171.7,96,spawn,drops Viewing Room Key
-2,Scholomance,289,0,0,-,4,door,Viewing Room door,,,,,-,Rattlegore key
+2,Scholomance,289,0,0,-,4,door,Viewing Room door,175167,174.378,77.9398,104.802,gameobject,Rattlegore key
 2,Scholomance,289,0,0,-,5,boss,Marduk Blackpool,10433,150.4,116.2,104.7,spawn,
 2,Scholomance,289,0,0,-,6,boss,Vectus,10432,143.5,99.1,104.7,spawn,
 2,Scholomance,289,0,0,-,7,boss,The Ravenian,10507,103.3,-1.7,75.2,spawn,

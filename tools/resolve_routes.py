@@ -105,7 +105,7 @@ if "--force" not in sys.argv:
     if os.path.exists(existing_path):
         with open(existing_path, newline="") as f:
             existing_derived = {(r["lfg_id"], r["step"], r["boss"])
-                                 for r in csv.DictReader(f) if r.get("source") == "derived"}
+                                 for r in csv.DictReader(f) if r.get("source") in ("derived", "gameobject")}
         fresh_keys = {(str(r["lfg_id"]), str(r["step"]), r["boss"]) for r in rows}
         lost = [k for k in existing_derived if (k[0], k[1], k[2]) not in fresh_keys]
         if lost:

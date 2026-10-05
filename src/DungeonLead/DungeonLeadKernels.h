@@ -17,6 +17,7 @@
 
 #include "DungeonRouteTypes.h"
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -1271,6 +1272,18 @@ namespace DungeonLeadKernel
             default:
                 return f.current;
         }
+    }
+
+    // 2D distance from point P to the segment A-B. Used to tell a door in the way (near the line
+    // from the leader to where it is going) from a side-room door that just happens to be close.
+    inline float DistanceToSegment2D(float px, float py, float ax, float ay, float bx, float by)
+    {
+        float const dx = bx - ax, dy = by - ay;
+        float const len2 = dx * dx + dy * dy;
+        float t = len2 > 0.f ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.f;
+        t = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
+        float const cx = ax + t * dx - px, cy = ay + t * dy - py;
+        return std::sqrt(cx * cx + cy * cy);
     }
 }
 

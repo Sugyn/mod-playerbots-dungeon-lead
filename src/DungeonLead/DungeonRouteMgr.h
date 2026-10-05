@@ -34,15 +34,18 @@ struct DungeonRouteStep
     bool IsWalkable() const
     {
         return HasPosition() && (kind == DungeonRouteKind::Boss || kind == DungeonRouteKind::Optional ||
-                                  kind == DungeonRouteKind::HeroicOnly || kind == DungeonRouteKind::Event);
+                                  kind == DungeonRouteKind::Required || kind == DungeonRouteKind::HeroicOnly ||
+                                  kind == DungeonRouteKind::Event || kind == DungeonRouteKind::Door);
     }
+    // A door row with a position names its game object (entry = gameobject entry, not a creature).
+    bool IsDoorObject() const { return kind == DungeonRouteKind::Door; }
 
     // Policy boundary for "must this be satisfied for the run to count as Complete rather than
     // Partial" - kept as one named function instead of repeating `kind == Boss` at every call
     // site, since a future mandatory kind (a required door/event, not just a boss) should only
     // need this one line updated, not every place that currently checks it. See the architecture
     // roadmap's L0 closeout notes.
-    bool IsMandatory() const { return kind == DungeonRouteKind::Boss; }
+    bool IsMandatory() const { return kind == DungeonRouteKind::Boss || kind == DungeonRouteKind::Required; }
 
     // 2026-09-15 (independent architecture review DL-011 - "navigation identity, execution, and
     // observation are conflated"): entry=1 is AzerothCore's universal "Waypoint (Only GM can see

@@ -13,6 +13,7 @@
 #include "DungeonLeadKernels.h"
 #include "DungeonPack.h"
 #include "DungeonInteractionController.h"
+#include "GameObject.h"
 #include "DungeonPullController.h"
 #include "DungeonTelemetryBuffer.h"
 #include "Spell.h"
@@ -54,6 +55,8 @@
 namespace
 {
     constexpr float kPathFinderDis = 70.0f;     // below this, hand the destination straight to mmaps
+    constexpr float kDoorSightRange = 60.0f;    // a route door's state is read from this far
+    constexpr float kDoorWaitDistance = 8.0f;   // wait at a closed route door from this close
     // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
     // member dying repeatedly isn't yanked every tick, short enough that a real wipe is back on
     // its feet well inside WipeRecoverySeconds.
@@ -1704,7 +1707,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // is a Travel node and must stay, or routes that need it stop being walkable (DL-011).
         bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
                     (s.NodeType() == DungeonRouteNodeType::Pull && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
-                    (s.entry && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
+                    (s.entry && !s.IsDoorObject() && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;
         ++st.stepIndex;
@@ -1819,6 +1822,9 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         botAI->TellMasterNoFacing(headingOut);
     }
 
+    if (step.NodeType() == DungeonRouteNodeType::Door)
+        return WalkDoorStep(st, dest, step);
+
     // Pack nodes (pull/boss/interaction) advance only once their pack is Cleared (or Skipped
     // below) - never just because the tank reached the coordinate. Travel nodes have no pack.
     DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
@@ -1904,6 +1910,41 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     }
 
     return MoveRouteTo(st, dest, step);
+}
+
+// A door step with its game object in the route data: done once the world shows that door open
+// (seen from wherever the leader is); a closed one is waited for at the door by the interaction
+// controller (DoorWaitSeconds, then the objective policy - a door is Required); no such object at
+// the spot means nothing is in the way.
+bool DungeonLeadNextAction::WalkDoorStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
+{
+    float const dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+    GameObject* door = nullptr;
+    if (dist < kDoorSightRange)
+        if (GameObject* go = bot->FindNearestGameObject(step.entry, kDoorSightRange))
+            if (go->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()) < 10.0f)
+                door = go;
+
+    if (door && door->GetGoState() != GO_STATE_READY)
+    {
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}' is open", bot->GetName(), step.step, step.boss);
+        DungeonLead::RecordEvent(botAI, "door_open", step.boss + " entry=" + std::to_string(step.entry));
+        DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+        return true;
+    }
+    if (dist > std::max(sDungeonLeadConfig.dungeonLeadArriveDistance, kDoorWaitDistance))
+        return MoveRouteTo(st, dest, step);
+
+    if (!door)
+    {
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}': no door here, moving on", bot->GetName(),
+                 step.step, step.boss);
+        DungeonLead::RecordEvent(botAI, "door_not_found", step.boss + " entry=" + std::to_string(step.entry));
+        DungeonLead::AdvanceStep(st, /*confirmed*/ false);
+        return true;
+    }
+    DungeonInteractionController::StartForDoor(botAI, st, door, "route");
+    return true;
 }
 
 // Same approach as NewRpgBaseAction::MoveFarTo (mmap route to the true destination, walk to the

@@ -27,6 +27,7 @@ enum class DungeonRouteKind : uint8_t
 {
     Boss,
     Optional,
+    Required,  // trash that gates progress (an event, a door): fought like optional, never skipped
     HeroicOnly,
     Event,
     Door,
@@ -38,6 +39,7 @@ inline DungeonRouteKind ParseRouteKind(std::string const& s)
 {
     if (s == "boss") return DungeonRouteKind::Boss;
     if (s == "optional") return DungeonRouteKind::Optional;
+    if (s == "required") return DungeonRouteKind::Required;
     if (s == "heroic_only") return DungeonRouteKind::HeroicOnly;
     if (s == "event") return DungeonRouteKind::Event;
     if (s == "door") return DungeonRouteKind::Door;
@@ -56,7 +58,7 @@ enum class DungeonRouteNodeType : uint8_t
     TankPosition,  // where the tank should hold a pull (no route data yet)
     SafeSpot,      // regroup point (no route data yet)
     Boss,          // encounter
-    Door,          // gate/door the party has to get through (not waited for yet)
+    Door,          // gate/door the party has to get through - waited for until it opens
     Interaction,   // event or object to interact with
     Recovery,      // where stranded members are brought back to (the route's entrance)
     End,           // route finished
@@ -89,7 +91,8 @@ inline DungeonRouteNodeType ClassifyRouteStep(DungeonRouteKind kind, uint32_t en
     {
         case DungeonRouteKind::Boss:
         case DungeonRouteKind::HeroicOnly: return DungeonRouteNodeType::Boss;
-        case DungeonRouteKind::Optional:   return DungeonRouteNodeType::Pull;
+        case DungeonRouteKind::Optional:
+        case DungeonRouteKind::Required:   return DungeonRouteNodeType::Pull;
         case DungeonRouteKind::Event:      return DungeonRouteNodeType::Interaction;
         case DungeonRouteKind::Door:       return DungeonRouteNodeType::Door;
         case DungeonRouteKind::Skip:
@@ -104,7 +107,7 @@ inline DungeonRouteNodeType ClassifyRouteStep(DungeonRouteKind kind, uint32_t en
 enum class DungeonObjectiveRequirement : uint8_t
 {
     Optional,
-    Required,  // must be cleared, not a boss (no route data marks trash this way yet)
+    Required,  // must be done, not a boss: `required` trash, a door
     Boss,
 };
 
@@ -123,9 +126,15 @@ inline char const* ToString(DungeonObjectiveRequirement r)
 // heroic-only, events, path anchors) is optional.
 inline DungeonObjectiveRequirement ClassifyRequirement(DungeonRouteKind kind, uint32_t entry)
 {
-    if (entry != kPathAnchorEntry && kind == DungeonRouteKind::Boss)
-        return DungeonObjectiveRequirement::Boss;
-    return DungeonObjectiveRequirement::Optional;
+    if (entry == kPathAnchorEntry)
+        return DungeonObjectiveRequirement::Optional;
+    switch (kind)
+    {
+        case DungeonRouteKind::Boss:     return DungeonObjectiveRequirement::Boss;
+        case DungeonRouteKind::Required:
+        case DungeonRouteKind::Door:     return DungeonObjectiveRequirement::Required;  // nothing past it is reachable
+        default:                         return DungeonObjectiveRequirement::Optional;
+    }
 }
 
 #endif
