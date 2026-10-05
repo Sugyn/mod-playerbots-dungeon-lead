@@ -13,6 +13,7 @@
 #include "DungeonRouteMgr.h"
 #include "DBCStores.h"
 #include "Group.h"
+#include "PathGenerator.h"
 #include "GameObject.h"
 #include "Log.h"
 #include "Player.h"
@@ -31,6 +32,33 @@ namespace
     constexpr float kDoorOffLine = 10.0f;
     // a lever this close to a door is taken to be that door's lever
     constexpr float kLeverRange = 8.0f;
+
+    // A lever is ours to pull if the leader can walk to it without going through that door (DM: the
+    // Iron Clad Door's lever is on the ship's side; SFK: a cell's lever is reached from the walkway
+    // above by the ramp, not through the cell). A 2D side test got the two-level SFK case wrong.
+    bool ReachableWithoutDoor(Player* bot, GameObject* lever, GameObject* door)
+    {
+        PathGenerator path(bot);
+        path.CalculatePath(lever->GetPositionX(), lever->GetPositionY(), lever->GetPositionZ());
+        if (path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END))
+            return false;
+        G3D::Vector3 const& end = path.GetActualEndPosition();
+        if (lever->GetExactDist(end.x, end.y, end.z) > 6.0f)
+            return false;  // can't get next to it
+        Movement::PointsArray const& pts = path.GetPath();
+        for (size_t i = 1; i < pts.size(); ++i)
+        {
+            float t = 0.f;
+            if (DungeonLeadKernel::SegmentCrossesDoor(door->GetPositionX(), door->GetPositionY(), door->GetOrientation(),
+                                                      pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, 3.5f, &t))
+            {
+                float const z = pts[i - 1].z + t * (pts[i].z - pts[i - 1].z);
+                if (z > door->GetPositionZ() - 2.0f && z < door->GetPositionZ() + 5.0f)
+                    return false;
+            }
+        }
+        return true;
+    }
 
     // How a player would open this door: who acts, on what. A lock that opens by hand (no skill) ->
     // the leader on the door; a key lock -> the party member with the key, on the door; otherwise a
@@ -71,11 +99,7 @@ namespace
         {
             GameObject* go = botAI->GetGameObject(guid);
             if (!go || go->GetGoType() != GAMEOBJECT_TYPE_BUTTON || go->GetDistance(door) > kLeverRange ||
-                go->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) ||
-                // a lever behind the door isn't reachable from here
-                DungeonLeadKernel::SegmentCrossesDoor(door->GetPositionX(), door->GetPositionY(), door->GetOrientation(),
-                                                      bot->GetPositionX(), bot->GetPositionY(), go->GetPositionX(),
-                                                      go->GetPositionY(), 50.0f))
+                go->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) || !ReachableWithoutDoor(bot, go, door))
                 continue;
             actor = bot;
             target = go;
