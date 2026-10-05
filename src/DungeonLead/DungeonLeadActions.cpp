@@ -80,7 +80,8 @@ namespace
             if (GameObject* go = botAI->GetGameObject(guid))
                 if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY &&
                     bot->GetDistance(go) <= kDoorOnPathRange &&
-                    go->GetExactDist(x, y, z) > 4.0f)  // the destination itself (a cage to use)
+                    go->GetExactDist(x, y, z) > 4.0f &&  // the destination itself (a cage to use)
+                    bot->GetExactDist(go) > 3.0f)        // one the leader stands in can't hold it back
                     doors.push_back(go);
         if (doors.empty())
             return nullptr;
@@ -2080,10 +2081,13 @@ bool DungeonLeadNextAction::EventWaitExpired(DungeonLeadState& st)
 bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
 {
     float const dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
-    if (dist > INTERACTION_DISTANCE)
+    GameObject* go = nullptr;
+    if (dist < kDoorSightRange)
+        if (GameObject* found = bot->FindNearestGameObject(step.entry, kDoorSightRange))
+            if (found->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()) < 10.0f)
+                go = found;
+    if (!go && dist > INTERACTION_DISTANCE)
         return MoveRouteTo(st, dest, step);
-
-    GameObject* go = bot->FindNearestGameObject(step.entry, 15.0f);
     if (!go)
     {
         DungeonLead::RecordEvent(botAI, "use_failed", step.boss + " not found");
@@ -2163,6 +2167,12 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
 
     // A key whose item has its own spell (Deadmines: the gunpowder loads and fires the cannon) is
     // used by casting that spell on the object; anything else is a plain use.
+    // Next to it, not into it (Zul'Farrak: the leader walked into the cage it was to open). The key,
+    // if it had to be looted, is in hand by now.
+    if (bot->GetDistance(go) > INTERACTION_DISTANCE - 1.0f)
+        return MoveRouteTo(st, WorldPosition(go), step);
+    bot->StopMoving();
+
     SpellInfo const* keySpell = nullptr;
     if (keyItem)
         if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(keyItem))
