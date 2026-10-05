@@ -15,10 +15,10 @@ source — no pinned commit to go stale, nothing to re-apply after a mod-playerb
 **What it covers:** every 5-man dungeon in Vanilla/TBC/WotLK (normal + heroic). Raids: no.
 Event/vehicle dungeons (Violet Hold, Culling of Stratholme, Oculus past Drakos, Trial of the
 Champion, Halls of Reflection, Black Morass, Old Hillsbrad): no route, falls back to plain "grind
-what you see." Doors and gated bosses: route data marks them, the leader doesn't wait for them yet.
-Only **one dungeon (Wailing Caverns) has actually been run live end-to-end** — everything else has
-route data but is untested; see [docs/testing-status.md](docs/testing-status.md) for the full
-per-dungeon list.
+what you see." Doors opened by an event or a boss are waited for; the leader doesn't use keys,
+levers or clickable objects itself. Live runs so far cover a handful of Vanilla dungeons; the rest
+has route data but no live run - [docs/testing-status.md](docs/testing-status.md) is the current
+per-dungeon status.
 
 ## Install
 
@@ -61,12 +61,17 @@ How it runs:
   healer alive and in the instance with mana, nobody dead, drinking or below half health, and
   the party together (`PartySoftRange`/`PartyHardRange`).
 - It pulls one pack at a time: skull on the main target, cross on the second, moon on something
-  to crowd-control, then opens the fight. A pull that doesn't take is retried, then the pack is
-  skipped and reported. It doesn't chase runners away from the fight (`CombatLeashRadius`).
+  to crowd-control, then opens the fight. A pull that doesn't take is retried; after that an
+  optional stop is skipped and reported, while a boss is tried once more and otherwise the run
+  stops as partial - a boss is never skipped silently. It doesn't chase runners away from the
+  fight (`CombatLeashRadius`).
+- A closed door in the way is waited for (`DoorWaitSeconds`) until its event or boss opens it.
 - If something won't sort itself out (a straggler, a lost or dead member) it tries to fix it -
   walks back, waits for a resurrection, brings a *bot* member over - and stops the run after a
   few minutes rather than waiting forever. You are never teleported.
 - After a tank death it resumes from the last cleared pack.
+- Bots of a running session are kept inside the dungeon: other systems can't teleport them out
+  mid-run (logged as `unexpected_teleport`).
 
 `startdungeon status` shows the current state, objective, pack and pull.
 
@@ -88,13 +93,16 @@ are for reproducible bugs only.
 
 ## Known limits / in progress
 
-- Only Wailing Caverns is live-verified; see [docs/testing-status.md](docs/testing-status.md).
-- Doors/gated bosses aren't waited for yet (Gnomeregan, Uldaman Ironaya, Nexus, Halls of Stone, ...).
+- Live coverage is small; see [docs/testing-status.md](docs/testing-status.md).
+- Doors that need a key, a lever or a click (and NPC talks, elevators) aren't operated by the
+  leader; such a step fails after `DoorWaitSeconds`.
+- Route stops are bosses; trash in between is fought where the walk runs into it, pack by pack,
+  so a full clear takes 25-60 minutes.
 - GM diagnostic commands from the pre-module patch (`testbotpool`, `lfgstate`, `pathcheck`,
   `pathcheckfrom`, `tpbot`) aren't ported to this module's `.dungeonlead` command root yet — only
   `canarytest` is.
-- Live-tested with a bot-only test party in Wailing Caverns up to Lord Cobrahn so far; a run
-  with a real player in the group hasn't been done since these changes.
+- Live runs use bot-only test parties; a run with a real player in the group hasn't been done
+  since the leader became a state machine.
 - Optional advanced features, off by default: **AutoBot Canary** (auto-starts on bot-only groups
   that queue on their own) and **DungeonTestBotPool** (deterministic tank/healer test bots on
   demand, not yet reachable via a command in this module).
