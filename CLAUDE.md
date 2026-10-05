@@ -2324,8 +2324,11 @@ Next objective (from the 2026-10-05 audit):
    SFK, Scholomance; `sql/updates/2026_10_05_00_route_door_targets.sql` must be applied to the
    server DB before it takes effect there); door heuristic requires the door near the leader ->
    destination line.
-4. P1/P2 interactions driven by real blockers: first actionable type (`GameObjectUse`) once a live
-   run is blocked by a lever/clickable object.
+4. P1/P2 interactions driven by real blockers - done 2026-10-05 for Deadmines (cannon), SFK
+   (prisoner), Zul'Farrak (pyramid event, being finished): route kinds `use` / `talk`, door
+   opening as a player can (hand lock, key, lever on our side), scripted area triggers fired for
+   the leader, no walking through closed doors. Wowhead Classic for the player's steps, AC scripts
+   and acore_world for how the server runs them.
 5. P2 coverage: full runs of SM Armory, SM Cathedral, Zul'Farrak; then tier 3 (BFD, Stockade,
    Gnomeregan, Uldaman, Scholomance) and tier 4 (TBC normal) from the validation set.
 
