@@ -630,6 +630,13 @@ namespace
         prevSheep.primary = 11;
         sheep[1].controlled = true;
         Check(PickTargetPlan(sheep, prevSheep, false).primary != 11, "a kept primary that got sheeped is replaced");
+        // Zul'Farrak (Ruuzlu): CC never landed, the mob was re-marked and left beating the healer
+        std::vector<TargetCandidate> immune = pack;
+        immune[0].ccRefused = true;
+        TargetPlan prevImmune;
+        prevImmune.cc = 1;
+        p = PickTargetPlan(immune, prevImmune, true);
+        Check(p.cc != 1, "a mob our CC failed on is not kept or marked for CC again");
 
         // H2: fight membership is measured from the combat anchor, not the tank
         float const radius = 40.0f;

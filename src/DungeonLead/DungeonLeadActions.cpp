@@ -603,6 +603,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
         if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
             group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
+        st.ccFailed.push_back(st.ccGuid);
         st.ccGuid.Clear();
         return;
     }
@@ -640,6 +641,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
     if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
         group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
+    st.ccFailed.push_back(st.ccGuid);
     st.ccGuid.Clear();
 }
 
@@ -1588,6 +1590,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
     st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;  // that fight's plan is done
+    st.ccFailed.clear();
 }
 
 void DungeonLead::SkipStep(DungeonLeadState& st, DungeonRouteStep const& step, DungeonFailureDomain domain,
@@ -1622,6 +1625,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.stuckTs = 0;
     st.stuckAttempts = 0;
     st.unstuckUsed = false;
+    st.ccFailed.clear();
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
 }

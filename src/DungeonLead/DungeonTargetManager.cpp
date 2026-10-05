@@ -8,6 +8,8 @@
 
 #include "DungeonTargetManager.h"
 
+#include <algorithm>
+
 #include "Creature.h"
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
@@ -134,6 +136,7 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
             t.healthPct = uint8(c->GetHealthPct());
             t.totem = c->IsTotem();
             t.controlled = c->HasBreakableByDamageCrowdControlAura();
+            t.ccRefused = std::find(st.ccFailed.begin(), st.ccFailed.end(), guid) != st.ccFailed.end();
             candidates.push_back(t);
             guids.push_back(guid);
         }

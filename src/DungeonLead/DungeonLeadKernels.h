@@ -828,6 +828,7 @@ namespace DungeonLeadKernel
         uint8_t healthPct = 100;
         bool totem = false;       // enemy totem: dies in a hit or two, and some hurt the whole party
         bool controlled = false;  // under breakable crowd control right now (a sheep, a sap, ...)
+        bool ccRefused = false;   // our CC never landed on it this step - don't mark it again
     };
 
     // A new CC target must be (nearly) untouched: crowd-controlling a mob the party has already
@@ -912,7 +913,7 @@ namespace DungeonLeadKernel
         // CC first among the kept slots: a kept CC target must not be promoted to a kill target -
         // until it is the only enemy left; then it is released and becomes the kill target.
         TargetCandidate const* keptCc = wantCc && previous.cc ? find(previous.cc) : nullptr;
-        if (keptCc && keptCc->elite && !keptCc->boss && candidates.size() > 1)
+        if (keptCc && keptCc->elite && !keptCc->boss && !keptCc->ccRefused && candidates.size() > 1)
             plan.cc = keptCc->id;
         // A mob already crowd controlled (an earlier moon, a class AI's own sheep) keeps the moon
         // rather than a second mob being controlled and the first one broken.
@@ -937,8 +938,8 @@ namespace DungeonLeadKernel
             // Only worth it with more than two enemies: CC the best remaining elite that is
             // neither kill target.
             uint64_t const cc = best([&](TargetCandidate const& c)
-                { return c.elite && !c.boss && c.healthPct >= kCcMinHealthPct && c.id != plan.primary &&
-                         c.id != plan.secondary; });
+                { return c.elite && !c.boss && !c.ccRefused && c.healthPct >= kCcMinHealthPct &&
+                         c.id != plan.primary && c.id != plan.secondary; });
             if (cc && candidates.size() > 2)
                 plan.cc = cc;
         }

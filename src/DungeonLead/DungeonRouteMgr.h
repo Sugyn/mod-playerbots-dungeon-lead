@@ -281,6 +281,10 @@ struct DungeonLeadState
                                  // timeout check; also generally useful (duration is otherwise only
                                  // reconstructable from the CSV's own "start" row timestamp)
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
+    // Creatures our CC never landed on during this step (immune, out of reach of the CC class): not
+    // marked for CC again - re-marking kept the party off a mob that was beating the healer
+    // (Zul'Farrak, Ruuzlu). Route progress: cleared per step.
+    std::vector<ObjectGuid> ccFailed;
     uint32 ccMarkedTs = 0;  // when it was marked; if no CC lands within CcTimeoutSeconds, unmark it
     bool ccLandedTold = false;  // whether "cc_landed" has already fired for the current ccGuid -
                                  // logged once per landing, not every tick it stays crowd
