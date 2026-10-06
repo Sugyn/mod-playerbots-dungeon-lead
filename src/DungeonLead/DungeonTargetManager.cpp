@@ -17,10 +17,22 @@
 #include "DungeonRouteMgr.h"
 #include "Group.h"
 #include "Log.h"
+#include "MotionMaster.h"
+#include "DungeonTelemetryV2.h"
 #include "Player.h"
 #include "Playerbots.h"
 #include "RtiTargetValue.h"
 #include "Timer.h"
+
+namespace
+{
+    // Running for help (flee for assistance: AttackStop + an assistance move) or plain fleeing.
+    bool IsRunningForHelp(Creature* c)
+    {
+        return c->HasUnitState(UNIT_STATE_FLEEING) ||
+               c->GetMotionMaster()->GetCurrentMovementGeneratorType() == ASSISTANCE_MOTION_TYPE;
+    }
+}
 
 namespace
 {
@@ -113,6 +125,22 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
             if (!c || !c->IsAlive() || !c->IsInWorld() || !bot->IsValidAttackTarget(c))
                 continue;
             float const d = c->GetExactDist(ax, ay, az);
+            bool const fleeing = inCombat && c->IsInCombat() && IsRunningForHelp(c);
+            if (fleeing && std::find(st.fleeReported.begin(), st.fleeReported.end(), guid) == st.fleeReported.end())
+            {
+                st.fleeReported.push_back(guid);
+                DungeonLead::RecordEventV2(botAI, "mob_fleeing",
+                                           DungeonLeadKernel::JsonLine()
+                                               .Str("name", c->GetName())
+                                               .Num("entry", uint32_t(c->GetEntry()))
+                                               .Num("spawn", uint32_t(c->GetSpawnId()))
+                                               .Num("health_pct", uint32_t(c->GetHealthPct()))
+                                               .Num("x", c->GetPositionX())
+                                               .Num("y", c->GetPositionY())
+                                               .Num("z", c->GetPositionZ())
+                                               .Num("fight_id", uint32_t(st.fightId))
+                                               .Done());
+            }
             if (inCombat)
             {
                 Unit* victim = c->GetVictim();
@@ -121,6 +149,7 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
                 // an enemy totem in the fight area counts even when it isn't flagged in combat
                 ff.inCombat = c->IsInCombat() || c->IsTotem();
                 ff.attackingParty = victimPlayer && group->IsMember(victimPlayer->GetGUID());
+                ff.fleeing = fleeing;
                 ff.distToAnchor = d;
                 if (!DungeonLeadKernel::IsFightCandidate(ff, radius))
                     continue;
@@ -137,6 +166,7 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
             t.totem = c->IsTotem();
             t.controlled = c->HasBreakableByDamageCrowdControlAura();
             t.ccRefused = std::find(st.ccFailed.begin(), st.ccFailed.end(), guid) != st.ccFailed.end();
+            t.fleeing = fleeing;
             candidates.push_back(t);
             guids.push_back(guid);
         }

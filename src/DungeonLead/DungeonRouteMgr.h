@@ -295,6 +295,7 @@ struct DungeonLeadState
     uint32 fightStartTs = 0;
     std::vector<ObjectGuid> fightUnits;
     std::vector<ObjectGuid> fightDead;
+    std::vector<ObjectGuid> fleeReported;  // mob_fleeing written once per unit and fight
     std::vector<std::pair<ObjectGuid, bool>> memberAlive;
     // The session's one authoritative state - only DungeonLeadBrain::TransitionTo changes it.
     // Starting: leadership requested, not observed yet. Stopping: strategies restored, handback

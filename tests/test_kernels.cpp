@@ -542,6 +542,9 @@ namespace
         f.targetAttackingParty = true;
         Check(ChaseAllowed(f, 30.0f), "target beyond leash beating a party member -> tank goes");
         f.targetAttackingParty = false;
+        f.targetRunningForHelp = true;
+        Check(ChaseAllowed(f, 30.0f), "target running for help beyond leash -> stop it before it brings a pack");
+        f.targetRunningForHelp = false;
         f.inCombat = false;
         Check(ChaseAllowed(f, 30.0f), "out of combat the leash does not apply");
         f.inCombat = true;
@@ -572,6 +575,21 @@ namespace
 
     void TestTargets()
     {
+        {
+            // a mob running for help takes the skull from a kept primary and from a totem
+            std::vector<TargetCandidate> c(3);
+            c[0].id = 1; c[0].elite = true; c[0].caster = true;
+            c[1].id = 2; c[1].totem = true;
+            c[2].id = 3; c[2].elite = true; c[2].healthPct = 12; c[2].fleeing = true;
+            TargetPlan prev; prev.primary = 1;
+            TargetPlan const p = PickTargetPlan(c, prev, false);
+            Check(p.primary == 3, "a fleeing mob becomes the kill target over a kept primary and a totem");
+            FightCandidateFacts f; f.inCombat = true; f.fleeing = true; f.distToAnchor = 50.f;
+            Check(IsFightCandidate(f, 30.f), "a fleeing fight member stays a candidate beyond the anchor radius");
+            f.fleeing = false;
+            Check(!IsFightCandidate(f, 30.f), "an idle unit 50 yd away is not");
+        }
+
         std::vector<TargetCandidate> pack{T(1, false, false, true, 5), T(2, false, true, true, 8),
                                           T(3, true, false, true, 10), T(4, false, false, false, 3)};
         TargetPlan p = PickTargetPlan(pack, TargetPlan(), true);

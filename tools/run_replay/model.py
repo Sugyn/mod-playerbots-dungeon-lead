@@ -350,6 +350,8 @@ class _Builder:
                 self.note(e, "run", "Run started")
             elif t == "state_transition" and p.get("to") in _TIMELINE_STATES:
                 self.note(e, "state", f"{p.get('from')} -> {p.get('to')} ({p.get('reason')})")
+            elif t == "mob_fleeing":
+                self.note(e, "flee", f"{p.get('name')} runs for help at {p.get('health_pct')}% (fight {p.get('fight_id')})")
             elif t == "boss_killed" and not p.get("current_step"):
                 self.note(e, "boss", f"Boss {p.get('name')} killed during another step's fight (step {p.get('step')})")
             elif t in ("objective_skipped", "objective_failed", "route_complete", "canary_stop", "stop"):

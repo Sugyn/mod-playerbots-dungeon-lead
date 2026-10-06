@@ -659,6 +659,7 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
                           .Done());
         st.fightUnits.clear();
         st.fightDead.clear();
+        st.fleeReported.clear();
     }
 }
 

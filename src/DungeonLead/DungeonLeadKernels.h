@@ -710,6 +710,7 @@ namespace DungeonLeadKernel
         bool inCombat = false;
         bool hasTarget = false;
         bool targetAttackingParty = false;  // its victim is a party member - not fleeing
+        bool targetRunningForHelp = false;  // fleeing for assistance: it brings the next pack if not stopped
         float targetDistFromAnchor = 0.0f;
     };
 
@@ -717,7 +718,7 @@ namespace DungeonLeadKernel
     // GM-observed: fel steeds on the healer 55 yd from the anchor, the tank stood still).
     inline bool ChaseAllowed(LeashFacts const& f, float leashRadius)
     {
-        if (!f.anchorSet || !f.inCombat || !f.hasTarget || f.targetAttackingParty)
+        if (!f.anchorSet || !f.inCombat || !f.hasTarget || f.targetAttackingParty || f.targetRunningForHelp)
             return true;
         return f.targetDistFromAnchor <= leashRadius;
     }
@@ -846,6 +847,7 @@ namespace DungeonLeadKernel
         bool totem = false;       // enemy totem: dies in a hit or two, and some hurt the whole party
         bool controlled = false;  // under breakable crowd control right now (a sheep, a sap, ...)
         bool ccRefused = false;   // our CC never landed on it this step - don't mark it again
+        bool fleeing = false;     // running for help (flee for assistance) or fleeing: it brings a pack
     };
 
     // A new CC target must be (nearly) untouched: crowd-controlling a mob the party has already
@@ -869,6 +871,10 @@ namespace DungeonLeadKernel
     {
         if (c.controlled)
             return 6;  // never break a CC for a kill target while anything else is up
+        // A mob running for help brings the next pack with it (SM Cathedral: flee-for-assist mobs
+        // chained the whole nave and Mograine into one fight): stop it before anything else.
+        if (c.fleeing)
+            return -2;
         if (c.totem)
             return -1;
         if (c.boss)
@@ -899,12 +905,13 @@ namespace DungeonLeadKernel
     {
         bool inCombat = false;
         bool attackingParty = false;  // its victim is a party member
+        bool fleeing = false;         // a fight member running for help - still ours wherever it is
         float distToAnchor = 0.0f;
     };
 
     inline bool IsFightCandidate(FightCandidateFacts const& c, float radius)
     {
-        return c.inCombat && (c.attackingParty || c.distToAnchor <= radius);
+        return c.inCombat && (c.attackingParty || c.fleeing || c.distToAnchor <= radius);
     }
 
     inline TargetPlan PickTargetPlan(std::vector<TargetCandidate> const& candidates, TargetPlan const& previous,
@@ -937,12 +944,15 @@ namespace DungeonLeadKernel
         if (wantCc && !plan.cc && candidates.size() > 1)
             plan.cc = best([&](TargetCandidate const& c) { return c.controlled && !c.boss; });
 
-        // A kept primary holds its slot - except against a totem, which goes first.
+        // A kept primary holds its slot - except against a totem or a mob running for help, which go
+        // first.
         TargetCandidate const* keptPrimary = previous.primary ? find(previous.primary) : nullptr;
         bool const totemUp = std::any_of(candidates.begin(), candidates.end(),
                                          [&](TargetCandidate const& c) { return c.totem && c.id != plan.cc; });
+        bool const fleeingUp = std::any_of(candidates.begin(), candidates.end(),
+                                           [&](TargetCandidate const& c) { return c.fleeing && !c.controlled && c.id != plan.cc; });
         plan.primary = keptPrimary && previous.primary != plan.cc && !keptPrimary->controlled &&
-                               (keptPrimary->totem || !totemUp)
+                               (keptPrimary->fleeing || !fleeingUp) && (keptPrimary->totem || keptPrimary->fleeing || !totemUp)
                            ? previous.primary
                            : best([&](TargetCandidate const& c) { return c.id != plan.cc; });
         TargetCandidate const* keptSecondary = previous.secondary ? find(previous.secondary) : nullptr;

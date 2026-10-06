@@ -12,6 +12,8 @@
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "Timer.h"
+#include "MotionMaster.h"
+#include "Creature.h"
 #include "DungeonPartyState.h"
 #include "Playerbots.h"
 
@@ -56,6 +58,9 @@ float DungeonLeadMultiplier::GetValue(Action* action)
             Unit* victim = target->GetVictim();
             Player* victimPlayer = victim ? victim->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
             leash.targetAttackingParty = victimPlayer && (victimPlayer == bot || bot->IsInSameGroupWith(victimPlayer));
+            if (Creature* c = target->ToCreature())
+                leash.targetRunningForHelp = c->HasUnitState(UNIT_STATE_FLEEING) ||
+                    c->GetMotionMaster()->GetCurrentMovementGeneratorType() == ASSISTANCE_MOTION_TYPE;
         }
         float const radius = st.anchorRadius > 0.f ? st.anchorRadius : sDungeonLeadConfig.dungeonLeadCombatLeashRadius;
         if (DungeonLeadKernel::ChaseAllowed(leash, radius))
