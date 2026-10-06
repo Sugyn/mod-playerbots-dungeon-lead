@@ -277,7 +277,7 @@ namespace
     }
 
     // The actual desired strategy state for an active dungeon-lead session: followers on "leader"
-    // formation with +follow/+cc, the leader itself on +dungeon lead/+grind/+cc/+mark rti.
+    // formation with +follow/+cc, the leader itself on +dungeon lead/+grind/+cc/+mark rti; nobody loots.
     // Safe to call repeatedly - both at "startdungeon" itself and from the reconciliation loop
     // (GuardActiveSessions) that keeps reasserting it for as long as the session is active - but
     // NOT a free no-op upstream (see DL-020): ChangeStrategy()/FormationValue::Load() remove and
@@ -313,7 +313,8 @@ namespace
             // (logWipeDetection=false) is untouched, everyone there is expected to need the full
             // apply anyway.
             bool formationWiped = fv && fv->Save() != "leader";
-            bool strategyWiped = !memberAI->HasStrategy("follow", BOT_STATE_NON_COMBAT);
+            bool strategyWiped = !memberAI->HasStrategy("follow", BOT_STATE_NON_COMBAT) ||
+                                 memberAI->HasStrategy("loot", BOT_STATE_NON_COMBAT);
             if (logWipeDetection && (formationWiped || strategyWiped))
             {
                 LOG_INFO("playerbots.dungeonlead",
@@ -330,7 +331,9 @@ namespace
                 // it can't walk there (NewRpgBaseAction::MoveFarTo) - from inside an instance that
                 // means out of the dungeon (seen live in Shadowfang Keep: the leader landed in
                 // Silverpine while the party was drinking). Restored with the snapshot at Stop().
-                memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg",
+                // -loot: see the leader below - a looting follower wandered off to old corpses and
+                // held every pull on "group too spread".
+                memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot",
                                          BOT_STATE_NON_COMBAT);
                 memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
             }
@@ -339,7 +342,8 @@ namespace
         // loop actually found it missing. HasStrategy("dungeon lead", ...) mirrors DungeonLead::IsOn
         // exactly (see its declaration) - the leader's non-combat strategy is the canonical "is this
         // session actually active" signal.
-        bool leaderStrategyWiped = !botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT);
+        bool leaderStrategyWiped = !botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT) ||
+                                   botAI->HasStrategy("loot", BOT_STATE_NON_COMBAT);
         if (logWipeDetection && leaderStrategyWiped)
         {
             LOG_INFO("playerbots.dungeonlead",
@@ -349,7 +353,10 @@ namespace
         }
         if (!logWipeDetection || leaderStrategyWiped)
         {
-            botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg", BOT_STATE_NON_COMBAT);
+            // -loot: upstream's loot actions outrank "dungeon lead next" (5-8 vs 3.5), so the leader
+            // walked every corpse before moving on, even back to old ones 135 yd behind (GM-observed,
+            // SFK). Keys are looted by the interaction steps themselves. Restored at Stop().
+            botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg,-loot", BOT_STATE_NON_COMBAT);
             botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
         }
     }

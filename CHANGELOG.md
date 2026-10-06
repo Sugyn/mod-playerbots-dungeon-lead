@@ -18,6 +18,20 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Fixed
+- A boss that joins a fight far from its home no longer moves the fight to it: the fight stays
+  where it runs (RFC Taragaman and SFK Springvale dragged the tank through more packs).
+- The combat leash no longer holds the tank back from a mob beating a party member - it only
+  stops chasing a mob that is not attacking anyone.
+- No looting during a session (leader and followers): upstream's loot actions outrank the route
+  walk, so the leader looted every corpse first and once walked back to old corpses.
+- Validation campaign: a run counts as ended only after 30 s without a session (a wipe teleport
+  hid the tank and the campaign released the bots of a live run).
+
+### Changed
+- Shadowfang Keep: the courtyard packs between the Courtyard Door and Razorclaw are optional pull
+  steps, taken one by one (`sql/updates/2026_10_06_00_sfk_courtyard_packs.sql`).
+
 ## [0.13.0-alpha] - 2026-10-06
 
 Dungeon events and doors: the leader opens what a player opens, runs the events a route needs

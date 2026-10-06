@@ -709,12 +709,15 @@ namespace DungeonLeadKernel
         bool anchorSet = false;
         bool inCombat = false;
         bool hasTarget = false;
+        bool targetAttackingParty = false;  // its victim is a party member - not fleeing
         float targetDistFromAnchor = 0.0f;
     };
 
+    // A mob beating a party member is not fleeing: the tank goes, wherever it is (SFK courtyard,
+    // GM-observed: fel steeds on the healer 55 yd from the anchor, the tank stood still).
     inline bool ChaseAllowed(LeashFacts const& f, float leashRadius)
     {
-        if (!f.anchorSet || !f.inCombat || !f.hasTarget)
+        if (!f.anchorSet || !f.inCombat || !f.hasTarget || f.targetAttackingParty)
             return true;
         return f.targetDistFromAnchor <= leashRadius;
     }

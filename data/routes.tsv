@@ -39,13 +39,20 @@
 8	-	2	talk	Deathstalker Adamant	Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
 8	-	3	talk	Sorcerer Ashcrombe	Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore
 8	-	4	door	Courtyard door	opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
-8	-	5	boss	Razorclaw the Butcher
-8	-	6	boss	Baron Silverlaine
-8	-	7	boss	Commander Springvale
-8	-	8	boss	Odo the Blindwatcher
-8	-	9	boss	Fenrus the Devourer
-8	-	10	boss	Wolf Master Nandos	kills opens Arugal's door
-8	-	11	boss	Archmage Arugal
+8	-	5	optional	Slavering Worg	courtyard: worg by the door - the courtyard packs are pulled one by one - not crossed
+8	-	6	optional	Shadowfang Moonwalker	courtyard: pair west of the fountain
+8	-	7	optional	Slavering Worg	courtyard: worg + moonwalkers east
+8	-	8	optional	Haunted Servitor	courtyard: servitor + worg patrol at the fountain
+8	-	9	optional	Shadowfang Moonwalker	courtyard: north of the fountain
+8	-	10	optional	Shadowfang Moonwalker	courtyard: moonwalker + worg north-east
+8	-	11	optional	Fel Steed	courtyard: fel steeds + moonwalker below Razorclaw
+8	-	12	boss	Razorclaw the Butcher
+8	-	13	boss	Baron Silverlaine
+8	-	14	boss	Commander Springvale
+8	-	15	boss	Odo the Blindwatcher
+8	-	16	boss	Fenrus the Devourer
+8	-	17	boss	Wolf Master Nandos	kills opens Arugal's door
+8	-	18	boss	Archmage Arugal
 # Blackfathom Deeps (src: warcraft.wiki.gg/Blackfathom_Deeps_(Classic))
 10	-	1	boss	Ghamoo-ra
 10	-	2	optional	Lady Sarevess	side cavern

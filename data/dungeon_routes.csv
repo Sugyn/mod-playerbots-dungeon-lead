@@ -32,13 +32,20 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 8,Shadowfang Keep,33,0,0,-,2,talk,Deathstalker Adamant,3849,-243.712,2113.72,81.2629,spawn,Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
 8,Shadowfang Keep,33,0,0,-,3,talk,Sorcerer Ashcrombe,3850,-240.904,2122.55,81.2629,spawn,Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore
 8,Shadowfang Keep,33,0,0,-,4,door,Courtyard door,18895,-242.581,2159.05,90.6226,gameobject,opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
-8,Shadowfang Keep,33,0,0,-,5,boss,Razorclaw the Butcher,3886,-202.6,2258,76.3,spawn,
-8,Shadowfang Keep,33,0,0,-,6,boss,Baron Silverlaine,3887,-275.3,2297.4,76.2,spawn,
-8,Shadowfang Keep,33,0,0,-,7,boss,Commander Springvale,4278,-222.6,2259.4,102.8,spawn,
-8,Shadowfang Keep,33,0,0,-,8,boss,Odo the Blindwatcher,4279,-236.7,2146.1,100.1,spawn,
-8,Shadowfang Keep,33,0,0,-,9,boss,Fenrus the Devourer,4274,-135.6,2168.7,128.8,spawn,
-8,Shadowfang Keep,33,0,0,-,10,boss,Wolf Master Nandos,3927,-120.7,2162,155.8,spawn,kills opens Arugal's door
-8,Shadowfang Keep,33,0,0,-,11,boss,Archmage Arugal,4275,-76.8,2152.4,155.8,spawn,
+8,Shadowfang Keep,33,0,0,-,5,optional,Slavering Worg,3862,-231.9,2165.9,79.8,spawn,courtyard: worg by the door - the courtyard packs are pulled one by one - not crossed
+8,Shadowfang Keep,33,0,0,-,6,optional,Shadowfang Moonwalker,3853,-223.4,2202.7,79.8,spawn,courtyard: pair west of the fountain
+8,Shadowfang Keep,33,0,0,-,7,optional,Slavering Worg,3862,-204,2184.1,79.8,spawn,courtyard: worg + moonwalkers east
+8,Shadowfang Keep,33,0,0,-,8,optional,Haunted Servitor,3875,-205.2,2208.9,79.8,spawn,courtyard: servitor + worg patrol at the fountain
+8,Shadowfang Keep,33,0,0,-,9,optional,Shadowfang Moonwalker,3853,-217.1,2225.2,79.8,spawn,courtyard: north of the fountain
+8,Shadowfang Keep,33,0,0,-,10,optional,Shadowfang Moonwalker,3853,-199.1,2221,79.8,spawn,courtyard: moonwalker + worg north-east
+8,Shadowfang Keep,33,0,0,-,11,optional,Fel Steed,3864,-223.6,2245.7,79.9,spawn,courtyard: fel steeds + moonwalker below Razorclaw
+8,Shadowfang Keep,33,0,0,-,12,boss,Razorclaw the Butcher,3886,-202.6,2258,76.3,spawn,
+8,Shadowfang Keep,33,0,0,-,13,boss,Baron Silverlaine,3887,-275.3,2297.4,76.2,spawn,
+8,Shadowfang Keep,33,0,0,-,14,boss,Commander Springvale,4278,-222.6,2259.4,102.8,spawn,
+8,Shadowfang Keep,33,0,0,-,15,boss,Odo the Blindwatcher,4279,-236.7,2146.1,100.1,spawn,
+8,Shadowfang Keep,33,0,0,-,16,boss,Fenrus the Devourer,4274,-135.6,2168.7,128.8,spawn,
+8,Shadowfang Keep,33,0,0,-,17,boss,Wolf Master Nandos,3927,-120.7,2162,155.8,spawn,kills opens Arugal's door
+8,Shadowfang Keep,33,0,0,-,18,boss,Archmage Arugal,4275,-76.8,2152.4,155.8,spawn,
 10,Blackfathom Deeps,48,0,0,-,1,boss,Ghamoo-ra,4887,-442.4,211.8,-52.6,spawn,
 10,Blackfathom Deeps,48,0,0,-,2,optional,Lady Sarevess,4831,-299.9,413.8,-57.1,spawn,side cavern
 10,Blackfathom Deeps,48,0,0,-,3,boss,Gelihast,6243,-412.7,40.9,-48.1,spawn,

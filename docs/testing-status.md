@@ -3,8 +3,8 @@
 Live runs use a bot-only test party (`DungeonTestBotPool`) at the dungeon's LFG target level on
 the current build, started with `.dungeonlead validate` (see `tools/live_validation/README.md`). Dungeons not listed in the matrix have route data validated against the
 world/travelnode databases but no live run yet. "Has a door/gate" means the route has a
-`door`/`event` step; the leader waits at a closed door (up to `DoorWaitSeconds`) but never opens
-one itself, so key/lever doors still end the objective. See `data/routes.tsv` for the exact step.
+`door`/`event` step; the leader opens a door the way a player can (hand lock, key, lever on its
+side) or waits for it (up to `DoorWaitSeconds`). See `data/routes.tsv` for the exact step.
 
 ## Live validation (2026-10-04/05)
 
@@ -12,7 +12,31 @@ Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) 
 are on since 2026-10-05; Deadmines, Shadowfang Keep and Zul'Farrak were run with them.
 OK = exercised and behaved correctly, `-` = not exercised.
 Levels (definitions in `tools/live_validation/README.md`): Smoke, Partial, Full route, Verified
-(full route twice without a failure that needed a fix), Blocked. None is Verified yet.
+(full route twice without a failure that needed a fix), Blocked. Verified so far: Razorfen Downs
+(see below).
+
+## Verified campaign (2026-10-06)
+
+Each dungeon twice, four parties at a time (`ValidationParallel=4`), on build `ca3d077`:
+
+| Dungeon | Run 1 | Run 2 | Note |
+|---|---|---|---|
+| Razorfen Downs | complete | complete | **Verified** - the only skip is Ragglesnout (rare spawn, absent) |
+| SM Library | complete | killed by the campaign | campaign bug, fixed in `5380a13` |
+| SM Armory | killed by the campaign | complete | same campaign bug |
+| SM Cathedral | complete | partial, 4 wipes | not classified yet |
+| Ragefire Chasm | partial (Bazzalan not found) | complete | Taragaman wipes on the cultist packs |
+| Deadmines | complete (Greenskin, Cookie skipped: stuck) | 70 min cap | |
+| Zul'Farrak | 70 min cap | complete | |
+| Shadowfang Keep | partial, 4 wipes | partial (Cell Door 18935 on the way back) | GM-observed, see below |
+
+Shadowfang Keep, GM-observed on the next build (2026-10-06): the walk from the Courtyard Door to
+Razorclaw crossed the courtyard and pulled three packs at once; the tank stood still while fel
+steeds beat the healer 55 yd from the combat anchor (leash); upstream's loot actions outrank the
+route walk, so the leader looted every corpse first and once walked 135 yd back to old corpses at
+the cells (then waited at Cell Door 18935). Fixed in the commit after `5380a13` (courtyard packs as
+optional steps, leash lets the tank reach a mob on a party member, no looting during a session) -
+not live-validated yet.
 
 | Dungeon | Level | Bosses | Pulls | Recovery | Wipe | Door | Result |
 |---|---|---|---|---|---|---|---|

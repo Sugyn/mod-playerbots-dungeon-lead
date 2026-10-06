@@ -538,6 +538,9 @@ namespace
         Check(ChaseAllowed(f, 30.0f), "target inside leash -> chase allowed");
         f.targetDistFromAnchor = 45.0f;
         Check(!ChaseAllowed(f, 30.0f), "fleeing target beyond leash -> no chase");
+        f.targetAttackingParty = true;
+        Check(ChaseAllowed(f, 30.0f), "target beyond leash beating a party member -> tank goes");
+        f.targetAttackingParty = false;
         f.inCombat = false;
         Check(ChaseAllowed(f, 30.0f), "out of combat the leash does not apply");
         f.inCombat = true;

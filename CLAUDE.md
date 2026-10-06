@@ -2137,11 +2137,14 @@ v0.13.0-alpha (2026-10-06). Stays `-alpha` until most supported non-event dungeo
 
 From `docs/testing-status.md` (2026-10-06): Full route - RFC, Deadmines, Shadowfang Keep, SM
 Graveyard/Library/Armory/Cathedral, Razorfen Downs, Zul'Farrak; Partial - Wailing Caverns,
-Razorfen Kraul; Verified - none; TBC/WotLK - not run.
+Razorfen Kraul; Verified - Razorfen Downs (2026-10-06 campaign, build ca3d077); TBC/WotLK - not run.
 
 ## Open findings (audit 2026-10-06)
 
-- No dungeon Verified yet (needs a second clean full route on the same code).
+- Only Razorfen Downs Verified. 2026-10-06 campaign (docs/testing-status.md): SFK never completes
+  (courtyard multi-pull, leash, looting - fixed after 5380a13, not live-validated); SM Cathedral
+  wipes, RFC Bazzalan not found, Deadmines stuck skips (Greenskin, Cookie), DM/ZF 70 min caps -
+  not classified yet.
 - Coverage is Vanilla only; TBC normal not run.
 - Interaction-heavy dungeons (Uldaman, Scholomance, Gnomeregan, BRD) not run.
 - Wailing Caverns: Mutanus needs the Disciple of Naralex escort (not supported).

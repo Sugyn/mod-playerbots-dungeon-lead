@@ -51,7 +51,12 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         leash.inCombat = bot->IsInCombat();
         leash.hasTarget = target != nullptr;
         if (target)
+        {
             leash.targetDistFromAnchor = target->GetExactDist(st.anchorX, st.anchorY, st.anchorZ);
+            Unit* victim = target->GetVictim();
+            Player* victimPlayer = victim ? victim->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
+            leash.targetAttackingParty = victimPlayer && (victimPlayer == bot || bot->IsInSameGroupWith(victimPlayer));
+        }
         float const radius = st.anchorRadius > 0.f ? st.anchorRadius : sDungeonLeadConfig.dungeonLeadCombatLeashRadius;
         if (DungeonLeadKernel::ChaseAllowed(leash, radius))
             return 1.0f;

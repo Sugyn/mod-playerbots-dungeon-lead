@@ -45,13 +45,20 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 2. **Deathstalker Adamant** — entry 3849 @ (-243.712, 2113.72, 81.2629) — Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
 3. **Sorcerer Ashcrombe** — entry 3850 @ (-240.904, 2122.55, 81.2629) — Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore
 4. **Courtyard door** **[door]** `gameobject` — entry 18895 @ (-242.581, 2159.05, 90.6226) — opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
-5. **Razorclaw the Butcher** — entry 3886 @ (-202.6, 2258, 76.3)
-6. **Baron Silverlaine** — entry 3887 @ (-275.3, 2297.4, 76.2)
-7. **Commander Springvale** — entry 4278 @ (-222.6, 2259.4, 102.8)
-8. **Odo the Blindwatcher** — entry 4279 @ (-236.7, 2146.1, 100.1)
-9. **Fenrus the Devourer** — entry 4274 @ (-135.6, 2168.7, 128.8)
-10. **Wolf Master Nandos** — entry 3927 @ (-120.7, 2162, 155.8) — kills opens Arugal's door
-11. **Archmage Arugal** — entry 4275 @ (-76.8, 2152.4, 155.8)
+5. **Slavering Worg** *(optional)* — entry 3862 @ (-231.9, 2165.9, 79.8) — courtyard: worg by the door - the courtyard packs are pulled one by one - not crossed
+6. **Shadowfang Moonwalker** *(optional)* — entry 3853 @ (-223.4, 2202.7, 79.8) — courtyard: pair west of the fountain
+7. **Slavering Worg** *(optional)* — entry 3862 @ (-204, 2184.1, 79.8) — courtyard: worg + moonwalkers east
+8. **Haunted Servitor** *(optional)* — entry 3875 @ (-205.2, 2208.9, 79.8) — courtyard: servitor + worg patrol at the fountain
+9. **Shadowfang Moonwalker** *(optional)* — entry 3853 @ (-217.1, 2225.2, 79.8) — courtyard: north of the fountain
+10. **Shadowfang Moonwalker** *(optional)* — entry 3853 @ (-199.1, 2221, 79.8) — courtyard: moonwalker + worg north-east
+11. **Fel Steed** *(optional)* — entry 3864 @ (-223.6, 2245.7, 79.9) — courtyard: fel steeds + moonwalker below Razorclaw
+12. **Razorclaw the Butcher** — entry 3886 @ (-202.6, 2258, 76.3)
+13. **Baron Silverlaine** — entry 3887 @ (-275.3, 2297.4, 76.2)
+14. **Commander Springvale** — entry 4278 @ (-222.6, 2259.4, 102.8)
+15. **Odo the Blindwatcher** — entry 4279 @ (-236.7, 2146.1, 100.1)
+16. **Fenrus the Devourer** — entry 4274 @ (-135.6, 2168.7, 128.8)
+17. **Wolf Master Nandos** — entry 3927 @ (-120.7, 2162, 155.8) — kills opens Arugal's door
+18. **Archmage Arugal** — entry 4275 @ (-76.8, 2152.4, 155.8)
 ### Blackfathom Deeps (LFD 10, map 48)
 
 1. **Ghamoo-ra** — entry 4887 @ (-442.4, 211.8, -52.6)
