@@ -2035,6 +2035,14 @@ bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, Dungeo
                                " round=" + std::to_string(st.objectiveFailures) + " action=" +
                                DungeonLeadKernel::ToString(action);
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} objective failed: {}", botAI->GetBot()->GetName(), detail);
+    std::string const payload = DungeonLeadKernel::JsonLine()
+                                    .Str("name", step.boss)
+                                    .Num("step", uint32_t(st.stepIndex))
+                                    .Str("requirement", ToString(requirement))
+                                    .Str("why", why)
+                                    .Num("round", uint32_t(st.objectiveFailures))
+                                    .Str("action", DungeonLeadKernel::ToString(action))
+                                    .Done();
 
     switch (action)
     {
@@ -2046,13 +2054,13 @@ bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, Dungeo
                 if (pack.Exists())
                     SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
             }
-            DungeonLead::RecordEvent(botAI, "objective_skipped", detail);
+            DungeonLead::RecordEvent(botAI, "objective_skipped", detail, payload);
             botAI->TellMasterNoFacing("Dungeon lead: can't do " + step.boss + ", moving on");
             SkipStep(st, step, domain, reason);
             return false;
         }
         case DungeonLeadKernel::ObjectiveFailureAction::Retry:
-            DungeonLead::RecordEvent(botAI, "objective_retry", detail);
+            DungeonLead::RecordEvent(botAI, "objective_retry", detail, payload);
             botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " didn't work out, trying again");
             ResetStepState(st);
             return false;
@@ -2066,7 +2074,7 @@ bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, Dungeo
     st.failureReason = reason;
     st.skippedSteps.push_back(step.boss);
     st.mandatorySkipped = true;
-    DungeonLead::RecordEvent(botAI, "objective_failed", detail);
+    DungeonLead::RecordEvent(botAI, "objective_failed", detail, payload);
     DungeonLead::RecordRunSummary(botAI, "objective_failed");
     botAI->TellMasterNoFacing("Dungeon lead: can't get past " + step.boss + " - stopping here");
     Stop(botAI, /*giveLeaderBack*/ true);
@@ -2116,7 +2124,13 @@ void DungeonLead::RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st)
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} checkpoint restore: step {} -> {} (checkpoint {})",
              botAI->GetBot()->GetName(), from, st.stepIndex, checkpoint);
     DungeonLead::RecordEvent(botAI, "checkpoint_restore", "from=" + std::to_string(from) + " to=" +
-                                                              std::to_string(st.stepIndex) + " checkpoint=" + checkpoint);
+                                                              std::to_string(st.stepIndex) + " checkpoint=" + checkpoint,
+                             DungeonLeadKernel::JsonLine()
+                                 .Num("from_step", int32_t(from))
+                                 .Num("to_step", uint32_t(st.stepIndex))
+                                 .Str("checkpoint", checkpoint)
+                                 .Num("checkpoint_step", int32_t(st.checkpointStep))
+                                 .Done());
 }
 
 bool DungeonLeadNextAction::Execute(Event /*event*/)

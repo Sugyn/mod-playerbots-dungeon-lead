@@ -100,9 +100,14 @@ class _Builder:
         for e in self.events:
             t = e["event_type"]
             if t in ("objective_skipped", "objective_failed", "objective_retry"):
-                o = legacy.objective(e["payload"].get("detail", ""))
+                p = e["payload"]
+                if "why" in p:
+                    o = {k: p.get(k) for k in ("name", "requirement", "why", "round", "action")}
+                    src = "payload"
+                else:
+                    o, src = legacy.objective(p.get("detail", "")), "detail"
                 steps.setdefault(e["step"], {"step": e["step"], "name": o["name"], "events": []})["events"].append(
-                    {"run_ms": e["run_ms"], "event": t, **o, "source": "detail"})
+                    {"run_ms": e["run_ms"], "event": t, **o, "source": src})
             elif t == "skip_stuck":
                 steps.setdefault(e["step"], {"step": e["step"], "name": legacy.first_word_name(e["payload"].get("detail", "")),
                                              "events": []})["events"].append(
@@ -246,7 +251,7 @@ class _Builder:
         for e in self.events:
             t = e["event_type"]
             if t == "wipe_detected":
-                n = legacy.wipe_number(e["payload"].get("detail", ""))
+                n = e["payload"].get("wipe") or legacy.wipe_number(e["payload"].get("detail", ""))
                 window = [d for d in deaths if e["run_ms"] - 60000 <= d["run_ms"] <= e["run_ms"]]
                 out.append({"wipe": n, "run_ms": e["run_ms"], "position": _pos(e), "step": e.get("step"),
                             "pack_id": e.get("pack_id"), "deaths_before": window,
@@ -255,7 +260,10 @@ class _Builder:
             elif t == "wipe_recovered" and out:
                 out[-1]["recovered_ms"] = e["run_ms"]
             elif t == "checkpoint_restore" and out:
-                out[-1]["checkpoint"] = dict(legacy.checkpoint(e["payload"].get("detail", "")), source="detail")
+                p = e["payload"]
+                out[-1]["checkpoint"] = ({"from_step": p["from_step"], "to_step": p["to_step"], "name": p["checkpoint"],
+                                          "source": "payload"} if "checkpoint" in p
+                                         else dict(legacy.checkpoint(p.get("detail", "")), source="detail"))
             elif t == "wipe_giveup" and out:
                 out[-1]["gave_up_ms"] = e["run_ms"]
         return out
@@ -267,9 +275,11 @@ class _Builder:
             if t == "recovery_start":
                 if cur:
                     cur["result"] = "superseded"
-                r = legacy.recovery(d)
+                p = e["payload"]
+                r, src = ({"reason": p["reason"], "member": p.get("member") or None}, "payload") if "reason" in p \
+                    else (legacy.recovery(d), "detail")
                 cur = {"reason": r["reason"], "member": r["member"], "start_ms": e["run_ms"],
-                       "start_position": _pos(e), "escalations": [], "result": "unknown", "source": "detail"}
+                       "start_position": _pos(e), "escalations": [], "result": "unknown", "source": src}
                 out.append(cur)
             elif cur is None:
                 continue
@@ -287,7 +297,9 @@ class _Builder:
         for e in self.events:
             t, d = e["event_type"], e["payload"].get("detail", "")
             if t == "interaction_state":
-                s = legacy.interaction_state(d)
+                p = e["payload"]
+                s = ({"type": p["type"], "from": p["from"], "to": p["to"], "target": p.get("target"), "entry": p.get("entry")}
+                     if "to" in p and "type" in p else legacy.interaction_state(d))
                 if s["from"] == "none":
                     cur = {"type": s["type"], "target": s.get("target"), "entry": s.get("entry"),
                            "start_ms": e["run_ms"], "position": _pos(e), "states": [], "result": "unknown",

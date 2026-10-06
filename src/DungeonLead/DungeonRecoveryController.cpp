@@ -12,6 +12,7 @@
 #include "DungeonLeadConfig.h"
 #include "DungeonPartyState.h"
 #include "DungeonRouteMgr.h"
+#include "DungeonTelemetryV2.h"
 #include "Group.h"
 #include "Log.h"
 #include "MotionMaster.h"
@@ -88,7 +89,11 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovery {} complete after {} ms", bot->GetName(),
                      DungeonLeadKernel::ToString(previous), ms);
             DungeonLead::RecordEvent(botAI, "recovery_complete",
-                                     std::string(DungeonLeadKernel::ToString(previous)) + " ms=" + std::to_string(ms));
+                                     std::string(DungeonLeadKernel::ToString(previous)) + " ms=" + std::to_string(ms),
+                                     DungeonLeadKernel::JsonLine()
+                                         .Str("reason", DungeonLeadKernel::ToString(previous))
+                                         .Num("ms", uint32_t(ms))
+                                         .Done());
         }
         DungeonLeadKernel::ObserveRecovery(st.recovery, observed, now);
         return true;
@@ -104,7 +109,13 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
         if (st.recovery.relapse)
             detail += " relapse_after_ms=" + std::to_string(getMSTimeDiff(st.recovery.reasonSince, now));
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovery start: {}", bot->GetName(), detail);
-        DungeonLead::RecordEvent(botAI, "recovery_start", detail);
+        DungeonLead::RecordEvent(botAI, "recovery_start", detail,
+                                 DungeonLeadKernel::JsonLine()
+                                     .Str("reason", DungeonLeadKernel::ToString(observed))
+                                     .Str("member", who ? who->GetName() : "")
+                                     .Str("previous", previous != RecoveryReason::None ? DungeonLeadKernel::ToString(previous) : "")
+                                     .Bool("relapse", st.recovery.relapse)
+                                     .Done());
     }
 
     DungeonLeadKernel::RecoveryPolicy policy;

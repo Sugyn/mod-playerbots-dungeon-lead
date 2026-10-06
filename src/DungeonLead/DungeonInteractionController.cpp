@@ -11,6 +11,7 @@
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonRouteMgr.h"
+#include "DungeonTelemetryV2.h"
 #include "DBCStores.h"
 #include "Group.h"
 #include "PathGenerator.h"
@@ -116,9 +117,20 @@ namespace
         std::string const line = std::string(DungeonLeadKernel::ToString(st.interactionType)) + " " +
                                  DungeonLeadKernel::ToString(st.interactionState) + "->" +
                                  DungeonLeadKernel::ToString(next) + (detail.empty() ? "" : " " + detail);
+        DungeonLeadKernel::JsonLine payload;
+        payload.Str("type", DungeonLeadKernel::ToString(st.interactionType))
+            .Str("from", DungeonLeadKernel::ToString(st.interactionState))
+            .Str("to", DungeonLeadKernel::ToString(next));
+        if (GameObject* go = st.interactionTarget.IsEmpty() ? nullptr : botAI->GetGameObject(st.interactionTarget))
+            payload.Str("target", go->GetName())
+                .Num("entry", uint32_t(go->GetEntry()))
+                .Num("spawn", uint32_t(go->GetSpawnId()))
+                .Num("x", go->GetPositionX())
+                .Num("y", go->GetPositionY())
+                .Num("z", go->GetPositionZ());
         st.interactionState = next;
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} interaction {}", botAI->GetBot()->GetName(), line);
-        DungeonLead::RecordEvent(botAI, "interaction_state", line);
+        DungeonLead::RecordEvent(botAI, "interaction_state", line, payload.Done());
     }
 }
 

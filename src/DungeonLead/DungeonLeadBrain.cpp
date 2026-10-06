@@ -142,13 +142,15 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} died while leading (run={}, wipe #{}) - "
                      "recovering, {}s before giving up", bot->GetName(), st.runId, st.wipeCount,
                      sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds);
-            DungeonLead::RecordEvent(botAI, "wipe_detected", "wipe #" + std::to_string(st.wipeCount));
+            DungeonLead::RecordEvent(botAI, "wipe_detected", "wipe #" + std::to_string(st.wipeCount),
+                                     DungeonLeadKernel::JsonLine().Num("wipe", uint32_t(st.wipeCount)).Done());
         }
         else if (st.state == LeadState::WipeRecovery)
         {
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} recovered from wipe #{} on run={} - resuming",
                      bot->GetName(), st.wipeCount, st.runId);
-            DungeonLead::RecordEvent(botAI, "wipe_recovered", "wipe #" + std::to_string(st.wipeCount));
+            DungeonLead::RecordEvent(botAI, "wipe_recovered", "wipe #" + std::to_string(st.wipeCount),
+                                     DungeonLeadKernel::JsonLine().Num("wipe", uint32_t(st.wipeCount)).Done());
             DungeonLead::RestoreCheckpoint(botAI, st);
         }
         if (t.next == LeadState::Combat && !st.anchorSet)
@@ -266,7 +268,8 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
     st.outcome = DungeonRunOutcome::Partial;
     st.failureDomain = DungeonFailureDomain::Combat;
     st.failureReason = DungeonFailureReason::PartyWipe;
-    DungeonLead::RecordEvent(botAI, "wipe_giveup", giveUp);
+    DungeonLead::RecordEvent(botAI, "wipe_giveup", giveUp,
+                             DungeonLeadKernel::JsonLine().Num("wipes", uint32_t(st.wipeCount)).Str("reason", giveUp).Done());
     DungeonLead::RecordRunSummary(botAI, "wipe");
     DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
     return false;
