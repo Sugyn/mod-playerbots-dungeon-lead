@@ -80,6 +80,21 @@ class _Builder:
             out.append(p)
         return out
 
+    def path_decisions(self):
+        """How the route walk chose its way (MoveRouteTo): branch, path type and the computed path."""
+        out = []
+        for e in self.events:
+            if e["event_type"] != "path_decision":
+                continue
+            p = e["payload"]
+            out.append({"run_ms": e["run_ms"], "step": e.get("step"), "kind": p.get("kind"),
+                        "objective": p.get("objective"), "from": _pos(e),
+                        "dest": {"x": p.get("dest_x"), "y": p.get("dest_y"), "z": p.get("dest_z")},
+                        "move_to": {"x": p.get("move_x"), "y": p.get("move_y"), "z": p.get("move_z")},
+                        "path_type": p.get("path_type"), "path_length": p.get("path_length"),
+                        "path": p.get("path") or []})
+        return out
+
     def route(self):
         steps = {}
         for e in self.events:
@@ -380,6 +395,7 @@ def reconstruct(events, dropped=()):
         "party": b.party(),
         "route": b.route(),
         "path": b.path(),
+        "path_decisions": b.path_decisions(),
         "timeline": timeline,
         "pulls": fights,
         "bosses": bosses,

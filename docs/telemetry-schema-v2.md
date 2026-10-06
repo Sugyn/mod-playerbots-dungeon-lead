@@ -105,23 +105,31 @@ v2 keeps the v1 event names (section 1) so both files describe the same events; 
 map them onto the semantic catalogue below. New events and structured payloads are added in
 increments, each with its own entry here.
 
-| Semantic event | v2 event_type today | Payload |
+| Semantic event | v2 event_type | Payload |
 |---|---|---|
 | leader path | `position_sample` (v2 only) | `moving`, `in_combat` (+ envelope position) |
+| walk decision | `path_decision` (v2 only) | `kind` (direct / path_end / short_detour / probe / no_path), `objective`, `dest_*`, `move_*`, `path_type`, `path_points`, `path_length`, `path` (<= 16 `[x,y,z]` points) |
+| party | `party_roster` (v2 only, first guard pass) | `members[]`: `name`, `guid`, `role`, `class`, `level`, `leader`, `bot` |
+| fight | `fight_started`, `fight_ended` (v2 only) | `fight_id`; end: `duration_ms`, `units`, `killed`, `leader_alive` |
+| combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid, entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |
+| mob_died | `mob_died` (v2 only) | `fight_id`, `unit` |
+| member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers` |
+| pull_members_resolved | `pull_members_resolved` (v2 only, pack locked on engage) | `pack_id`, `objective`, `requirement`, `boss`, `expected_entry`, `pack_x/y/z`, `core_members[]` (units) |
+| combat_anchor_set | `combat_anchor_set` (v2 only) | `kind` (fight_start / boss_home / held_at_fight), `x`, `y`, `z`, `radius`, `boss_home_dist` |
+| state | `state_transition` | `from`, `to`, `reason`, `after_ms`, `objective` (+ `detail`) |
+| pack | `pack_state` | `pack_id`, `name`, `type`, `boss`, `optional`, `from`, `to` (+ `detail`) |
 | run_started / run_ended | `start`, `stop`, `canary_stop`, `test_result` | `detail` |
 | route_step_* | `route_selected`, `reached`, `objective_*`, `skip_stuck`, `route_complete` | `detail` |
-| pull_* | `pull_state`, `pull_start`, `pull_established`, `pull_failed`, `pack_*` | `detail` (identities: planned) |
-| combat_anchor_set | `state_transition` to combat (`anchor=` in `detail`) | planned: numbers |
-| boss_* | `boss_prep`, `boss_combat`, `pack_state` of a boss pack | `detail` |
+| pull lifecycle | `pull_state`, `pull_start`, `pull_established`, `pull_failed`, `pack_resolution`, `pack_reset` | `detail` |
+| boss | `boss_prep`, `boss_combat`, `pack_state` of a boss pack | `detail` / structured `pack_state` |
 | wipe / recovery | `wipe_*`, `recovery_*`, `checkpoint_restore` | `detail` |
 | interaction | `interaction_state`, `door_*`, `use*`, `talk*`, `key_looted`, `area_trigger`, `event_assist` | `detail` |
 | integrity | `unexpected_teleport`, `instance_validity_restored`, `strategy_restored`, `telemetry_dropped` | `detail` |
 
-Planned structured payloads (next increments, in this order): pull members and adds with
-guid/entry/name/position (`pull_members_resolved`, `combat_add_joined`), party deaths
-(`member_died`: who, role, position, pull), wipe summary, combat anchor as numbers, boss
-engaged/killed. Only values the runtime has cheaply at the moment of the event; no world scans for
-telemetry.
+Combat evidence (`fight_*`, `combat_unit_joined`, `mob_died`, `member_*`) comes from the session
+guard on the world thread every ~2 s: the party members' current attackers and alive flags - no
+world scans. A unit that joins and dies between two passes is not seen; times are ~2 s accurate.
+Still on `detail` text (next increments): objectives, wipe/recovery reasons, interactions.
 
 ## 5. Position sampling
 

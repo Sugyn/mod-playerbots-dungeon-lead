@@ -2833,8 +2833,44 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         DungeonInteractionController::StartForDoor(botAI, st, door, "on_path");
         return true;
     }
+    // schema v2 path_decision: which way the walk chose and the path behind it (points thinned to
+    // at most 16), at most every 3 s or when the choice changes - the replay map draws it.
+    auto recordPath = [&](char const* kind, PathGenerator const* path, float tx, float ty, float tz)
+    {
+        if (st.lastPathDecisionTs && GetMSTimeDiffToNow(st.lastPathDecisionTs) < 3000 && st.lastPathDecisionKind == kind)
+            return;
+        st.lastPathDecisionTs = getMSTime();
+        st.lastPathDecisionKind = kind;
+        DungeonLeadKernel::JsonLine j;
+        j.Str("kind", kind)
+            .Str("objective", step.boss)
+            .Num("dest_x", dx).Num("dest_y", dy).Num("dest_z", dz)
+            .Num("dest_dist", disToDest)
+            .Num("move_x", tx).Num("move_y", ty).Num("move_z", tz);
+        if (path)
+        {
+            Movement::PointsArray const& pts = path->GetPath();
+            std::string arr;
+            size_t const stride = pts.size() > 16 ? (pts.size() + 15) / 16 : 1;
+            for (size_t i = 0; i < pts.size(); i += stride)
+                arr += (arr.empty() ? "[" : ",") + std::string("[") + std::to_string(int(pts[i].x)) + "," +
+                       std::to_string(int(pts[i].y)) + "," + std::to_string(int(pts[i].z)) + "]";
+            if (!pts.empty() && (pts.size() - 1) % stride)
+                arr += ",[" + std::to_string(int(pts.back().x)) + "," + std::to_string(int(pts.back().y)) + "," +
+                       std::to_string(int(pts.back().z)) + "]";
+            j.Num("path_type", uint32_t(path->GetPathType()))
+                .Num("path_points", uint32_t(pts.size()))
+                .Num("path_length", path->getPathLength())
+                .Raw("path", arr.empty() ? "[]" : arr + "]");
+        }
+        DungeonLead::RecordEventV2(botAI, "path_decision", j.Done());
+    };
+
     if (disToDest < kPathFinderDis)
+    {
+        recordPath("direct", nullptr, dx, dy, dz);
         return MoveTo(dest.GetMapId(), dx, dy, dz, false, false, false, true);
+    }
 
     // SHORT = a path cut at the point limit (a long way): as usable as a whole one. Without it every
     // destination more than ~300 yd of path away was "unreachable" (Deadmines, H7: the leader stood
@@ -2850,14 +2886,20 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             G3D::Vector3 const& endPos = path.GetActualEndPosition();
             float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
             if (endDistToDest + 5.0f < disToDest)
+            {
+                recordPath("path_end", &path, endPos.x, endPos.y, endPos.z);
                 return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
+            }
             // A full path cut at the point limit (SHORT, not INCOMPLETE) is a real way there even when
             // its first stretch leads away - a detour (Deadmines: from the upper level near the
             // entrance down to the cove the way first goes back west). Rejecting it left the leader
             // standing with "no path" (H7, twice at the same spot).
             if ((type & PATHFIND_SHORT) && !(type & PATHFIND_INCOMPLETE) &&
                 bot->GetExactDist(endPos.x, endPos.y, endPos.z) > 5.0f)
+            {
+                recordPath("short_detour", &path, endPos.x, endPos.y, endPos.z);
                 return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
+            }
         }
     }
 
@@ -2892,8 +2934,12 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         }
     }
     if (found)
+    {
+        recordPath("probe", nullptr, rx, ry, rz);
         return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
+    }
 
+    recordPath("no_path", nullptr, dx, dy, dz);
     return false;
 }
 

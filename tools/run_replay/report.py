@@ -16,7 +16,7 @@ def planned_route(lfg_id, routes_csv=None):
     out = []
     with open(path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            if row["lfg_id"] != str(lfg_id) or not row["x"]:
+            if row["lfg_id"] != str(lfg_id) or row["x"] in ("", "NULL"):
                 continue
             out.append({"step": int(row["step"]), "kind": row["kind"], "name": row["boss"],
                         "x": float(row["x"]), "y": float(row["y"]), "z": float(row["z"])})
@@ -152,6 +152,15 @@ def map_svg(m, planned=None, width=1000, height=800):
         e.append(f'<circle cx="{X:.1f}" cy="{Y:.1f}" r="3" fill="#999"><title>step {s["step"]} {html.escape(s["kind"])} '
                  f'{html.escape(s["name"])}</title></circle>')
         e.append(f'<text x="{X + 5:.1f}" y="{Y - 5:.1f}" font-size="9" fill="#777">{s["step"]}</text>')
+    # the walk's computed paths (path_decision), thin - where the navmesh sent the leader
+    for pd in m.get("path_decisions", []):
+        pts = [p for p in pd["path"] if len(p) >= 2]
+        if len(pts) < 2:
+            continue
+        poly = " ".join(f"{sx(p[0], p[1]):.1f},{sy(p[0], p[1]):.1f}" for p in pts)
+        e.append(f'<polyline points="{poly}" fill="none" stroke="#9333ea" stroke-width="1" stroke-opacity="0.35">'
+                 f'<title>{_clock(pd["run_ms"])} {html.escape(str(pd["kind"]))} to {html.escape(str(pd["objective"]))}'
+                 f' type {pd["path_type"]} length {pd["path_length"]}</title></polyline>')
     # actual path, broken at jumps (teleport, corpse run)
     seg = []
     for a, b in zip(m["path"], m["path"][1:]):
@@ -208,6 +217,7 @@ def map_svg(m, planned=None, width=1000, height=800):
                  f'({html.escape(str(r["member"]))}): {r["result"]}</title></polygon>')
     ly = height - 18
     legend = [("#999", "planned route (dashed)"), ("#2563eb", "leader path"), ("#c33", "path in combat"),
+              ("#9333ea", "computed path"),
               ("#16a34a", "fight cleared"), ("#dc2626", "fight wiped"), ("#ca8a04", "boss"),
               ("#b91c1c", "wipe"), ("#2563eb", "interaction"), ("#ea580c", "recovery")]
     lx = pad

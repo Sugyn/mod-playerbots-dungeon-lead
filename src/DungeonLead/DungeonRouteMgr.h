@@ -289,6 +289,8 @@ struct DungeonLeadState
     // Combat evidence (DungeonLead::ObserveCombatEvidence): the current fight's units - everything
     // that attacked a party member - and which of them were reported dead; party members' last
     // seen alive flag, for member_died / member_revived.
+    uint32 lastPathDecisionTs = 0;          // path_decision throttle (MoveRouteTo)
+    char const* lastPathDecisionKind = "";
     uint32 fightId = 0;
     uint32 fightStartTs = 0;
     std::vector<ObjectGuid> fightUnits;
