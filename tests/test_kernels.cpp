@@ -688,6 +688,14 @@ namespace
 {
     void TestRecovery()
     {
+        {
+            using G = EscalationGate;
+            Check(DecideEscalationGate(false, 0, true) == G::Escalate, "leader on the ground: escalate");
+            Check(DecideEscalationGate(true, 10000, true) == G::Defer, "off the ground: wait a little");
+            Check(DecideEscalationGate(true, 30000, true) == G::LeaderToLastGood, "waited 30 s: leader back to its last good spot");
+            Check(DecideEscalationGate(true, 30000, false) == G::Escalate, "no good spot to go to: escalate anyway, never wait forever");
+        }
+
         RecoveryPolicy const p{60000, 60000};
         Check(DecideRecovery(RecoveryReason::None, 999999, 999999, p) == RecoveryStep::None, "no problem -> nothing to do");
         Check(DecideRecovery(RecoveryReason::PartyFragmented, 0, 0, p) == RecoveryStep::Act, "new problem -> act");

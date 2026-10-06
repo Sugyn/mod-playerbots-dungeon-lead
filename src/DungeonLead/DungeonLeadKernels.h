@@ -1135,6 +1135,22 @@ namespace DungeonLeadKernel
 
     // Which recovery a readiness result calls for (LeadershipLost is observed separately).
     // `healerAlive`: for HealerUnavailable, whether the healer is alive (then it is elsewhere).
+    // Escalation brings members to the leader - but not to a leader off the ground (inside the rock).
+    // That wait is bounded: after kEscalationDeferMaxMs the leader is put back on its last good spot,
+    // or, without one, the escalation goes ahead (Deadmines: an unreadable ground height under a
+    // leader standing normally deferred it every 2 s for 52 minutes, until the run timed out).
+    constexpr uint32_t kEscalationDeferMaxMs = 30000;
+    enum class EscalationGate : uint8_t { Escalate, Defer, LeaderToLastGood };
+
+    inline EscalationGate DecideEscalationGate(bool leaderOffGround, uint32_t msDeferred, bool haveLastGood)
+    {
+        if (!leaderOffGround)
+            return EscalationGate::Escalate;
+        if (msDeferred < kEscalationDeferMaxMs)
+            return EscalationGate::Defer;
+        return haveLastGood ? EscalationGate::LeaderToLastGood : EscalationGate::Escalate;
+    }
+
     inline RecoveryReason RecoveryFor(ReadyStatus status, bool healerAlive)
     {
         switch (status)

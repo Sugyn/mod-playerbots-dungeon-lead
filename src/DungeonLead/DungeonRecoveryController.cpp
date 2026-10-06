@@ -96,6 +96,7 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                                          .Done());
         }
         DungeonLeadKernel::ObserveRecovery(st.recovery, observed, now);
+        st.escalationDeferSince = 0;
         return true;
     }
 
@@ -166,14 +167,36 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
             // for it to be put back on its feet (MoveRouteTo's last-good-spot move) and escalate
             // then - Deadmines: four members were brought into the rock with it.
             float const ground = bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() + 2.0f);
-            if (ground <= INVALID_HEIGHT + 1.0f || std::fabs(bot->GetPositionZ() - ground) > 5.0f)
+            bool const offGround = ground <= INVALID_HEIGHT + 1.0f || std::fabs(bot->GetPositionZ() - ground) > 5.0f;
+            if (offGround && !st.escalationDeferSince)
+                st.escalationDeferSince = getMSTime();
+            uint32 const deferred = offGround ? GetMSTimeDiffToNow(st.escalationDeferSince) : 0;
+            bool const haveLastGood = st.lastGoodSet && bot->GetExactDist(st.lastGoodX, st.lastGoodY, st.lastGoodZ) > 5.0f;
+            DungeonLeadKernel::EscalationGate const gate = DungeonLeadKernel::DecideEscalationGate(offGround, deferred, haveLastGood);
+            if (gate == DungeonLeadKernel::EscalationGate::Defer)
             {
                 st.recovery.step = RecoveryStep::Act;  // try the escalation again next tick
-                DungeonLead::RecordEvent(botAI, "recovery_escalate_deferred",
-                                         std::string(DungeonLeadKernel::ToString(observed)) + " leader_off_ground z=" +
-                                             std::to_string(int(bot->GetPositionZ())) + " ground=" + std::to_string(int(ground)));
+                if (deferred < 2500)  // once per deferral, not every tick
+                    DungeonLead::RecordEvent(botAI, "recovery_escalate_deferred",
+                                             std::string(DungeonLeadKernel::ToString(observed)) + " leader_off_ground z=" +
+                                                 std::to_string(int(bot->GetPositionZ())) + " ground=" + std::to_string(int(ground)));
                 break;
             }
+            if (gate == DungeonLeadKernel::EscalationGate::LeaderToLastGood)
+            {
+                std::string const back = "recovery from=(" + std::to_string(int(bot->GetPositionX())) + "," +
+                                         std::to_string(int(bot->GetPositionY())) + "," + std::to_string(int(bot->GetPositionZ())) +
+                                         ") ground=" + std::to_string(int(ground)) + " to=(" + std::to_string(int(st.lastGoodX)) +
+                                         "," + std::to_string(int(st.lastGoodY)) + "," + std::to_string(int(st.lastGoodZ)) + ")";
+                DungeonLead::RecordEvent(botAI, "leader_unstuck", back);
+                bot->GetMotionMaster()->Clear();
+                bot->NearTeleportTo(st.lastGoodX, st.lastGoodY, st.lastGoodZ, bot->GetOrientation());
+                st.lastGoodSet = false;  // once; next time the escalation goes ahead
+                st.escalationDeferSince = 0;
+                st.recovery.step = RecoveryStep::Act;
+                break;
+            }
+            st.escalationDeferSince = 0;
             bool const movable = who && IsBotMember(who) && who->IsAlive() &&
                                  (observed == RecoveryReason::PartyFragmented || observed == RecoveryReason::MemberLost);
             std::string detail = std::string(DungeonLeadKernel::ToString(observed)) + " member=" +
