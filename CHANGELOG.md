@@ -25,6 +25,13 @@ the MAJOR bar above is met.
 - `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
 
 ### Fixed
+- The leader's walk back to a straggler stops when the recovery ends. It went on to the
+  straggler's old spot - in Shadowfang Keep from the courtyard back into the cells, where the next
+  walk met the closed Cell Door and the run aborted. (Earlier put down to looting alone.)
+- A deferred recovery escalation (leader "off the ground") waits at most 30 s, then puts the
+  leader back on its last good spot or escalates - it waited 52 minutes in Deadmines.
+- A mob running for help (flee for assistance) takes the kill target and the tank may follow it
+  past the leash - in SM Cathedral runners chained the nave and Mograine into one fight.
 - A route boss killed while the party worked on another step (Zul'Farrak: Antu'sul joined the
   fight at Theka's) is done - its own step no longer aborts the run on "not found".
 

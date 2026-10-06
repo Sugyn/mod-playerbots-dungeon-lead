@@ -114,6 +114,7 @@ increments, each with its own entry here.
 | combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid (per-instance counter), spawn (world DB creature.guid), entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |
 | mob_died | `mob_died` (v2 only) | `fight_id`, `unit` |
 | mob_fleeing | `mob_fleeing` (v2 only) | `name`, `entry`, `spawn`, `health_pct`, `x`, `y`, `z`, `fight_id` - a fight member started running for help (flee for assistance) or fleeing; once per unit and fight |
+| recovery_walk_stopped | `recovery_walk_stopped` (v2 only) | `reason` - the recovery ended while the leader was still on its walk back to a straggler; the walk was stopped |
 | boss_killed | `boss_killed` (v2 only) | `name`, `step`, `entry`, `current_step` - a route boss died (also while another step was worked on: the step is then skipped as done) |
 | member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers` |
 | pull_members_resolved | `pull_members_resolved` (v2 only, pack locked on engage) | `pack_id`, `objective`, `requirement`, `boss`, `expected_entry`, `pack_x/y/z`, `core_members[]` (units) |

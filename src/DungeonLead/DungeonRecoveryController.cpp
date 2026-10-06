@@ -97,6 +97,20 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
         }
         DungeonLeadKernel::ObserveRecovery(st.recovery, observed, now);
         st.escalationDeferSince = 0;
+        // The walk back to a straggler ends with the recovery: the spline would otherwise carry the
+        // leader on to the straggler's old spot (SFK: from the courtyard back into the cells, where
+        // the route walk then met Cell Door 18935 and the run aborted).
+        if (st.recoveryWalkBack)
+        {
+            st.recoveryWalkBack = false;
+            if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == ESCORT_MOTION_TYPE || bot->isMoving())
+            {
+                bot->GetMotionMaster()->Clear();
+                bot->StopMoving();
+                DungeonLead::RecordEventV2(botAI, "recovery_walk_stopped",
+                                           DungeonLeadKernel::JsonLine().Str("reason", DungeonLeadKernel::ToString(previous)).Done());
+            }
+        }
         return true;
     }
 
@@ -155,6 +169,7 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                     {
                         Movement::PointsArray points = path.GetPath();
                         bot->GetMotionMaster()->MoveSplinePath(&points);
+                        st.recoveryWalkBack = true;
                     }
                 }
             }
