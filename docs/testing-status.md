@@ -25,16 +25,16 @@ runs on the same commit and validation profile, health not unhealthy.
 
 | Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
 |---|---|---|---|---|
-| Deadmines | Full route | - | `5f3d706` | unknown; full route |
-| Ragefire Chasm | **Verified** | `d1f1ddf` | `5f3d706` | unknown (warning) PACK_IDENTITY; full route |
-| Razorfen Downs | **Verified** | `d1f1ddf` | `5f3d706` | full route |
-| Scarlet Monastery - Armory | **Verified** | `d1f1ddf` | `5f3d706` | full route |
-| Scarlet Monastery - Cathedral | **Verified** | `d1f1ddf` | `5f3d706` | full route (warning) PULL |
-| Scarlet Monastery - Library | **Verified** | `d1f1ddf` | `5f3d706` | full route (warning) PULL |
-| Shadowfang Keep | Full route | - | `5f3d706` | unknown; full route |
-| Zul'Farrak | **Verified** | `d1f1ddf` | `5f3d706` | unknown |
+| Deadmines | **Verified** | `5f3d706` | `5f3d706` | full route; full route |
+| Ragefire Chasm | **Verified** | `5f3d706` | `5f3d706` | full route (warning) PACK_IDENTITY; full route |
+| Razorfen Downs | **Verified** | `5f3d706` | `5f3d706` | full route; full route |
+| Scarlet Monastery - Armory | **Verified** | `5f3d706` | `5f3d706` | full route; full route |
+| Scarlet Monastery - Cathedral | **Verified** | `5f3d706` | `5f3d706` | full route (warning) PULL; full route (warning) PULL |
+| Scarlet Monastery - Library | **Verified** | `5f3d706` | `5f3d706` | full route; full route (warning) PULL |
+| Shadowfang Keep | **Verified** | `5f3d706` | `5f3d706` | full route (warning) PACK_IDENTITY; full route |
+| Zul'Farrak | **Verified** | `d1f1ddf` | `5f3d706` | full route; partial (unhealthy) ROUTE |
 
-From 31 runs in 3 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261006-1911-5f3d706).
+From 36 runs in 3 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261006-1911-5f3d706).
 
 <!-- END GENERATED -->
 

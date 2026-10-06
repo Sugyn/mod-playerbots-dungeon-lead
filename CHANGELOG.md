@@ -18,6 +18,16 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+### Added
+- Telemetry v2: structured payloads for objectives, checkpoints, wipes, recovery and
+  interactions; the world DB spawn id on every unit; the navmesh path on every path decision;
+  `boss_killed`.
+- `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
+
+### Fixed
+- A route boss killed while the party worked on another step (Zul'Farrak: Antu'sul joined the
+  fight at Theka's) is done - its own step no longer aborts the run on "not found".
+
 ## [0.14.0-alpha] - 2026-10-06
 
 Validation you can see: every run is recorded as structured evidence and reconstructed into a
