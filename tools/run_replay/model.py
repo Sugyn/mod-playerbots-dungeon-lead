@@ -141,7 +141,7 @@ class _Builder:
                     cur["anchor"] = {k: p.get(k) for k in ("kind", "x", "y", "z", "radius")}
             elif t == "combat_unit_joined" and p.get("fight_id") == cur["fight_id"]:
                 u = p["unit"]
-                cur["units"].append({"guid": u["guid"], "entry": u["entry"], "name": u["name"],
+                cur["units"].append({"guid": u["guid"], "spawn": u.get("spawn"), "entry": u["entry"], "name": u["name"],
                                      "position": _unit_pos(u), "level": p.get("level"), "elite": p.get("elite"),
                                      "joined_ms": e["run_ms"], "pack_id": p.get("pack_id"),
                                      "in_pack_flag": p.get("in_pack"), "victim": p.get("victim")})

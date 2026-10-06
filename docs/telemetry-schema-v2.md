@@ -108,10 +108,10 @@ increments, each with its own entry here.
 | Semantic event | v2 event_type | Payload |
 |---|---|---|
 | leader path | `position_sample` (v2 only) | `moving`, `in_combat` (+ envelope position) |
-| walk decision | `path_decision` (v2 only) | `kind` (direct / path_end / short_detour / probe / no_path), `objective`, `dest_*`, `move_*`, `path_type`, `path_points`, `path_length`, `path` (<= 16 `[x,y,z]` points) |
+| walk decision | `path_decision` (v2 only) | `kind` (direct / path_end / short_detour / probe / no_path), `objective`, `dest_*`, `move_*`, `path_type`, `path_points`, `path_length`, `path` (<= 16 `[x,y,z]` points; for direct/probe/no_path the path the navmesh gives to the move target, computed for the record) |
 | party | `party_roster` (v2 only, first guard pass) | `members[]`: `name`, `guid`, `role`, `class`, `level`, `leader`, `bot` |
 | fight | `fight_started`, `fight_ended` (v2 only) | `fight_id`; end: `duration_ms`, `units`, `killed`, `leader_alive` |
-| combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid, entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |
+| combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid (per-instance counter), spawn (world DB creature.guid), entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |
 | mob_died | `mob_died` (v2 only) | `fight_id`, `unit` |
 | member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers` |
 | pull_members_resolved | `pull_members_resolved` (v2 only, pack locked on engage) | `pack_id`, `objective`, `requirement`, `boss`, `expected_entry`, `pack_x/y/z`, `core_members[]` (units) |

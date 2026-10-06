@@ -60,6 +60,7 @@
 #include <cctype>
 #include <cmath>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <sstream>
@@ -243,8 +244,11 @@ namespace
     std::string UnitJson(Unit const* u)
     {
         DungeonLeadKernel::JsonLine j;
-        j.Str("guid", std::to_string(u->GetGUID().GetCounter()))
-            .Num("entry", uint32_t(u->GetEntry()))
+        j.Str("guid", std::to_string(u->GetGUID().GetCounter()));
+        // the world DB spawn (creature.guid) - the instance's own GUID counter is per run
+        if (Creature const* c = u->ToCreature())
+            j.Num("spawn", uint32_t(c->GetSpawnId()));
+        j.Num("entry", uint32_t(u->GetEntry()))
             .Str("name", u->GetName())
             .Num("x", u->GetPositionX())
             .Num("y", u->GetPositionY())
@@ -2841,6 +2845,14 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             return;
         st.lastPathDecisionTs = getMSTime();
         st.lastPathDecisionKind = kind;
+        // "direct" and "probe" leave the path to MoveTo(); compute it here for the record only
+        std::unique_ptr<PathGenerator> own;
+        if (!path)
+        {
+            own = std::make_unique<PathGenerator>(bot);
+            own->CalculatePath(tx, ty, tz);
+            path = own.get();
+        }
         DungeonLeadKernel::JsonLine j;
         j.Str("kind", kind)
             .Str("objective", step.boss)
