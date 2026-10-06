@@ -224,6 +224,19 @@ class GoldenTest(unittest.TestCase):
         self.assertGreaterEqual(len(m["interactions"]), 5, "case D runs an event")
 
 
+class StatusTest(unittest.TestCase):
+    def test_verified_needs_two_clean_full_routes_on_one_commit(self):
+        from tools.run_replay import status
+        r = lambda rid, build, result="FULL_ROUTE", health="clean", t="2026-10-06T10": {
+            "run_id": rid, "build": build, "profile": "p", "result": result, "health": health, "started_at": t}
+        self.assertIsNone(status.verified([r("1", "a"), r("2", "b")]), "two commits are not a pair")
+        self.assertIsNone(status.verified([r("1", "a"), r("2", "a", health="unhealthy")]), "unhealthy does not count")
+        self.assertIsNone(status.verified([r("1", "a"), r("2", "a", result="PARTIAL")]))
+        self.assertEqual(status.verified([r("1", "a"), r("2", "a", health="warning")]), ("a", ["1", "2"]))
+        newer = status.verified([r("1", "a"), r("2", "a"), r("3", "b", t="2026-10-07"), r("4", "b", t="2026-10-07")])
+        self.assertEqual(newer[0], "b", "the newest verified commit wins")
+
+
 class SchemaTest(unittest.TestCase):
     def test_rejects_unknown_version(self):
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:

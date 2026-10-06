@@ -15,6 +15,29 @@ Levels (definitions in `tools/live_validation/README.md`): Smoke, Partial, Full 
 (full route twice without a failure that needed a fix), Blocked. Verified on `d1f1ddf`: Ragefire
 Chasm, SM Library, SM Armory, SM Cathedral, Razorfen Downs, Zul'Farrak (see below).
 
+## Current status (generated from campaign artifacts)
+
+Regenerate: `python3 -m tools.run_replay.status <validation_runs> --write docs/testing-status.md`
+(the campaign artifacts come from `tools/run_replay/cli.py campaign`). Verified = two FULL_ROUTE
+runs on the same commit and validation profile, health not unhealthy.
+
+<!-- GENERATED: tools/run_replay/status.py - do not edit by hand -->
+
+| Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
+|---|---|---|---|---|
+| Deadmines | Full route | - | `5f3d706` | unknown; full route |
+| Ragefire Chasm | **Verified** | `d1f1ddf` | `5f3d706` | unknown (warning) PACK_IDENTITY; full route |
+| Razorfen Downs | **Verified** | `d1f1ddf` | `5f3d706` | full route |
+| Scarlet Monastery - Armory | **Verified** | `d1f1ddf` | `5f3d706` | full route |
+| Scarlet Monastery - Cathedral | **Verified** | `d1f1ddf` | `5f3d706` | full route (warning) PULL |
+| Scarlet Monastery - Library | **Verified** | `d1f1ddf` | `5f3d706` | full route (warning) PULL |
+| Shadowfang Keep | Full route | - | `5f3d706` | unknown; full route |
+| Zul'Farrak | **Verified** | `d1f1ddf` | `5f3d706` | unknown |
+
+From 31 runs in 3 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261006-1911-5f3d706).
+
+<!-- END GENERATED -->
+
 ## Verified campaign `verify-20261006-1626-d1f1ddf` (telemetry v2)
 
 The first campaign recorded with telemetry v2 and judged by `tools/run_replay` (verdicts and
