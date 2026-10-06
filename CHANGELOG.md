@@ -18,6 +18,26 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+## [0.14.0-alpha] - 2026-10-06
+
+Validation you can see: every run is recorded as structured evidence and reconstructed into a
+timeline, a map and a verdict, so a failure points at what happened instead of at a log line.
+First campaign judged this way: Ragefire Chasm, SM Library, SM Armory, SM Cathedral, Razorfen
+Downs and Zul'Farrak Verified (two full routes each on the same build).
+
+### Added
+- Telemetry schema v2 (`DungeonLeadEvents.v2.jsonl`, `docs/telemetry-schema-v2.md`) next to the
+  unchanged CSV: ordered events (`event_seq`, `run_ms`), the leader's position, build commit,
+  validation campaign and scenario; the leader's path; fights with every unit that joined (world DB
+  spawn id), mob and party deaths, the pack at engage, combat anchors, the walk's path decisions.
+  Validation campaigns write `DungeonLeadCampaigns.jsonl` (manifest, run results, requeues).
+  Measured: ~45 events and 32 KB a minute per party, no drops.
+- `tools/run_replay`: run model, timeline and XY map, verdict (FULL_ROUTE / PARTIAL / FAILED /
+  UNKNOWN, health) and findings that keep facts, classification, probable cause, confidence and
+  evidence apart; run comparison; campaign artifacts for a panel. Golden tests on six real runs
+  (`tests/fixtures/run_reconstruction_v2`).
+- `tools/route_insert.py`: insert steps into a route and write the SQL update.
+
 ### Fixed
 - A boss that joins a fight far from its home no longer moves the fight to it: the fight stays
   where it runs (RFC Taragaman and SFK Springvale dragged the tank through more packs).
@@ -31,6 +51,8 @@ the MAJOR bar above is met.
 ### Changed
 - Shadowfang Keep: the courtyard packs between the Courtyard Door and Razorclaw are optional pull
   steps, taken one by one (`sql/updates/2026_10_06_00_sfk_courtyard_packs.sql`).
+- SM Cathedral: the nave's packs are optional pull steps from the door to the altar
+  (`sql/updates/2026_10_06_01_cathedral_nave_packs.sql`) - crossing the nave pulled 13 at once.
 
 ## [0.13.0-alpha] - 2026-10-06
 

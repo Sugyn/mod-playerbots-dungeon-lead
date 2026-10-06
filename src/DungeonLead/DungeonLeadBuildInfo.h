@@ -21,6 +21,6 @@
 #define DUNGEONLEAD_COMMIT_SHA "unknown"
 #endif
 
-#define DUNGEONLEAD_MODULE_VERSION "0.13.0-alpha"
+#define DUNGEONLEAD_MODULE_VERSION "0.14.0-alpha"
 
 #endif

@@ -80,14 +80,18 @@ How it runs:
 
 ## Debugging / reporting a bug
 
-Two files next to `Playerbots.log`, no logger config needed:
+Files next to `Playerbots.log`, no logger config needed:
 
-- **`DungeonLeadSessions.csv`** — always on. One row per key event per run; this is what lets you
-  see what actually happened without reproducing anything live.
+- **`DungeonLeadEvents.v2.jsonl`** — always on. Every event of every run as structured JSON: the
+  leader's path, fights with the units that joined, deaths, wipes, recoveries, doors, which build
+  and validation campaign produced it ([docs/telemetry-schema-v2.md](docs/telemetry-schema-v2.md)).
+  [tools/run_replay](tools/run_replay/README.md) turns a run into a timeline, a map and a verdict
+  with its evidence, and compares two runs.
+- **`DungeonLeadSessions.csv`** — always on, the older one-row-per-event format.
 - **`DungeonLeadDebug.log`** — opt-in. Whisper `startdungeon debug` before reproducing, whisper it
   again when done.
 
-**To report a bug:** reproduce with `startdungeon debug` on, then attach both files to a GitHub
+**To report a bug:** reproduce with `startdungeon debug` on, then attach these files to a GitHub
 issue — the [bug report template](../../issues/new/choose) asks for exactly this and won't let you
 submit without it. A description of what it looked like on screen isn't enough to act on.
 
