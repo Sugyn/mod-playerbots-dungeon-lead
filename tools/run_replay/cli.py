@@ -8,6 +8,10 @@
       timeline.md and map.svg from a run model
   python3 -m tools.run_replay.cli analyze run_model.json [-d DIR] [--campaigns CAMPAIGNS.jsonl]
       metrics.json, failures.json, verdict.json
+  python3 -m tools.run_replay.cli campaign EVENTS.jsonl CAMPAIGNS.jsonl CAMPAIGN_ID [-o validation_runs]
+      every run of a validation campaign: raw copy, derived artifacts, reports, index.json
+  python3 -m tools.run_replay.cli compare OLD_run_model.json NEW_run_model.json [-d DIR]
+      comparison.json and comparison.md
 """
 import argparse
 import json
@@ -53,6 +57,15 @@ def main(argv=None):
     z.add_argument("run_model")
     z.add_argument("-d", "--dir", default=".")
     z.add_argument("--campaigns")
+    k = sub.add_parser("campaign")
+    k.add_argument("events")
+    k.add_argument("campaigns")
+    k.add_argument("campaign_id")
+    k.add_argument("-o", "--out", default="validation_runs")
+    q = sub.add_parser("compare")
+    q.add_argument("old")
+    q.add_argument("new")
+    q.add_argument("-d", "--dir", default=".")
     a = ap.parse_args(argv)
 
     try:
@@ -88,6 +101,23 @@ def main(argv=None):
             _dump(m["metrics"], os.path.join(a.dir, "metrics.json"))
             _dump(analyze_run.failures(m, cres), os.path.join(a.dir, "failures.json"))
             _dump(analyze_run.verdict(m, cres), os.path.join(a.dir, "verdict.json"))
+        elif a.cmd == "campaign":
+            from . import campaign
+            idx = campaign.build(a.events, a.campaigns, a.campaign_id, a.out)
+            for r in idx["runs"]:
+                print(f"{r['run_id']}  {r['dungeon'] or '?':32} {r['result']:10} {r['health']:9} "
+                      f"wipes={r['metrics']['wipes']} fights={r['metrics']['fights']}")
+        elif a.cmd == "compare":
+            from . import compare_runs
+            models = []
+            for path in (a.old, a.new):
+                with open(path, encoding="utf-8") as f:
+                    models.append(json.load(f))
+            c = compare_runs.compare(*models, analyze_run.verdict(models[0]), analyze_run.verdict(models[1]))
+            os.makedirs(a.dir, exist_ok=True)
+            _dump(c, os.path.join(a.dir, "comparison.json"))
+            with open(os.path.join(a.dir, "comparison.md"), "w", encoding="utf-8") as f:
+                f.write(compare_runs.comparison_md(c))
     except schema.SchemaError as e:
         sys.exit(f"error: {e}")
 

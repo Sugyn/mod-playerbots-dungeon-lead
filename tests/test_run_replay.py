@@ -161,6 +161,24 @@ class AnalyzeTest(unittest.TestCase):
         self.assertIn("F1", svg)
 
 
+class CompareTest(unittest.TestCase):
+    def test_compare_flags_context(self):
+        from tools.run_replay import compare_runs
+        old = model.reconstruct(synthetic())
+        evs = synthetic()
+        for e in evs:
+            e["build"] = dict(e["build"], commit_sha="def5678")
+        new = model.reconstruct(evs)
+        c = compare_runs.compare(old, new)
+        self.assertTrue(c["directly_comparable"])  # only the commit differs
+        self.assertIn("commit abc1234 vs def5678", c["differences"])
+        for e in evs:
+            e["scenario_id"] = "other"
+        c = compare_runs.compare(old, model.reconstruct(evs))
+        self.assertFalse(c["directly_comparable"])
+        self.assertIn("NOT DIRECTLY COMPARABLE", compare_runs.comparison_md(c))
+
+
 class SchemaTest(unittest.TestCase):
     def test_rejects_unknown_version(self):
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:

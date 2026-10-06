@@ -105,10 +105,13 @@ class _Builder:
         """Fights from fight_started / combat_unit_joined / mob_died / fight_ended, with the pack the
         tank was working on and its members (pull_members_resolved)."""
         resolved = {}  # pack_id -> last pull_members_resolved payload (+ run_ms)
+        pack_names = {}  # pack_id -> name, from pack_state
         fights, cur = [], None
         wipes_at = [e["run_ms"] for e in self.events if e["event_type"] == "wipe_detected"]
         for e in self.events:
             t, p = e["event_type"], e["payload"]
+            if t == "pack_state" and "pack_id" in p:
+                pack_names[p["pack_id"]] = p.get("name")
             if t == "pull_members_resolved":
                 resolved[p["pack_id"]] = dict(p, run_ms=e["run_ms"])
             elif t == "fight_started":
@@ -141,9 +144,14 @@ class _Builder:
             pack_ids = [u["pack_id"] for u in f["units"] if u["pack_id"]] or ([f["pack_id"]] if f["pack_id"] else [])
             pack_id = max(set(pack_ids), key=pack_ids.count) if pack_ids else 0
             res = resolved.get(pack_id)
-            core = {m["guid"] for m in res["core_members"]} if res else None
+            core = {m["guid"] for m in res["core_members"]} if res else set()
+            guids = {u["guid"] for u in f["units"]}
+            # A fight is the pull of the current objective's pack only if one of the pack's own
+            # members fought in it; anything else is a fight on the way there (en route), whose
+            # units are not "adds" of a pull.
+            planned = bool(core & guids)
             for u in f["units"]:
-                u["in_pack"] = (u["guid"] in core) if core is not None else u["in_pack_flag"]
+                u["in_pack"] = (u["guid"] in core) if planned else None
             adds = [u for u in f["units"] if u["in_pack"] is False]
             end = f["end_ms"]
             wiped = any(f["start_ms"] <= w <= (end if end is not None else float("inf")) for w in wipes_at)
@@ -158,19 +166,21 @@ class _Builder:
                 result = "ended"  # combat over, not every unit seen dead (reset, fled, despawned)
             out.append({
                 "fight_id": f["fight_id"],
+                "kind": "planned" if planned else "en_route",
                 "pack_id": pack_id,
-                "objective": res["objective"] if res else None,
-                "requirement": res["requirement"] if res else None,
-                "boss": res["boss"] if res else False,
+                "objective": (res["objective"] if planned else None),
+                "on_the_way_to": None if planned else (pack_names.get(pack_id) or (res or {}).get("objective")),
+                "requirement": res["requirement"] if planned else None,
+                "boss": res["boss"] if planned else False,
                 "start_ms": f["start_ms"],
                 "end_ms": end,
                 "duration_ms": (end - f["start_ms"]) if end is not None else None,
                 "start_position": f["start_position"],
                 "combat_anchor": f["anchor"],
-                "expected_members": res["core_members"] if res else None,
-                "expected_count": len(res["core_members"]) if res else None,
+                "expected_members": res["core_members"] if planned else None,
+                "expected_count": len(res["core_members"]) if planned else None,
                 "engaged_count": len(f["units"]),
-                "add_count": len(adds) if core is not None or any(u["in_pack_flag"] is not None for u in f["units"]) else None,
+                "add_count": len(adds) if planned else None,
                 "units": f["units"],
                 "unexpected_adds": [{"guid": u["guid"], "entry": u["entry"], "name": u["name"], "position": u["position"],
                                      "joined_ms": u["joined_ms"]} for u in adds],
@@ -316,7 +326,7 @@ class _Builder:
             elif t in ("objective_skipped", "objective_failed", "route_complete", "canary_stop", "stop"):
                 self.note(e, "route" if t != "stop" else "run", f"{t}: {p.get('detail', '')}")
         for f in fights:
-            what = f["objective"] or (f"pack #{f['pack_id']}" if f["pack_id"] else "unplanned fight")
+            what = f["objective"] or (f"on the way to {f['on_the_way_to']}" if f["on_the_way_to"] else "unplanned fight")
             adds = f" ({f['add_count']} adds)" if f["add_count"] else ""
             self.timeline.append({"run_ms": f["start_ms"], "event_seq": None, "kind": "fight",
                                   "text": f"Fight #{f['fight_id']} - {what}: {f['engaged_count']} units{adds}",
@@ -390,6 +400,8 @@ def metrics(model):
     return {
         "duration_ms": model["metadata"]["duration_ms"],
         "fights": len(pulls),
+        "fights_planned": sum(1 for p in pulls if p["kind"] == "planned"),
+        "fights_en_route": sum(1 for p in pulls if p["kind"] == "en_route"),
         "fights_cleared": sum(1 for p in pulls if p["result"] == "cleared"),
         "units_engaged": sum(p["engaged_count"] for p in pulls),
         "unexpected_adds": sum(known_adds) if known_adds else None,

@@ -71,8 +71,9 @@ def timeline_md(m):
                 "|---|---|---|---|---|---|---|---|---|"]
         for p in m["pulls"]:
             exp = p["expected_count"] if p["expected_count"] is not None else "?"
-            adds = ", ".join(a["name"] for a in p["unexpected_adds"]) or ("-" if p["add_count"] is not None else "?")
-            out.append(f"| F{p['fight_id']} | {_clock(p['start_ms'])} | {p['objective'] or '-'} | {exp} | "
+            adds = ", ".join(a["name"] for a in p["unexpected_adds"]) or "-"
+            what = p["objective"] or (f"(on the way to {p['on_the_way_to']})" if p["on_the_way_to"] else "-")
+            out.append(f"| F{p['fight_id']} | {_clock(p['start_ms'])} | {what} | {exp} | "
                        f"{p['engaged_count']} | {adds} | {', '.join(x['name'] for x in p['deaths']) or '-'} | "
                        f"{_clock(p['duration_ms'])} | {p['result']} |")
     else:
