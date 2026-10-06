@@ -150,3 +150,16 @@ account or server details.
 
 Watch per campaign: v2 bytes per run, events per minute, buffer size at flush, dropped lines. The
 target is zero `telemetry_dropped` in validation campaigns.
+
+Measured on campaign `verify-20261006-1626-d1f1ddf` (16 runs, 4 parties at a time, build `d1f1ddf`):
+
+| | median | max |
+|---|---|---|
+| events per run | 1072 | 2970 |
+| bytes per run | 769 KB | 2.1 MB |
+| events per minute (one party) | 45 | 59 |
+| KB per minute (one party) | 32 | 41 |
+
+Average line 730 bytes. With four parties that is ~240 lines a minute against a 20 000-line buffer
+flushed every ~2 s: no `telemetry_dropped` in v1 or v2, nothing in Errors.log. The v2 file grows
+~15 MB per 16-run campaign and is not rotated yet.
