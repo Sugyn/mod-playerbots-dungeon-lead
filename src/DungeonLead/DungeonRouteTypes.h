@@ -128,8 +128,8 @@ inline char const* ToString(DungeonObjectiveRequirement r)
     return "unknown";
 }
 
-// From the existing data: a `boss` row is a mandatory boss; everything else (optional trash,
-// heroic-only, events, path anchors) is optional.
+// Boss -> Boss; required / door / use / talk -> Required (retried, then the run ends partial - never
+// skipped); everything else (optional trash, heroic-only, event rows, path anchors) -> Optional.
 inline DungeonObjectiveRequirement ClassifyRequirement(DungeonRouteKind kind, uint32_t entry)
 {
     if (entry == kPathAnchorEntry)

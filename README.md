@@ -15,9 +15,9 @@ source — no pinned commit to go stale, nothing to re-apply after a mod-playerb
 **What it covers:** every 5-man dungeon in Vanilla/TBC/WotLK (normal + heroic). Raids: no.
 Event/vehicle dungeons (Violet Hold, Culling of Stratholme, Oculus past Drakos, Trial of the
 Champion, Halls of Reflection, Black Morass, Old Hillsbrad): no route, falls back to plain "grind
-what you see." Doors opened by an event or a boss are waited for; the leader doesn't use keys,
-levers or clickable objects itself. Live runs so far cover a handful of Vanilla dungeons; the rest
-has route data but no live run - [docs/testing-status.md](docs/testing-status.md) is the current
+what you see." Dungeon events a route needs are run by the leader: doors waited for or opened (a
+click, a key, a lever), objects used (cages, a cannon), NPCs talked to. Live validation covers
+part of the dungeon list - [docs/testing-status.md](docs/testing-status.md) is the current
 per-dungeon status.
 
 ## Install
@@ -66,7 +66,9 @@ How it runs:
   optional stop is skipped and reported, while a boss is tried once more and otherwise the run
   stops as partial - a boss is never skipped silently. It doesn't chase runners away from the
   fight (`CombatLeashRadius`).
-- A closed door in the way is waited for (`DoorWaitSeconds`) until its event or boss opens it.
+- A closed door in the way is opened the way a player can (a click, a key in the party, a lever on
+  its side) or waited for until its event or boss opens it (`DoorWaitSeconds`); the party doesn't
+  walk through closed doors. Route steps `use` and `talk` run the events a dungeon needs.
 - If something won't sort itself out (a straggler, a lost or dead member) it tries to fix it -
   walks back, waits for a resurrection, brings a *bot* member over - and stops the run after a
   few minutes rather than waiting forever. You are never teleported.
@@ -94,9 +96,10 @@ are for reproducible bugs only.
 
 ## Known limits / in progress
 
-- Live coverage is small; see [docs/testing-status.md](docs/testing-status.md).
-- Doors that need a key, a lever or a click (and NPC talks, elevators) aren't operated by the
-  leader; such a step fails after `DoorWaitSeconds`.
+- Live coverage and maturity per dungeon: [docs/testing-status.md](docs/testing-status.md). Mostly
+  Vanilla so far.
+- Event mechanics exist only where a route was given them (`use`/`talk` steps); elevators, escorts
+  and vehicles aren't supported.
 - Route stops are bosses; trash in between is fought where the walk runs into it, pack by pack,
   so a full clear takes 25-60 minutes.
 - GM diagnostic commands from the pre-module patch (`testbotpool`, `lfgstate`, `pathcheck`,
