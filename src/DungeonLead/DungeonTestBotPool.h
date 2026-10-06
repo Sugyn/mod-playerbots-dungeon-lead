@@ -12,6 +12,7 @@
 #include "Common.h"
 
 #include <string>
+#include <vector>
 
 class Player;
 
@@ -61,7 +62,7 @@ namespace DungeonLead
     // happen asynchronously via TestBotPoolTick(); check TestBotPoolStatus() for progress. Returns
     // false (with a reason in outMessage) if no eligible offline character exists or all of them
     // are already leased.
-    bool AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage);
+    bool AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr);
 
     // Dps variant: `classId` picks the class explicitly (CLASS_WARRIOR=1 .. CLASS_DRUID=11, same
     // ids the addclass command uses) since "Dps" alone doesn't determine one - useful for building
@@ -71,7 +72,7 @@ namespace DungeonLead
     // For Mage, additionally verifies Polymorph (spell 118) is known before reporting Ready - the
     // one CC capability check implemented so far; other classes' CC is not yet independently
     // verified (see ADR-003's Phase 2 notes).
-    bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage);
+    bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr);
 
     // Phase 3: forms complete 5-bot parties directly out of every currently idle (`Ready` or
     // `Leased`, not already in a group) lease and sends them straight into `lfgId`'s dungeon.
@@ -91,7 +92,13 @@ namespace DungeonLead
     // many parties as fit under that cap, never more, even if more idle leases exist. Transitions
     // every bot used into a party to `Leased`. Returns a summary of how many parties were formed and
     // started, or an explanation if there weren't enough idle tank+healer leases to form even one.
-    std::string RunTestParty(uint32 lfgId);
+    std::string RunTestParty(uint32 lfgId, std::vector<std::string> const* only = nullptr);
+
+    // For running several test parties at once (DungeonValidationCampaign slots): whether any of
+    // `names` is still logging in / being prepared, and whether the party led by `tankName` is
+    // assembling or has a running session.
+    bool TestBotsPending(std::vector<std::string> const& names);
+    bool TestPartyActive(std::string const& tankName, bool& assembling);
 
     // Parties formed by RunTestParty() still assembling (session not started yet). Counted in the
     // shared canary concurrency budget like a running session.

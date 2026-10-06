@@ -79,6 +79,7 @@ public:
     // How long the leader waits at a closed door/gate for its event, key or boss to open it.
     uint32 dungeonLeadDoorWaitSeconds;
     uint32 dungeonLeadEventWaitSeconds;
+    uint32 dungeonLeadValidationParallel;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -132,6 +133,7 @@ private:
         dungeonLeadObjectiveRetryRounds = Bounded("AiPlayerbot.DungeonLead.ObjectiveRetryRounds", 2, 1, 5);
         dungeonLeadDoorWaitSeconds = Bounded("AiPlayerbot.DungeonLead.DoorWaitSeconds", 120, 10, 900);
         dungeonLeadEventWaitSeconds = Bounded("AiPlayerbot.DungeonLead.EventWaitSeconds", 600, 60, 1800);
+        dungeonLeadValidationParallel = Bounded("AiPlayerbot.DungeonLead.ValidationParallel", 3, 1, 10);
         if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
         {
             LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "

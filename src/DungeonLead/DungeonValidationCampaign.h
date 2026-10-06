@@ -14,10 +14,11 @@
 #include <string>
 #include <vector>
 
-// Live validation campaign (`.dungeonlead validate ...`): runs a list of dungeons one after another
-// with a fresh bot-only test party (DungeonTestBotPool: warrior tank, priest healer, warrior + mage
-// + rogue dps) at each dungeon's LFG target level. A run ends when its session ends - route end,
-// failure, or CanaryTimeoutMinutes - and the pool is released before the next one. One
+// Live validation campaign (`.dungeonlead validate ...`): runs a list of dungeons, up to
+// CanaryMaxConcurrent at a time, each with its own fresh bot-only test party (DungeonTestBotPool:
+// warrior tank, priest healer, warrior + mage + rogue dps, one faction) at the dungeon's LFG target
+// level. A run ends when its session ends - route end, failure, or CanaryTimeoutMinutes - and that
+// party's bots are released before its slot takes the next dungeon. One
 // `[DungeonLead][Validation] RESULT` line per dungeon; details per run come from the telemetry CSVs
 // (tools/summarize_runs.py). See tools/live_validation/README.md.
 namespace DungeonLead

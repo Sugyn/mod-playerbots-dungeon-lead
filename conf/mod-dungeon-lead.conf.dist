@@ -239,3 +239,10 @@ AiPlayerbot.DungeonLead.DoorWaitSeconds = 120
 #        Default:     600
 
 AiPlayerbot.DungeonLead.EventWaitSeconds = 600
+
+#    AiPlayerbot.DungeonLead.ValidationParallel
+#        Description: How many dungeons `.dungeonlead validate` runs at the same time, each with its
+#                      own test party of 5 bots (also capped by CanaryMaxConcurrent). Range 1-10.
+#        Default:     3
+
+AiPlayerbot.DungeonLead.ValidationParallel = 3

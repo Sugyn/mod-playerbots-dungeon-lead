@@ -242,7 +242,8 @@ namespace
 
     // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
     // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
-    bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage)
+    bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage,
+                    std::string* outName)
     {
         QueryResult accIds = PlayerbotsDatabase.Query("SELECT account_id FROM playerbots_account_type WHERE account_type = 2");
         if (!accIds)
@@ -317,6 +318,8 @@ namespace
                          requireFreshAccount ? "" : " - REUSED, no fresh account left in this batch",
                          partyTeam != TEAM_NEUTRAL && c.team != partyTeam ? " - OTHER FACTION, none of the party's left" : "");
                 outMessage = "Acquiring " + c.name + " (" + RoleName(role) + ") - logging in, check status shortly";
+                if (outName)
+                    *outName = c.name;
                 return true;
             }
         }
@@ -540,15 +543,41 @@ uint32 DungeonLead::PendingTestPartyCount()
     return uint32(g_pendingStarts.size());
 }
 
-bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage)
+bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName)
 {
     RoleClassSpec const rc = ClassSpecFor(role);
-    return AcquireBot(role, rc.cls, targetLevel, outMessage);
+    return AcquireBot(role, rc.cls, targetLevel, outMessage, outName);
 }
 
-bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage)
+bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName)
 {
-    return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage);
+    return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage, outName);
+}
+
+bool DungeonLead::TestBotsPending(std::vector<std::string> const& names)
+{
+    for (TestBotLease const& l : g_leases)
+        if ((l.state == TestBotLeaseState::LoggingIn || l.state == TestBotLeaseState::Preparing) &&
+            std::find(names.begin(), names.end(), l.name) != names.end())
+            return true;
+    return false;
+}
+
+bool DungeonLead::TestPartyActive(std::string const& tankName, bool& assembling)
+{
+    assembling = false;
+    auto it = std::find_if(g_leases.begin(), g_leases.end(), [&](TestBotLease const& l) { return l.name == tankName; });
+    if (it == g_leases.end())
+        return false;
+    for (PendingStart const& p : g_pendingStarts)
+        if (p.tank == it->guid)
+        {
+            assembling = true;
+            return true;
+        }
+    Player* tank = ObjectAccessor::FindPlayer(it->guid);
+    PlayerbotAI* botAI = tank ? GET_PLAYERBOT_AI(tank) : nullptr;
+    return botAI && DungeonLead::HasSession(botAI);
 }
 
 // Phase 3, take 2. The first implementation queued every Ready lease through the real LFG tool
@@ -568,7 +597,7 @@ bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::stri
 // target, falling back to the first walkable route step), then calls DungeonLead::StartSession() itself instead of waiting for
 // CanaryTick() to spot an LFG-formed group. Same role-scarcity discipline as TriggerTargetedTest():
 // never forms a tank-less or healer-less party.
-std::string DungeonLead::RunTestParty(uint32 lfgId)
+std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> const* only)
 {
     DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(lfgId);
     if (!route)
@@ -593,6 +622,8 @@ std::string DungeonLead::RunTestParty(uint32 lfgId)
         // already sitting in a group (real player, some other test party) is left alone.
         if (lease.state != TestBotLeaseState::Ready && lease.state != TestBotLeaseState::Leased)
             continue;
+        if (only && std::find(only->begin(), only->end(), lease.name) == only->end())
+            continue;  // another validation slot's bots
 
         Player* bot = ObjectAccessor::FindPlayer(lease.guid);
         PlayerbotAI* botAI = bot ? GET_PLAYERBOT_AI(bot) : nullptr;

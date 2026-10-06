@@ -7,7 +7,8 @@ target level and logs one result line per dungeon. Built into the module; nothin
 
 - mod-playerbots' AddClass bot pool (offline characters of each class; the test party is a
   Protection warrior, a Holy priest and a warrior, mage and rogue as dps).
-- `AiPlayerbot.DungeonLead.CanaryMaxConcurrent` >= 1. A run ends when its session ends: route end,
+- `AiPlayerbot.DungeonLead.ValidationParallel` (3) dungeons run at the same time, each with its own
+  party of 5 bots from the pool; also capped by `CanaryMaxConcurrent`. A run ends when its session ends: route end,
   a failure, or `AiPlayerbot.DungeonLead.CanaryTimeoutMinutes` (45 by default - raise it for full
   clears of long dungeons).
 
