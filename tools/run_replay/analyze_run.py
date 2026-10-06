@@ -32,6 +32,30 @@ def _last_wiped_fight(m, before_ms):
     return fights[-1] if fights else None
 
 
+# An en-route fight (no unit of the objective's pack in it): trash met on the walk. Units that
+# joined within this many ms of the fight's start came together; later ones kept joining.
+_TOGETHER_MS = 5000
+
+
+def _en_route_wipe(w, f, facts, evidence):
+    together = [u for u in f["units"] if u["joined_ms"] - f["start_ms"] <= _TOGETHER_MS]
+    later = [u for u in f["units"] if u["joined_ms"] - f["start_ms"] > _TOGETHER_MS]
+    span = max((u["joined_ms"] for u in f["units"]), default=f["start_ms"]) - f["start_ms"]
+    facts = facts + [f"fight F{f['fight_id']} on the way to {f.get('on_the_way_to') or 'unknown'} (no planned pack)",
+                     f"engaged {f['engaged_count']}: {len(together)} within {_TOGETHER_MS // 1000} s, "
+                     f"{len(later)} later over {span // 1000} s"]
+    title = f"Wipe #{w['wipe']}: trash fight on the walk"
+    if len(together) >= 6:
+        return _finding("ROUTE", title, facts,
+                        f"the walk ran into {len(together)} units at once - the route has no pull steps for "
+                        "the packs on this way", "MEDIUM", evidence, w["run_ms"])
+    if len(later) >= 4:
+        return _finding("PULL", title, facts,
+                        f"units kept joining for {span // 1000} s - neighbouring packs chain-pulled into the fight",
+                        "MEDIUM", evidence, w["run_ms"])
+    return _finding("WIPE", title, facts, "a small trash fight beat the party", "LOW", evidence, w["run_ms"])
+
+
 def _wipe_findings(m):
     out = []
     for w in m["wipes"]:
@@ -44,6 +68,9 @@ def _wipe_findings(m):
                                 "insufficient evidence - no fight recorded for this wipe", None, evidence, w["run_ms"]))
             continue
         evidence.append(f"F{f['fight_id']}")
+        if f.get("kind") == "en_route":
+            out.append(_en_route_wipe(w, f, facts, evidence))
+            continue
         facts += [f"fight F{f['fight_id']} objective: {f['objective'] or 'unknown'}",
                   f"expected {f['expected_count'] if f['expected_count'] is not None else 'unknown'}, "
                   f"engaged {f['engaged_count']}, adds {f['add_count'] if f['add_count'] is not None else 'unknown'}"]

@@ -136,6 +136,14 @@ class AnalyzeTest(unittest.TestCase):
         self.assertIn("F1", w["evidence"])
         self.assertTrue(any("engaged 3" in x for x in w["facts"]))
 
+    def test_en_route_wipe_into_a_crowd(self):
+        evs = [e for e in synthetic() if e["event_type"] != "pull_members_resolved"]
+        m = model.reconstruct(evs)
+        self.assertEqual(m["pulls"][0]["kind"], "en_route")
+        (w,) = [f for f in analyze_run.failures(m)["findings"] if f["title"].startswith("Wipe #1")]
+        # 3 units, 2 together and 1 two seconds later: small fight, low confidence
+        self.assertEqual((w["classification"], w["confidence"]), ("WIPE", "LOW"))
+
     def test_verdict_full_route_with_wipe_warning(self):
         v = analyze_run.verdict(model.reconstruct(synthetic()))
         self.assertEqual((v["result"], v["health"]), ("FULL_ROUTE", "warning"))
