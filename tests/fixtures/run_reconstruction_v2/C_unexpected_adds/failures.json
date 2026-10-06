@@ -1,0 +1,35 @@
+{
+ "analysis_version": 1,
+ "findings": [
+  {
+   "classification": "PACK_IDENTITY",
+   "confidence": "HIGH",
+   "evidence": [
+    "W1",
+    "F30"
+   ],
+   "facts": [
+    "wipe #1 at 762 s",
+    "first death: Seran",
+    "fight F30 objective: Gilnid",
+    "expected 1, engaged 12, adds 11"
+   ],
+   "probable_cause": "other packs joined the fight (Goblin Craftsman, Goblin Engineer, Remote-Controlled Golem)",
+   "run_ms": 762715,
+   "title": "Wipe #1: more adds than the planned pack"
+  },
+  {
+   "classification": "ROUTE",
+   "confidence": "MEDIUM",
+   "evidence": [],
+   "facts": [
+    "step 2 Gilnid: boss objective failed",
+    "reason path, round 2, action abort"
+   ],
+   "probable_cause": "no usable path to the objective",
+   "run_ms": 1032965,
+   "title": "Objective failed: Gilnid"
+  }
+ ],
+ "run_id": "1878318228963329"
+}

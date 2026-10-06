@@ -1,0 +1,23 @@
+{
+ "analysis_version": 1,
+ "findings": [
+  {
+   "classification": "PACK_IDENTITY",
+   "confidence": "HIGH",
+   "evidence": [
+    "W1",
+    "F44"
+   ],
+   "facts": [
+    "wipe #1 at 1566 s",
+    "first death: Thyleae",
+    "fight F44 objective: Bazzalan",
+    "expected 1, engaged 13, adds 12"
+   ],
+   "probable_cause": "other packs joined the fight (Searing Blade Cultist, Searing Blade Enforcer, Searing Blade Warlock, Voidwalker Minion)",
+   "run_ms": 1566396,
+   "title": "Wipe #1: more adds than the planned pack"
+  }
+ ],
+ "run_id": "1878318228963328"
+}

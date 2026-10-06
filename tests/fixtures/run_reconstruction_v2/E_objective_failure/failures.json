@@ -1,0 +1,25 @@
+{
+ "analysis_version": 1,
+ "findings": [
+  {
+   "classification": "INTERACTION",
+   "confidence": "MEDIUM",
+   "evidence": [
+    "I7",
+    "I8",
+    "I9"
+   ],
+   "facts": [
+    "step 11 Razorclaw the Butcher: boss objective failed",
+    "reason door_closed, round 2, action abort",
+    "door Cell Door (entry 18935) failed at 648 s",
+    "door Cell Door (entry 18935) failed at 769 s",
+    "door Cell Door (entry 18935) failed at 891 s"
+   ],
+   "probable_cause": "a closed door blocked the way to the objective",
+   "run_ms": 1012799,
+   "title": "Objective failed: Razorclaw the Butcher"
+  }
+ ],
+ "run_id": "1878318228963330"
+}

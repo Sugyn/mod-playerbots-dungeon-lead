@@ -187,6 +187,43 @@ class CompareTest(unittest.TestCase):
         self.assertIn("NOT DIRECTLY COMPARABLE", compare_runs.comparison_md(c))
 
 
+class GoldenTest(unittest.TestCase):
+    """Real runs (tests/fixtures/run_reconstruction_v2): outputs match the goldens, and each case
+    still shows what it was chosen for (plan acceptance cases A-F)."""
+    EXPECT = {
+        "A_clean_full_route": ("FULL_ROUTE", "clean", []),
+        "B_wipe_and_checkpoint": ("FULL_ROUTE", "warning", ["PACK_IDENTITY"]),
+        "C_unexpected_adds": ("PARTIAL", "unhealthy", ["PACK_IDENTITY", "ROUTE"]),
+        "D_interaction_event": ("FULL_ROUTE", "clean", []),
+        "E_objective_failure": ("PARTIAL", "unhealthy", ["INTERACTION"]),
+        "F_record_ends_mid_run": ("UNKNOWN", "clean", []),
+    }
+
+    def test_goldens(self):
+        from tools.run_replay import golden
+        for case in golden.cases():
+            d = os.path.join(golden.ROOT, case)
+            for name, text in golden.outputs(d).items():
+                with self.subTest(case=case, file=name):
+                    self.assertEqual(golden.read(os.path.join(d, name)), text,
+                                     "reconstruction changed - if intended: python3 -m tools.run_replay.golden --update")
+
+    def test_cases_show_their_point(self):
+        from tools.run_replay import golden
+        self.assertEqual(sorted(golden.cases()), sorted(self.EXPECT))
+        for case, (result, health, classes) in self.EXPECT.items():
+            d = os.path.join(golden.ROOT, case)
+            v = json.loads(golden.read(os.path.join(d, "verdict.json")))
+            f = json.loads(golden.read(os.path.join(d, "failures.json")))
+            with self.subTest(case=case):
+                self.assertEqual((v["result"], v["health"]), (result, health))
+                self.assertEqual([x["classification"] for x in f["findings"]], classes)
+        m = json.loads(golden.read(os.path.join(golden.ROOT, "B_wipe_and_checkpoint", "run_model.json.gz")))
+        self.assertTrue(m["wipes"] and m["wipes"][0]["checkpoint"], "case B restores a checkpoint")
+        m = json.loads(golden.read(os.path.join(golden.ROOT, "D_interaction_event", "run_model.json.gz")))
+        self.assertGreaterEqual(len(m["interactions"]), 5, "case D runs an event")
+
+
 class SchemaTest(unittest.TestCase):
     def test_rejects_unknown_version(self):
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:

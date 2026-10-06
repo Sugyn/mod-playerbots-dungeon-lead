@@ -1,0 +1,12 @@
+{
+ "analysis_version": 1,
+ "campaign_id": "verify-20261006-1608-b73632e",
+ "commit_sha": "b73632e",
+ "health": "clean",
+ "result": "UNKNOWN",
+ "result_reason": "the record ends while the run was still running",
+ "run_id": "1878317078675456",
+ "scenario_id": "lfg8-lvl20-bot5-wtank-phealer-wmr-dps-lfg-target-level",
+ "unhealthy": [],
+ "warnings": []
+}

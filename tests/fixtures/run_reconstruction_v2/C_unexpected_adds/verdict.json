@@ -1,0 +1,17 @@
+{
+ "analysis_version": 1,
+ "campaign_id": "verify-20261006-1626-d1f1ddf",
+ "commit_sha": "d1f1ddf",
+ "health": "unhealthy",
+ "result": "PARTIAL",
+ "result_reason": "progress to step 2, outcome partial",
+ "run_id": "1878318228963329",
+ "scenario_id": "lfg6-lvl19-bot5-wtank-phealer-wmr-dps-lfg-target-level",
+ "unhealthy": [
+  "mandatory_objective_failed"
+ ],
+ "warnings": [
+  "skip_stuck",
+  "wipes=1"
+ ]
+}

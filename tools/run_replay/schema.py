@@ -3,6 +3,7 @@
 Raw files are evidence: this module only reads them. Unknown schema versions are an error, never
 guessed at.
 """
+import gzip
 import json
 
 SUPPORTED_SCHEMA = 2
@@ -12,10 +13,14 @@ class SchemaError(Exception):
     pass
 
 
+def _open(path):
+    return gzip.open(path, "rt", encoding="utf-8") if path.endswith(".gz") else open(path, encoding="utf-8")
+
+
 def load_events(path, run_id=None):
     """Events of one run (or all runs), in canonical order: run, then event_seq."""
     events = []
-    with open(path, encoding="utf-8") as f:
+    with _open(path) as f:
         for lineno, line in enumerate(f, 1):
             line = line.strip()
             if not line:
@@ -44,7 +49,7 @@ def load_events(path, run_id=None):
 def run_ids(path):
     """Run ids in the file, in order of first appearance."""
     seen = []
-    with open(path, encoding="utf-8") as f:
+    with _open(path) as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -58,7 +63,7 @@ def run_ids(path):
 
 def load_campaigns(path):
     records = []
-    with open(path, encoding="utf-8") as f:
+    with _open(path) as f:
         for lineno, line in enumerate(f, 1):
             line = line.strip()
             if not line:
