@@ -543,6 +543,10 @@ namespace
         f.inCombat = true;
         f.anchorSet = false;
         Check(ChaseAllowed(f, 30.0f), "no anchor (no fight began yet) -> no leash");
+
+        Check(BossAnchorAtHome(false, 0.f, 25.f), "boss pulled directly -> fight at its home");
+        Check(BossAnchorAtHome(true, 12.f, 25.f), "trash fight next to the boss -> fight at its home");
+        Check(!BossAnchorAtHome(true, 85.f, 25.f), "boss joined a fight 85 yd away -> fight stays there");
         f.anchorSet = true;
         f.hasTarget = false;
         Check(ChaseAllowed(f, 30.0f), "no target -> nothing to judge");

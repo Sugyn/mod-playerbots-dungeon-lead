@@ -719,6 +719,14 @@ namespace DungeonLeadKernel
         return f.targetDistFromAnchor <= leashRadius;
     }
 
+    // A boss fight is held at the boss's home with the boss leash - unless the fight already runs
+    // farther than that leash from it (the boss came to a trash fight): walking the tank there
+    // would drag the whole fight through the packs in between (RFC Taragaman, SFK Springvale).
+    inline bool BossAnchorAtHome(bool anchorSet, float anchorDistToBossHome, float bossLeash)
+    {
+        return !anchorSet || anchorDistToBossHome <= bossLeash;
+    }
+
     // ---------------------------------------------------------------------------------------
     // Pull lifecycle (DungeonPullController) for the current Pull/Boss pack
     // ---------------------------------------------------------------------------------------

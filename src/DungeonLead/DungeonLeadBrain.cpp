@@ -18,6 +18,7 @@
 #include "Timer.h"
 
 #include <algorithm>
+#include <cmath>
 
 using DungeonLeadKernel::LeadState;
 using DungeonLeadKernel::TransitionReason;
@@ -153,16 +154,22 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
         else if (t.next == LeadState::BossCombat && st.bossLeash > 0.f)
         {
             // A boss fight is held where the boss lives, with the boss leash - also when it starts
-            // out of a fight with its trash.
+            // out of a fight with its trash next to it; a fight that runs farther away stays there.
+            float const fightDist = std::hypot(st.anchorX - st.bossTankX, st.anchorY - st.bossTankY);
+            bool const atHome = DungeonLeadKernel::BossAnchorAtHome(st.anchorSet, fightDist, st.bossLeash);
+            if (atHome)
+            {
+                st.anchorX = st.bossTankX;
+                st.anchorY = st.bossTankY;
+                st.anchorZ = st.bossTankZ;
+            }
             st.anchorSet = true;
-            st.anchorX = st.bossTankX;
-            st.anchorY = st.bossTankY;
-            st.anchorZ = st.bossTankZ;
             st.anchorRadius = st.bossLeash;
             DungeonLead::RecordEvent(botAI, "boss_combat",
-                                     "tank_pos=(" + std::to_string(int(st.bossTankX)) + "," +
-                                         std::to_string(int(st.bossTankY)) + ") leash=" +
-                                         std::to_string(int(st.bossLeash)));
+                                     "tank_pos=(" + std::to_string(int(st.anchorX)) + "," +
+                                         std::to_string(int(st.anchorY)) + ") leash=" +
+                                         std::to_string(int(st.bossLeash)) +
+                                         (atHome ? "" : " held_at_fight=" + std::to_string(int(fightDist))));
         }
         else if (t.next == LeadState::BossPrep)
         {
