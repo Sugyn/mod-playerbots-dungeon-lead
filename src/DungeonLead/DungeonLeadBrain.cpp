@@ -12,6 +12,7 @@
 #include "DungeonLeadConfig.h"
 #include "DungeonPartyState.h"
 #include "DungeonRouteMgr.h"
+#include "DungeonTelemetryV2.h"
 #include "Log.h"
 #include "Player.h"
 #include "Playerbots.h"
@@ -96,7 +97,14 @@ void DungeonLeadBrain::TransitionTo(PlayerbotAI* botAI, DungeonLeadState& st, Le
         line += " " + detail;
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} state {} (run={})", botAI->GetBot()->GetName(), line,
              st.runId);
-    DungeonLead::RecordEvent(botAI, "state_transition", line);
+    DungeonLead::RecordEvent(botAI, "state_transition", line,
+                             DungeonLeadKernel::JsonLine()
+                                 .Str("from", from)
+                                 .Str("to", DungeonLeadKernel::ToString(next))
+                                 .Str("reason", DungeonLeadKernel::ToString(reason))
+                                 .Num("after_ms", uint32_t(inStateMs))
+                                 .Str("objective", CurrentObjective(st).Describe())
+                                 .Done());
 }
 
 bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& party)
@@ -150,6 +158,14 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
             st.anchorY = bot->GetPositionY();
             st.anchorZ = bot->GetPositionZ();
             st.anchorRadius = 0.f;  // CombatLeashRadius
+            DungeonLead::RecordEventV2(botAI, "combat_anchor_set",
+                                       DungeonLeadKernel::JsonLine()
+                                           .Str("kind", "fight_start")
+                                           .Num("x", st.anchorX)
+                                           .Num("y", st.anchorY)
+                                           .Num("z", st.anchorZ)
+                                           .Num("radius", sDungeonLeadConfig.dungeonLeadCombatLeashRadius)
+                                           .Done());
         }
         else if (t.next == LeadState::BossCombat && st.bossLeash > 0.f)
         {
@@ -170,6 +186,15 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
                                          std::to_string(int(st.anchorY)) + ") leash=" +
                                          std::to_string(int(st.bossLeash)) +
                                          (atHome ? "" : " held_at_fight=" + std::to_string(int(fightDist))));
+            DungeonLead::RecordEventV2(botAI, "combat_anchor_set",
+                                       DungeonLeadKernel::JsonLine()
+                                           .Str("kind", atHome ? "boss_home" : "held_at_fight")
+                                           .Num("x", st.anchorX)
+                                           .Num("y", st.anchorY)
+                                           .Num("z", st.anchorZ)
+                                           .Num("radius", st.bossLeash)
+                                           .Num("boss_home_dist", fightDist)
+                                           .Done());
         }
         else if (t.next == LeadState::BossPrep)
         {

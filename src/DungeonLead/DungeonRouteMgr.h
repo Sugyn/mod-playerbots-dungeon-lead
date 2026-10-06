@@ -286,6 +286,14 @@ struct DungeonLeadState
     uint32 sampleTs = 0;
     DungeonLeadKernel::LeadState sampleState = DungeonLeadKernel::LeadState::WaitingReady;
     uint32 sampleStep = 0;
+    // Combat evidence (DungeonLead::ObserveCombatEvidence): the current fight's units - everything
+    // that attacked a party member - and which of them were reported dead; party members' last
+    // seen alive flag, for member_died / member_revived.
+    uint32 fightId = 0;
+    uint32 fightStartTs = 0;
+    std::vector<ObjectGuid> fightUnits;
+    std::vector<ObjectGuid> fightDead;
+    std::vector<std::pair<ObjectGuid, bool>> memberAlive;
     // The session's one authoritative state - only DungeonLeadBrain::TransitionTo changes it.
     // Starting: leadership requested, not observed yet. Stopping: strategies restored, handback
     // not observed yet. Everything in between is an active session (see DungeonLeadBrain).

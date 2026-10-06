@@ -239,6 +239,19 @@ namespace
         return out;
     }
 
+    // A unit for v2 payloads: identity and where it stands now.
+    std::string UnitJson(Unit const* u)
+    {
+        DungeonLeadKernel::JsonLine j;
+        j.Str("guid", std::to_string(u->GetGUID().GetCounter()))
+            .Num("entry", uint32_t(u->GetEntry()))
+            .Str("name", u->GetName())
+            .Num("x", u->GetPositionX())
+            .Num("y", u->GetPositionY())
+            .Num("z", u->GetPositionZ());
+        return j.Done();
+    }
+
     // One schema v2 event line (docs/telemetry-schema-v2.md): the envelope from the session state
     // and the leader, then the payload - "detail" (the v1 free text, when there is one) plus the
     // members of `payload`.
@@ -517,6 +530,119 @@ void DungeonLead::SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st)
     st.sampleStep = st.stepIndex;
     RecordEventV2(botAI, "position_sample",
                   DungeonLeadKernel::JsonLine().Bool("moving", bot->isMoving()).Bool("in_combat", bot->IsInCombat()).Done());
+}
+
+void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st, Group* group)
+{
+    using DungeonLeadKernel::JsonLine;
+    Player* bot = botAI->GetBot();
+    bool partyInCombat = false;
+    std::vector<std::pair<Creature*, Player*>> attackers;  // unit, the member it attacks
+    if (st.memberAlive.empty())
+    {
+        // first pass of the run: who is in the party, with roles
+        std::string roster;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            if (Player* member = ref->GetSource())
+                roster += (roster.empty() ? "" : ",") +
+                          JsonLine()
+                              .Str("name", member->GetName())
+                              .Str("guid", std::to_string(member->GetGUID().GetCounter()))
+                              .Str("role", PlayerbotAI::IsTank(member)   ? "tank"
+                                           : PlayerbotAI::IsHeal(member) ? "healer"
+                                                                         : "dps")
+                              .Num("class", uint32_t(member->getClass()))
+                              .Num("level", uint32_t(member->GetLevel()))
+                              .Bool("leader", member == bot)
+                              .Bool("bot", GET_PLAYERBOT_AI(member) != nullptr)
+                              .Done();
+        RecordEventV2(botAI, "party_roster", JsonLine().Raw("members", "[" + roster + "]").Done());
+    }
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member->GetMapId() != bot->GetMapId())
+            continue;
+        partyInCombat = partyInCombat || member->IsInCombat();
+
+        // party deaths and revivals
+        bool const alive = member->IsAlive();
+        auto seen = std::find_if(st.memberAlive.begin(), st.memberAlive.end(),
+                                 [&](auto const& p) { return p.first == member->GetGUID(); });
+        if (seen == st.memberAlive.end())
+            st.memberAlive.emplace_back(member->GetGUID(), alive);
+        else if (seen->second != alive)
+        {
+            seen->second = alive;
+            char const* role = PlayerbotAI::IsTank(member) ? "tank" : PlayerbotAI::IsHeal(member) ? "healer" : "dps";
+            RecordEventV2(botAI, alive ? "member_revived" : "member_died",
+                          JsonLine()
+                              .Str("name", member->GetName())
+                              .Str("guid", std::to_string(member->GetGUID().GetCounter()))
+                              .Str("role", role)
+                              .Bool("leader", member == bot)
+                              .Num("x", member->GetPositionX())
+                              .Num("y", member->GetPositionY())
+                              .Num("z", member->GetPositionZ())
+                              .Num("fight_id", uint32_t(st.fightId))
+                              .Num("attackers", uint32_t(member->getAttackers().size()))
+                              .Done());
+        }
+
+        for (Unit* a : member->getAttackers())
+            if (Creature* c = a ? a->ToCreature() : nullptr)
+                attackers.emplace_back(c, member);
+    }
+
+    if (!attackers.empty() && st.fightUnits.empty())
+    {
+        ++st.fightId;
+        st.fightStartTs = getMSTime();
+        st.fightDead.clear();
+        RecordEventV2(botAI, "fight_started", JsonLine().Num("fight_id", uint32_t(st.fightId)).Done());
+    }
+    for (auto const& [c, victim] : attackers)
+    {
+        if (std::find(st.fightUnits.begin(), st.fightUnits.end(), c->GetGUID()) != st.fightUnits.end())
+            continue;
+        st.fightUnits.push_back(c->GetGUID());
+        bool const inPack = std::find(st.packLocked.begin(), st.packLocked.end(), c->GetGUID()) != st.packLocked.end();
+        RecordEventV2(botAI, "combat_unit_joined",
+                      JsonLine()
+                          .Num("fight_id", uint32_t(st.fightId))
+                          .Raw("unit", UnitJson(c))
+                          .Num("level", uint32_t(c->GetLevel()))
+                          .Bool("elite", c->isElite())
+                          .Bool("in_pack", inPack)
+                          .Num("pack_id", uint32_t(st.packId))
+                          .Str("victim", victim->GetName())
+                          .Done());
+    }
+    // deaths of this fight's units (still in memory: the corpse stays while the fight lasts)
+    for (ObjectGuid const& g : st.fightUnits)
+    {
+        if (std::find(st.fightDead.begin(), st.fightDead.end(), g) != st.fightDead.end())
+            continue;
+        Creature* c = ObjectAccessor::GetCreature(*bot, g);
+        if (c && !c->IsAlive())
+        {
+            st.fightDead.push_back(g);
+            RecordEventV2(botAI, "mob_died", JsonLine().Num("fight_id", uint32_t(st.fightId)).Raw("unit", UnitJson(c)).Done());
+        }
+    }
+    if (attackers.empty() && !partyInCombat && !st.fightUnits.empty())
+    {
+        RecordEventV2(botAI, "fight_ended",
+                      JsonLine()
+                          .Num("fight_id", uint32_t(st.fightId))
+                          .Num("duration_ms", uint32_t(st.fightStartTs ? GetMSTimeDiffToNow(st.fightStartTs) : 0))
+                          .Num("units", uint32_t(st.fightUnits.size()))
+                          .Num("killed", uint32_t(st.fightDead.size()))
+                          .Bool("leader_alive", bot->IsAlive())
+                          .Done());
+        st.fightUnits.clear();
+        st.fightDead.clear();
+    }
 }
 
 void DungeonLead::RecordCampaign(std::string const& json)
@@ -1124,6 +1250,7 @@ void DungeonLead::GuardActiveSessions()
             st.instanceId = bot->GetInstanceId();
         }
         DungeonLead::SamplePosition(botAI, st);
+        DungeonLead::ObserveCombatEvidence(botAI, st, group);
 
         // Pull every party member - leader included - back onto the instance map if death has
         // stranded them outside it. See DungeonLeadState::recoveryTs for the measurements behind
@@ -1755,9 +1882,18 @@ void DungeonLead::SetPackState(PlayerbotAI* botAI, DungeonLeadState& st, Dungeon
         return;
     std::string const line = "#" + std::to_string(pack.id) + " " + pack.name + " (" + ToString(pack.type) + ") " +
                              DungeonLeadKernel::ToString(st.packState) + "->" + DungeonLeadKernel::ToString(next);
+    std::string const payload = DungeonLeadKernel::JsonLine()
+                                    .Num("pack_id", uint32_t(pack.id))
+                                    .Str("name", pack.name)
+                                    .Str("type", ToString(pack.type))
+                                    .Bool("boss", pack.bossPack)
+                                    .Bool("optional", pack.optional)
+                                    .Str("from", DungeonLeadKernel::ToString(st.packState))
+                                    .Str("to", DungeonLeadKernel::ToString(next))
+                                    .Done();
     st.packState = next;
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} pack {}", botAI->GetBot()->GetName(), line);
-    DungeonLead::RecordEvent(botAI, "pack_state", line);
+    DungeonLead::RecordEvent(botAI, "pack_state", line, payload);
 }
 
 DungeonPackSighting DungeonLead::TrackPack(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack)
@@ -1772,7 +1908,26 @@ DungeonPackSighting DungeonLead::TrackPack(PlayerbotAI* botAI, DungeonLeadState&
     // Once the pack itself is fighting, its membership is fixed - a neighbouring group with the
     // same entry can't join it afterwards except by actually attacking the party (as an add).
     if (st.packState == DungeonLeadKernel::PackState::Engaged && st.packLocked.empty())
+    {
         st.packLocked = sighting.members;
+        // schema v2: the pack's own members at engage - what joins the fight beyond them is an add
+        std::string members;
+        for (ObjectGuid const& g : sighting.members)
+            if (Creature* c = ObjectAccessor::GetCreature(*botAI->GetBot(), g))
+                members += (members.empty() ? "" : ",") + UnitJson(c);
+        DungeonLead::RecordEventV2(botAI, "pull_members_resolved",
+                                   DungeonLeadKernel::JsonLine()
+                                       .Num("pack_id", uint32_t(pack.id))
+                                       .Str("objective", pack.name)
+                                       .Str("requirement", pack.optional ? "optional" : "mandatory")
+                                       .Bool("boss", pack.bossPack)
+                                       .Num("expected_entry", uint32_t(pack.expectedEntries.empty() ? 0 : pack.expectedEntries.front()))
+                                       .Num("pack_x", pack.x)
+                                       .Num("pack_y", pack.y)
+                                       .Num("pack_z", pack.z)
+                                       .Raw("core_members", "[" + members + "]")
+                                       .Done());
+    }
 
     if (st.debugMode)
     {

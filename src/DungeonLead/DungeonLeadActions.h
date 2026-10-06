@@ -134,6 +134,10 @@ namespace DungeonLead
     void RecordEventV2(PlayerbotAI* botAI, std::string const& event, std::string const& payload);
     // From GuardActiveSessions(): a position_sample for the leader when the sampling policy says so.
     void SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st);
+    // From GuardActiveSessions() (world thread, ~2 s): schema v2 combat evidence - fight_started /
+    // combat_unit_joined / mob_died / fight_ended from the party's attackers, member_died /
+    // member_revived from the party. Reads only what the units already hold; no world scans.
+    void ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st, Group* group);
     // One validation campaign manifest line (DungeonLeadCampaigns.jsonl).
     void RecordCampaign(std::string const& json);
     // "startdungeon debug" verbose dump (position/distances every wait), plain file, no logger config
