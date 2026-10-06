@@ -39,6 +39,7 @@ namespace
         uint32 phaseTs = 0;
         bool started = false;
         bool retried = false;           // this dungeon already went back to the queue once
+        uint32 inactiveTs = 0;          // first tick the started session looked gone, 0 = active
         std::vector<std::string> bots;  // tank first
     };
 
@@ -47,6 +48,9 @@ namespace
     constexpr uint32 kStartCapMs = 5 * MINUTE * IN_MILLISECONDS;     // party formed, session not started
     // Sessions end themselves at CanaryTimeoutMinutes; this only catches one that doesn't.
     constexpr uint32 kRunGraceMs = 5 * MINUTE * IN_MILLISECONDS;
+    // A started session must look gone this long before the run counts as ended: the tank is not
+    // found while a wipe recovery teleports it, and releasing the bots then kills a live run.
+    constexpr uint32 kEndedConfirmMs = 30000;
 
     bool g_running = false;
     std::deque<uint32> g_queue;
@@ -130,6 +134,7 @@ namespace
                     return;
                 VLog("run " + SlotName(i, slot) + ": " + DungeonLead::RunTestParty(slot.lfg, &slot.bots));
                 slot.started = false;
+                slot.inactiveTs = 0;
                 Enter(slot, Phase::Running);
                 return;
             }
@@ -139,16 +144,21 @@ namespace
                 bool const active = !slot.bots.empty() && DungeonLead::TestPartyActive(slot.bots.front(), assembling);
                 if (active && !assembling)
                     slot.started = true;  // the party assembled and its session is running
+                if (active)
+                    slot.inactiveTs = 0;
+                else if (!slot.inactiveTs)
+                    slot.inactiveTs = getMSTime();
+                bool const gone = !active && GetMSTimeDiffToNow(slot.inactiveTs) >= kEndedConfirmMs;
                 uint32 const runCap =
                     sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes * MINUTE * IN_MILLISECONDS + kRunGraceMs;
-                bool const over = (slot.started && !active) || inPhase >= runCap ||
+                bool const over = (slot.started && gone) || inPhase >= runCap ||
                                   (!slot.started && !active && inPhase > 20000) ||
                                   (!slot.started && inPhase >= kStartCapMs);
                 if (!over)
                     return;
                 std::string const result = "RESULT lfg=" + std::to_string(slot.lfg) + " started=" +
                                            std::to_string(slot.started) + " ended=" +
-                                           std::to_string(slot.started && !active) +
+                                           std::to_string(slot.started && gone) +
                                            " minutes=" + std::to_string(inPhase / 60000);
                 if (!slot.started && !slot.retried)
                 {
