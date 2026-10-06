@@ -17,7 +17,7 @@ Levels (definitions in `tools/live_validation/README.md`): Smoke, Partial, Full 
 | Dungeon | Level | Bosses | Pulls | Recovery | Wipe | Door | Result |
 |---|---|---|---|---|---|---|---|
 | Ragefire Chasm | Full route | 4/4 | OK | OK (escalated) | OK (1) | - | complete, 41 min |
-| Deadmines | Partial | 6/7 (to Edwin VanCleef) | OK | OK | OK | OK (Heavy Doors opened, gunpowder + cannon blow the Iron Clad Door) | the cannon event runs; a full run with it after the latest fixes is pending |
+| Deadmines | Full route | 7/7 (to VanCleef and Cookie) | OK | OK | - | OK (Heavy Doors opened by the leader, gunpowder + cannon blow the Iron Clad Door) | complete, 38 min, no wipe |
 | Wailing Caverns | Partial | 6 (Anacondra, Kresh, Cobrahn, Verdan, Serpentis, Pythas) | OK | OK | OK (1) | - | 45 min test cap; one `leader_unstuck` |
 | Shadowfang Keep | Full route | 8/8 (to Archmage Arugal) | OK | OK | OK (3) | OK (prisoner talked to after his cell's lever, Courtyard Door, Sorcerer and Arugal doors) | complete, 46 min |
 | Razorfen Kraul | Partial | 4 (Roogug, Aggem, Ramtusk, Jargba) | OK | OK | OK (1) | - | 45 min test cap |
@@ -26,7 +26,7 @@ Levels (definitions in `tools/live_validation/README.md`): Smoke, Partial, Full 
 | Razorfen Downs | Full route | 3 (Mordresh, Glutton, Amnennar) | OK | OK | - | - | complete, 39 min; Ragglesnout (rare) not present |
 | SM Armory | Full route | 1/1 (Herod) | OK | - | - | - | complete, 21 min |
 | SM Cathedral | Full route | 3/3 (Fairbanks, Mograine, Whitemane) | OK | OK | - | - | complete, 26 min |
-| Zul'Farrak | Partial | 4 (Theka, Antu'sul, Zum'rah, Executioner) | OK | OK | - | event: key, cage, waves, Bly talk run; End Door pending | partial - the pyramid event is being finished |
+| Zul'Farrak | Full route | 7 (Theka, Antu'sul, Zum'rah, Executioner, Bly, Ukorz, Velratha) | OK | OK | - | OK (Zum'rah's area trigger, Executioner's Key looted, cage, stairs waves fought beside the crew, Weegli then Bly talked to, End Door) | complete, 55 min, no wipe; Gahz'rilla (Mallet summon) not routed |
 
 Pace: trash is cleared pack by pack (~30 s per pack incl. the post-combat gate), so a full clear
 takes 25-60 minutes.
@@ -39,7 +39,7 @@ takes 25-60 minutes.
 | Vanilla | Blackrock Depths - Prison | Data ready, untested — has a door/gate |
 | Vanilla | Blackrock Depths - Upper City | Data ready, untested — has a door/gate |
 | Vanilla | Coren Direbrew | Data ready, untested — has a door/gate |
-| Vanilla | Deadmines | Live: Partial (see matrix) — has a door/gate |
+| Vanilla | Deadmines | Live: Full route (see matrix) — has a door/gate |
 | Vanilla | Dire Maul - East | Data ready, untested — has a door/gate |
 | Vanilla | Dire Maul - North | Data ready, untested — has a door/gate |
 | Vanilla | Dire Maul - West | Data ready, untested — has a door/gate |
@@ -65,7 +65,7 @@ takes 25-60 minutes.
 | Vanilla | The Headless Horseman | Data ready, untested — has a door/gate |
 | Vanilla | Uldaman | Data ready, untested — has a door/gate |
 | Vanilla | Wailing Caverns | Live: Partial (see matrix) |
-| Vanilla | Zul'Farrak | Live: Partial (see matrix) — has a door/gate |
+| Vanilla | Zul'Farrak | Live: Full route (see matrix) — has a door/gate |
 | TBC | Auchenai Crypts | Data ready, untested |
 | TBC | Blood Furnace | Data ready, untested — has a door/gate |
 | TBC | Hellfire Ramparts | Data ready, untested |

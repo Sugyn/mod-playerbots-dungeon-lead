@@ -2310,7 +2310,7 @@ Open:
 
 # CURRENT STATE
 
-Release: v0.12.0-alpha (2026-10-05). Stays `-alpha` until the CHANGELOG's `-beta` bar (most
+Release: v0.13.0-alpha (2026-10-06). Stays `-alpha` until the CHANGELOG's `-beta` bar (most
 non-event dungeons live-verified) is met.
 
 Live status per dungeon: `docs/testing-status.md` is the authoritative source (README links to it

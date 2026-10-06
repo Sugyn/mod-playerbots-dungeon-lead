@@ -18,6 +18,12 @@ the MAJOR bar above is met.
 
 ## [Unreleased]
 
+## [0.13.0-alpha] - 2026-10-06
+
+Dungeon events and doors: the leader opens what a player opens, runs the events a route needs
+(use/talk steps) and no longer walks through closed doors. Live: Deadmines, Shadowfang Keep and
+Zul'Farrak now complete with their events; 9 of the 11 validated dungeons reach full route.
+
 ### Added
 - `.dungeonlead validate <lfgId...>` (GM/console): runs a list of dungeons with fresh bot-only test
   parties, one result line per dungeon - the live validation campaign, previously a server-side
