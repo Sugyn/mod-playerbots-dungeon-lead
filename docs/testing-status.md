@@ -12,8 +12,29 @@ Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) 
 are on since 2026-10-05; Deadmines, Shadowfang Keep and Zul'Farrak were run with them.
 OK = exercised and behaved correctly, `-` = not exercised.
 Levels (definitions in `tools/live_validation/README.md`): Smoke, Partial, Full route, Verified
-(full route twice without a failure that needed a fix), Blocked. Verified so far: Razorfen Downs
-(see below).
+(full route twice without a failure that needed a fix), Blocked. Verified on `d1f1ddf`: Ragefire
+Chasm, SM Library, SM Armory, SM Cathedral, Razorfen Downs, Zul'Farrak (see below).
+
+## Verified campaign `verify-20261006-1626-d1f1ddf` (telemetry v2)
+
+The first campaign recorded with telemetry v2 and judged by `tools/run_replay` (verdicts and
+findings, not by hand). Verified = two FULL_ROUTE runs on the same commit and profile, health not
+unhealthy.
+
+| Dungeon | Run 1 | Run 2 | Level | Findings |
+|---|---|---|---|---|
+| Ragefire Chasm | FULL_ROUTE, 1 wipe | FULL_ROUTE, 1 wipe | **Verified** | PACK_IDENTITY: Bazzalan pulled with 12 cultists |
+| SM Library | FULL_ROUTE, 1 wipe | FULL_ROUTE | **Verified** | |
+| SM Armory | FULL_ROUTE | FULL_ROUTE | **Verified** | |
+| SM Cathedral | FULL_ROUTE, 2 wipes | FULL_ROUTE | **Verified** | ROUTE: the walk to Fairbanks ran into 13 / 6+12 units |
+| Razorfen Downs | FULL_ROUTE | FULL_ROUTE, 1 wipe | **Verified** | |
+| Zul'Farrak | FULL_ROUTE | FULL_ROUTE | **Verified** | |
+| Deadmines | PARTIAL (Gilnid: path) | PARTIAL | Full route earlier | PACK_IDENTITY: Gilnid with 11 goblins and a golem |
+| Shadowfang Keep | PARTIAL (Razorclaw: door) | PARTIAL | Partial | INTERACTION: the walk to the fel steeds turned back to the cells (Cell Door 18935) |
+
+Most wipes have one cause: packs on the way to a boss have no pull steps, so the walk or the boss
+pull takes several packs at once. Next: `path_decision` evidence for SFK (deployed `5f3d706`),
+then pull steps from the world DB's packs.
 
 ## Verified campaign (2026-10-06)
 
