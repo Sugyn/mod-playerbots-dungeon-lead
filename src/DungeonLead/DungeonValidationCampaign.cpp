@@ -38,6 +38,7 @@ namespace
         uint32 lfg = 0;
         uint32 phaseTs = 0;
         bool started = false;
+        bool retried = false;           // this dungeon already went back to the queue once
         std::vector<std::string> bots;  // tank first
     };
 
@@ -49,6 +50,7 @@ namespace
 
     bool g_running = false;
     std::deque<uint32> g_queue;
+    std::deque<uint32> g_retry;  // dungeons requeued once, in queue order
     std::vector<Slot> g_slots;
     uint32 g_total = 0;
     uint32 g_lastTick = 0;
@@ -98,6 +100,12 @@ namespace
                     return;
                 slot.lfg = g_queue.front();
                 g_queue.pop_front();
+                slot.retried = false;
+                if (!g_retry.empty() && g_retry.front() == slot.lfg)
+                {
+                    slot.retried = true;
+                    g_retry.pop_front();
+                }
                 Enter(slot, Phase::Acquire);
                 return;
             case Phase::Acquire:
@@ -142,6 +150,15 @@ namespace
                                            std::to_string(slot.started) + " ended=" +
                                            std::to_string(slot.started && !active) +
                                            " minutes=" + std::to_string(inPhase / 60000);
+                if (!slot.started && !slot.retried)
+                {
+                    // the party never got going (a bot failed, a start race): one more try later
+                    VLog("requeue " + SlotName(i, slot) + " - the party never started");
+                    g_queue.push_back(slot.lfg);
+                    g_retry.push_back(slot.lfg);
+                    Enter(slot, Phase::Release);
+                    return;
+                }
                 VLog(result);
                 g_results.push_back(result);
                 Enter(slot, Phase::Release);
@@ -168,6 +185,7 @@ std::string DungeonLead::StartValidation(std::vector<uint32> const& lfgIds)
         return "A test/canary session is still running - wait for it or release it first";
 
     g_queue.assign(lfgIds.begin(), lfgIds.end());
+    g_retry.clear();
     g_total = uint32(lfgIds.size());
     uint32 const parallel = std::max<uint32>(
         1, std::min({sDungeonLeadConfig.dungeonLeadValidationParallel, sDungeonLeadConfig.dungeonLeadCanaryMaxConcurrent, g_total}));

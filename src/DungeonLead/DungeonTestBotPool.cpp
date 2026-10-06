@@ -635,6 +635,10 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
         // one right up until the group is short a healer mid-dungeon. Independent architecture
         // review DL-004's "verified role/... capabilities" scope, found by direct observation
         // rather than by reading the review text.
+        // A validation slot's own bots may still sit in their group from an earlier run (groups are
+        // saved): those are ours to take out of it. Anyone else in a group is left alone.
+        if (only && bot && bot->GetGroup())
+            bot->RemoveFromGroup();
         if (!bot || !botAI || bot->GetGroup() || !bot->IsAlive())
             continue;
 
