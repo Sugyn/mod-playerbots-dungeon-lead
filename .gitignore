@@ -3,3 +3,5 @@ __pycache__/
 build-tests/
 DUNGEON_LEADER_HARDENING_PLAN.md
 CLAUDE.md
+DUNGEON_LEAD_MASTER_PLAN_OBSERVABILITY_V2.md
+src/DungeonLead/DungeonLeadBuildInfo.generated.h

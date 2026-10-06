@@ -16,6 +16,9 @@
 #include "GameObject.h"
 #include "DungeonPullController.h"
 #include "DungeonTelemetryBuffer.h"
+#include "DungeonTelemetryV2.h"
+#include "DungeonLeadBuildInfo.h"
+#include "DungeonValidationCampaign.h"
 #include "Spell.h"
 #include "DungeonRecoveryController.h"
 #include "DungeonTargetManager.h"
@@ -47,6 +50,8 @@
 #include "Spell.h"
 #include "Log.h"
 #include "Timer.h"
+
+#include <chrono>
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
@@ -180,6 +185,8 @@ namespace
     FILE* g_sessionsLogFile = nullptr;
     FILE* g_runsLogFile = nullptr;
     FILE* g_debugLogFile = nullptr;
+    FILE* g_eventsV2File = nullptr;
+    FILE* g_campaignsFile = nullptr;
 
     // Writes the header into a fresh (empty) file the first time it is opened.
     void EnsureHeader(FILE* f, bool& done, char const* header)
@@ -211,6 +218,85 @@ namespace
     // run - now actually holds.
     std::atomic<uint64> g_nextRunId{static_cast<uint64>(time(nullptr)) << 20};
     uint64 NextRunId() { return g_nextRunId.fetch_add(1); }
+
+    // Schema v2 wall_time: UTC, millisecond precision (display/correlation only - event_seq and
+    // run_ms are the order).
+    std::string WallTimeIso()
+    {
+        auto const now = std::chrono::system_clock::now();
+        time_t const t = std::chrono::system_clock::to_time_t(now);
+        int const ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+        struct tm tmBuf {};
+#ifdef _WIN32
+        gmtime_s(&tmBuf, &t);
+#else
+        gmtime_r(&t, &tmBuf);
+#endif
+        char ts[32];
+        strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tmBuf);
+        char out[48];
+        snprintf(out, sizeof(out), "%s.%03dZ", ts, ms);
+        return out;
+    }
+
+    // One schema v2 event line (docs/telemetry-schema-v2.md): the envelope from the session state
+    // and the leader, then the payload - "detail" (the v1 free text, when there is one) plus the
+    // members of `payload`.
+    std::string BuildV2Line(Player* bot, DungeonLeadState& st, std::string const& event, std::string const* detail,
+                            std::string const& payload)
+    {
+        using DungeonLeadKernel::JsonLine;
+        DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
+        std::string p = "{";
+        if (detail)
+            p += "\"detail\":\"" + DungeonLeadKernel::JsonEscape(*detail) + "\"";
+        if (payload.size() > 2)
+        {
+            if (detail)
+                p += ",";
+            p += payload.substr(1, payload.size() - 2);
+        }
+        p += "}";
+
+        JsonLine j;
+        j.Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
+            .Num("event_seq", uint32_t(++st.eventSeq))
+            .Str("event_type", event)
+            .Str("run_id", std::to_string(st.runId))
+            .Str("campaign_id", st.campaignId)
+            .Str("scenario_id", st.scenarioId)
+            .Str("wall_time", WallTimeIso())
+            .Num("run_ms", uint32_t(st.sessionStartTs ? GetMSTimeDiffToNow(st.sessionStartTs) : 0))
+            .Open("build")
+            .Str("commit_sha", DUNGEONLEAD_COMMIT_SHA)
+            .Str("module_version", DUNGEONLEAD_MODULE_VERSION)
+            .Close()
+            .Open("dungeon")
+            .Num("lfg_id", uint32_t(st.lfgId))
+            .Str("name", route ? route->name : "")
+            .Num("map_id", uint32_t(bot->GetMapId()))
+            .Num("instance_id", uint32_t(bot->GetInstanceId()))
+            .Close()
+            .Open("leader")
+            .Str("guid", std::to_string(bot->GetGUID().GetCounter()))
+            .Str("name", bot->GetName())
+            .Num("x", bot->GetPositionX())
+            .Num("y", bot->GetPositionY())
+            .Num("z", bot->GetPositionZ())
+            .Num("o", bot->GetOrientation())
+            .Bool("alive", bot->IsAlive())
+            .Close()
+            .Str("state", DungeonLeadKernel::ToString(st.state))
+            .Num("step", uint32_t(st.stepIndex))
+            .Num("pack_id", uint32_t(st.packId))
+            .Open("outcome")
+            .Str("outcome", ToString(st.outcome))
+            .Str("failure_domain", ToString(st.failureDomain))
+            .Str("failure_reason", ToString(st.failureReason))
+            .Close()
+            .Raw("payload", p);
+        return j.Done() + "\n";
+    }
 
     std::string FormatLogTimestamp()
     {
@@ -379,7 +465,8 @@ namespace
     }
 }
 
-void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail)
+void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail,
+                              std::string const& payload)
 {
     Player* bot = botAI->GetBot();
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
@@ -395,6 +482,46 @@ void DungeonLead::RecordEvent(PlayerbotAI* botAI, std::string const& event, std:
          << "\",\"" << ToString(st.failureReason) << "\"," << bot->GetMapId() << "," << bot->GetInstanceId() << ",\""
          << DungeonLeadKernel::ToString(st.state) << "\"," << st.stepIndex << "," << st.packId << "\n";
     g_telemetry.Push(DungeonLeadKernel::TelemetryFile::Sessions, line.str());
+    g_telemetry.Push(DungeonLeadKernel::TelemetryFile::EventsV2, BuildV2Line(bot, st, event, &detail, payload));
+}
+
+void DungeonLead::RecordEventV2(PlayerbotAI* botAI, std::string const& event, std::string const& payload)
+{
+    Player* bot = botAI->GetBot();
+    DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    g_telemetry.Push(DungeonLeadKernel::TelemetryFile::EventsV2, BuildV2Line(bot, st, event, nullptr, payload));
+}
+
+void DungeonLead::SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st)
+{
+    Player* bot = botAI->GetBot();
+    DungeonLeadKernel::PositionSampleFacts f;
+    f.haveLast = st.sampleHave;
+    f.lastX = st.sampleX;
+    f.lastY = st.sampleY;
+    f.lastZ = st.sampleZ;
+    f.msSinceLast = st.sampleTs ? GetMSTimeDiffToNow(st.sampleTs) : 0;
+    f.x = bot->GetPositionX();
+    f.y = bot->GetPositionY();
+    f.z = bot->GetPositionZ();
+    f.stateChanged = st.sampleState != st.state;
+    f.stepChanged = st.sampleStep != st.stepIndex;
+    if (!DungeonLeadKernel::ShouldSamplePosition(f))
+        return;
+    st.sampleHave = true;
+    st.sampleX = f.x;
+    st.sampleY = f.y;
+    st.sampleZ = f.z;
+    st.sampleTs = getMSTime();
+    st.sampleState = st.state;
+    st.sampleStep = st.stepIndex;
+    RecordEventV2(botAI, "position_sample",
+                  DungeonLeadKernel::JsonLine().Bool("moving", bot->isMoving()).Bool("in_combat", bot->IsInCombat()).Done());
+}
+
+void DungeonLead::RecordCampaign(std::string const& json)
+{
+    g_telemetry.Push(DungeonLeadKernel::TelemetryFile::Campaigns, json + "\n");
 }
 
 void DungeonLead::RecordRunSummary(PlayerbotAI* botAI, std::string const& terminalReason)
@@ -447,6 +574,8 @@ void DungeonLead::FlushTelemetry(bool force)
     FILE* sessions = OpenPersistent("DungeonLeadSessions.csv", g_sessionsLogFile);
     FILE* runs = OpenPersistent("DungeonLeadRuns.csv", g_runsLogFile);
     FILE* debug = OpenPersistent("DungeonLeadDebug.log", g_debugLogFile);
+    FILE* eventsV2 = OpenPersistent("DungeonLeadEvents.v2.jsonl", g_eventsV2File);
+    FILE* campaigns = OpenPersistent("DungeonLeadCampaigns.jsonl", g_campaignsFile);
     if (sessions)
         EnsureHeader(sessions, sessionsHeader,
                      "timestamp,run_id,player,lfg_id,dungeon,tank,group_members,event,detail,outcome,"
@@ -458,9 +587,11 @@ void DungeonLead::FlushTelemetry(bool force)
 
     for (DungeonLeadKernel::TelemetryLine const& l : lines)
     {
-        FILE* f = l.file == DungeonLeadKernel::TelemetryFile::Sessions ? sessions
-                : l.file == DungeonLeadKernel::TelemetryFile::Runs     ? runs
-                                                                       : debug;
+        FILE* f = l.file == DungeonLeadKernel::TelemetryFile::Sessions  ? sessions
+                : l.file == DungeonLeadKernel::TelemetryFile::Runs      ? runs
+                : l.file == DungeonLeadKernel::TelemetryFile::EventsV2  ? eventsV2
+                : l.file == DungeonLeadKernel::TelemetryFile::Campaigns ? campaigns
+                                                                        : debug;
         if (f)
             fputs(l.text.c_str(), f);
     }
@@ -471,8 +602,13 @@ void DungeonLead::FlushTelemetry(bool force)
         if (sessions)
             fprintf(sessions, "%s,0,\"?\",0,\"?\",\"?\",\"\",\"telemetry_dropped\",\"%llu lines\",\"\",\"\",\"\",0,0,\"\",0,0\n",
                     FormatLogTimestamp().c_str(), static_cast<unsigned long long>(dropped));
+        if (eventsV2)
+            fprintf(eventsV2, "{\"schema_version\":%d,\"event_type\":\"telemetry_dropped\",\"wall_time\":\"%s\","
+                              "\"payload\":{\"lines\":%llu}}\n",
+                    DungeonLeadKernel::kTelemetrySchemaVersion, WallTimeIso().c_str(),
+                    static_cast<unsigned long long>(dropped));
     }
-    for (FILE* f : {sessions, runs, debug})
+    for (FILE* f : {sessions, runs, debug, eventsV2, campaigns})
         if (f)
             fflush(f);
 }
@@ -987,6 +1123,7 @@ void DungeonLead::GuardActiveSessions()
             st.mapId = bot->GetMapId();
             st.instanceId = bot->GetInstanceId();
         }
+        DungeonLead::SamplePosition(botAI, st);
 
         // Pull every party member - leader included - back onto the instance map if death has
         // stranded them outside it. See DungeonLeadState::recoveryTs for the measurements behind
@@ -1229,6 +1366,7 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
         st.origin = origin;
         st.sessionStartTs = getMSTime();
         st.tankName = bot->GetName();
+        DungeonLead::ValidationLineage(st.tankName, st.campaignId, st.scenarioId);
         if (testMode)
         {
             st.testMode = true;

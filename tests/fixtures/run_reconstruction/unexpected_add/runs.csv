@@ -1,0 +1,2 @@
+ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,skipped_steps,duration_ms,terminal_reason
+2026-10-06 08:23:18,1878285668581378,"Aevar",8,"Shadowfang Keep","auto_canary","partial","combat","party_wipe",0,4,2013328,"wipe"

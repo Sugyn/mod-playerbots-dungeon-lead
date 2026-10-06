@@ -32,6 +32,8 @@ namespace DungeonLeadKernel
         Sessions,  // DungeonLeadSessions.csv - one row per event
         Runs,      // DungeonLeadRuns.csv - one row per finished run
         Debug,     // DungeonLeadDebug.log - "startdungeon debug" dumps
+        EventsV2,  // DungeonLeadEvents.v2.jsonl - schema v2, one JSON object per event
+        Campaigns, // DungeonLeadCampaigns.jsonl - one manifest per validation campaign
     };
 
     struct TelemetryLine

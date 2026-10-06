@@ -4,6 +4,7 @@
 #include "DungeonLeadKernels.h"
 #include "DungeonRouteTypes.h"
 #include "DungeonTelemetryBuffer.h"
+#include "DungeonTelemetryV2.h"
 
 #include <cstdio>
 #include <string>
@@ -1038,6 +1039,42 @@ namespace
     }
 }
 
+namespace
+{
+    void TestTelemetryV2()
+    {
+        std::string const line = JsonLine()
+                                      .Num("schema_version", int32_t(kTelemetrySchemaVersion))
+                                      .Str("event_type", "pull_started")
+                                      .Open("leader").Str("name", "Ae\"var").Num("x", -112.404f).Close()
+                                      .Raw("payload", JsonLine().Str("detail", "a\\b\nc").Done())
+                                      .Done();
+        Check(line == "{\"schema_version\":2,\"event_type\":\"pull_started\",\"leader\":{\"name\":\"Ae\\\"var\","
+                      "\"x\":-112.40},\"payload\":{\"detail\":\"a\\\\b\\nc\"}}",
+              "v2 line: nested object, escaping, 2-decimal coordinates");
+        Check(JsonEscape(std::string(1, char(1))) == "\\u0001", "control characters are escaped");
+        Check(JsonLine().Raw("p", "").Done() == "{\"p\":null}", "empty raw value is null");
+
+        PositionSampleFacts f;
+        Check(ShouldSamplePosition(f), "first sample of a run is always taken");
+        f.haveLast = true;
+        f.x = 0.3f;
+        f.msSinceLast = 10000;
+        Check(!ShouldSamplePosition(f), "standing still (< 0.5 yd) emits nothing, however long");
+        f.x = 3.5f;
+        f.msSinceLast = 100;
+        Check(ShouldSamplePosition(f), "moved >= 3 yd -> sample");
+        f.x = 1.5f;
+        Check(!ShouldSamplePosition(f), "moved 1.5 yd just now -> wait");
+        f.msSinceLast = 3000;
+        Check(ShouldSamplePosition(f), "still moving after 3 s -> sample");
+        f.x = 0.f;
+        f.msSinceLast = 0;
+        f.stateChanged = true;
+        Check(ShouldSamplePosition(f), "state change -> sample even without movement");
+    }
+}
+
 int main()
 {
     TestLeadership();
@@ -1053,6 +1090,7 @@ int main()
     TestCheckpoint();
     TestAssembly();
     TestTelemetryBuffer();
+    TestTelemetryV2();
     TestObjectivePolicy();
     TestPackIdentity();
     TestInteraction();

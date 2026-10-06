@@ -125,8 +125,17 @@ namespace DungeonLead
     void RequestLeadership(Player* bot, DungeonLeadState& st);
     void ReconcileLeadership(PlayerbotAI* botAI);
     // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,
-    // event, detail) - see README "Debugging". Not gated behind "startdungeon debug".
-    void RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail);
+    // event, detail) - see README "Debugging". Not gated behind "startdungeon debug". The same
+    // event also goes to DungeonLeadEvents.v2.jsonl (docs/telemetry-schema-v2.md); `payload` is a
+    // serialized JSON object (DungeonLeadKernel::JsonLine) whose members join "detail" there.
+    void RecordEvent(PlayerbotAI* botAI, std::string const& event, std::string const& detail,
+                     std::string const& payload = "");
+    // A schema v2 event with no CSV row (position_sample: too frequent for the v1 file).
+    void RecordEventV2(PlayerbotAI* botAI, std::string const& event, std::string const& payload);
+    // From GuardActiveSessions(): a position_sample for the leader when the sampling policy says so.
+    void SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st);
+    // One validation campaign manifest line (DungeonLeadCampaigns.jsonl).
+    void RecordCampaign(std::string const& json);
     // "startdungeon debug" verbose dump (position/distances every wait), plain file, no logger config
     // dependency. Gated behind DungeonLeadState::debugMode, defaulting to
     // AiPlayerbot.DungeonLead.DebugDefault (0 for a fresh checkout of this patch).

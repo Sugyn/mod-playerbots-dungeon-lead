@@ -1,0 +1,2 @@
+ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,skipped_steps,duration_ms,terminal_reason
+2026-10-06 10:13:50,1878285668581390,"Gaeru",20,"Razorfen Downs","auto_canary","complete","none","none",1,0,2104059,"route_end"

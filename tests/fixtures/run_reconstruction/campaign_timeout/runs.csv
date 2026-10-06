@@ -1,0 +1,2 @@
+ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,skipped_steps,duration_ms,terminal_reason
+2026-10-06 09:58:53,1878285668581385,"Krorruahm",6,"Deadmines","auto_canary","running","none","none",0,1,4203966,"canary_timeout"

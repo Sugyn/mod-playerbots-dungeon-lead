@@ -29,6 +29,10 @@ namespace DungeonLead
 
     // World thread, every update (throttled internally).
     void ValidationTick();
+
+    // Telemetry lineage: when `tankName` leads a party of the running campaign, its campaign_id and
+    // scenario_id (both left empty otherwise).
+    void ValidationLineage(std::string const& tankName, std::string& campaignId, std::string& scenarioId);
 }
 
 #endif

@@ -1,0 +1,2 @@
+ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,skipped_steps,duration_ms,terminal_reason
+2026-10-06 10:41:01,1878285668581391,"Farancano",24,"Zul'Farrak","auto_canary","complete","none","none",0,0,3496622,"route_end"

@@ -275,6 +275,17 @@ struct DungeonLeadState
 
     // --- session: survives a route reset, only a full Reset() (real stop/start) clears these ---
     uint64 runId = 0;      // correlates every telemetry row from one "startdungeon" session
+    // Telemetry v2 (docs/telemetry-schema-v2.md): event_seq is the canonical order of a run's
+    // events; campaign/scenario name the validation campaign that started it (empty otherwise).
+    uint32 eventSeq = 0;
+    std::string campaignId;
+    std::string scenarioId;
+    // last position_sample, for the sampling policy (DungeonTelemetryV2.h)
+    bool sampleHave = false;
+    float sampleX = 0.f, sampleY = 0.f, sampleZ = 0.f;
+    uint32 sampleTs = 0;
+    DungeonLeadKernel::LeadState sampleState = DungeonLeadKernel::LeadState::WaitingReady;
+    uint32 sampleStep = 0;
     // The session's one authoritative state - only DungeonLeadBrain::TransitionTo changes it.
     // Starting: leadership requested, not observed yet. Stopping: strategies restored, handback
     // not observed yet. Everything in between is an active session (see DungeonLeadBrain).

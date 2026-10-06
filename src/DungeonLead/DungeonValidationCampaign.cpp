@@ -9,7 +9,10 @@
 #include "DungeonValidationCampaign.h"
 
 #include "DBCStores.h"
+#include "DungeonLeadActions.h"
+#include "DungeonLeadBuildInfo.h"
 #include "DungeonLeadCanary.h"
+#include "DungeonTelemetryV2.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonTestBotPool.h"
 #include "Log.h"
@@ -17,6 +20,7 @@
 #include "Timer.h"
 
 #include <algorithm>
+#include <ctime>
 #include <deque>
 
 namespace
@@ -59,6 +63,21 @@ namespace
     uint32 g_total = 0;
     uint32 g_lastTick = 0;
     std::vector<std::string> g_results;
+    std::string g_campaignId;  // verify-<UTC yyyymmdd-hhmm>-<commit>, telemetry lineage
+
+    // The test party every campaign run uses (DungeonTestBotPool), for the manifest and
+    // scenario_id: one faction, warrior tank, priest healer, warrior + mage + rogue, LFG target level.
+    constexpr char const* kValidationProfile = "bot5-wtank-phealer-wmr-dps-lfg-target-level";
+
+    std::string UtcStamp(char const* fmt)
+    {
+        time_t const now = time(nullptr);
+        struct tm tmBuf {};
+        gmtime_r(&now, &tmBuf);
+        char buf[32];
+        strftime(buf, sizeof(buf), fmt, &tmBuf);
+        return buf;
+    }
 
     void VLog(std::string const& line)
     {
@@ -164,6 +183,13 @@ namespace
                 {
                     // the party never got going (a bot failed, a start race): one more try later
                     VLog("requeue " + SlotName(i, slot) + " - the party never started");
+                    DungeonLead::RecordCampaign(DungeonLeadKernel::JsonLine()
+                                                    .Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
+                                                    .Str("record", "run_requeued")
+                                                    .Str("campaign_id", g_campaignId)
+                                                    .Num("lfg_id", uint32_t(slot.lfg))
+                                                    .Str("reason", "party_never_started")
+                                                    .Done());
                     g_queue.push_back(slot.lfg);
                     g_retry.push_back(slot.lfg);
                     Enter(slot, Phase::Release);
@@ -171,6 +197,16 @@ namespace
                 }
                 VLog(result);
                 g_results.push_back(result);
+                DungeonLead::RecordCampaign(DungeonLeadKernel::JsonLine()
+                                                .Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
+                                                .Str("record", "run_result")
+                                                .Str("campaign_id", g_campaignId)
+                                                .Num("lfg_id", uint32_t(slot.lfg))
+                                                .Str("tank", slot.bots.empty() ? "" : slot.bots.front())
+                                                .Bool("started", slot.started)
+                                                .Bool("ended", slot.started && gone)
+                                                .Num("minutes", uint32_t(inPhase / 60000))
+                                                .Done());
                 Enter(slot, Phase::Release);
                 return;
             }
@@ -203,10 +239,26 @@ std::string DungeonLead::StartValidation(std::vector<uint32> const& lfgIds)
     g_results.clear();
     g_lastTick = 0;
     g_running = true;
-    std::string ids;
+    std::string ids, idsJson;
     for (uint32 id : lfgIds)
+    {
         ids += (ids.empty() ? "" : " ") + std::to_string(id);
-    VLog("campaign start: " + ids + " (" + std::to_string(parallel) + " at a time)");
+        idsJson += (idsJson.empty() ? "" : ",") + std::to_string(id);
+    }
+    g_campaignId = "verify-" + UtcStamp("%Y%m%d-%H%M") + "-" + DUNGEONLEAD_COMMIT_SHA;
+    DungeonLead::RecordCampaign(DungeonLeadKernel::JsonLine()
+                                    .Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
+                                    .Str("record", "campaign_started")
+                                    .Str("campaign_id", g_campaignId)
+                                    .Str("started_at", UtcStamp("%Y-%m-%dT%H:%M:%SZ"))
+                                    .Str("commit_sha", DUNGEONLEAD_COMMIT_SHA)
+                                    .Str("module_version", DUNGEONLEAD_MODULE_VERSION)
+                                    .Str("validation_profile", kValidationProfile)
+                                    .Num("parallelism", uint32_t(parallel))
+                                    .Num("timeout_minutes", uint32_t(sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes))
+                                    .Raw("dungeons", "[" + idsJson + "]")
+                                    .Done());
+    VLog("campaign start " + g_campaignId + ": " + ids + " (" + std::to_string(parallel) + " at a time)");
     return "Validation campaign started: " + std::to_string(g_total) + " dungeon(s), " + std::to_string(parallel) +
            " at a time, " + std::to_string(sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes) + " min per run at most";
 }
@@ -255,6 +307,29 @@ void DungeonLead::ValidationTick()
     if (allIdle && g_queue.empty())
     {
         VLog("RESULT campaign finished (" + std::to_string(g_results.size()) + " dungeons)");
+        DungeonLead::RecordCampaign(DungeonLeadKernel::JsonLine()
+                                        .Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
+                                        .Str("record", "campaign_finished")
+                                        .Str("campaign_id", g_campaignId)
+                                        .Str("finished_at", UtcStamp("%Y-%m-%dT%H:%M:%SZ"))
+                                        .Num("runs", uint32_t(g_results.size()))
+                                        .Done());
         g_running = false;
     }
+}
+
+void DungeonLead::ValidationLineage(std::string const& tankName, std::string& campaignId, std::string& scenarioId)
+{
+    campaignId.clear();
+    scenarioId.clear();
+    if (!g_running)
+        return;
+    for (Slot const& slot : g_slots)
+        if (!slot.bots.empty() && slot.bots.front() == tankName)
+        {
+            campaignId = g_campaignId;
+            scenarioId = "lfg" + std::to_string(slot.lfg) + "-lvl" + std::to_string(TargetLevel(slot.lfg)) + "-" +
+                         kValidationProfile;
+            return;
+        }
 }
