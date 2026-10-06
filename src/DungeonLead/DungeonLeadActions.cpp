@@ -632,6 +632,19 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
         {
             st.fightDead.push_back(g);
             RecordEventV2(botAI, "mob_died", JsonLine().Num("fight_id", uint32_t(st.fightId)).Raw("unit", UnitJson(c)).Done());
+            // A route boss killed while the party worked on another step (ZF: Antu'sul came down
+            // to a fight at Theka's) is done: remember it, or its own step finds nobody and the
+            // run aborts on "not found". Bosses only - trash steps share entries across packs.
+            if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+                for (uint32 i = 0; i < route->steps.size(); ++i)
+                    if (route->steps[i].kind == DungeonRouteKind::Boss && route->steps[i].entry == c->GetEntry() &&
+                        !sDungeonRouteMgr.IsStepKilled(st.instanceId, c->GetEntry()))
+                    {
+                        sDungeonRouteMgr.MarkStepKilled(st.instanceId, c->GetEntry());
+                        RecordEventV2(botAI, "boss_killed",
+                                      JsonLine().Str("name", route->steps[i].boss).Num("step", i)
+                                          .Num("entry", uint32_t(c->GetEntry())).Bool("current_step", i == st.stepIndex).Done());
+                    }
         }
     }
     if (attackers.empty() && !partyInCombat && !st.fightUnits.empty())

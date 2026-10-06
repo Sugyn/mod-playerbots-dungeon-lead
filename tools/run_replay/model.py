@@ -350,6 +350,8 @@ class _Builder:
                 self.note(e, "run", "Run started")
             elif t == "state_transition" and p.get("to") in _TIMELINE_STATES:
                 self.note(e, "state", f"{p.get('from')} -> {p.get('to')} ({p.get('reason')})")
+            elif t == "boss_killed" and not p.get("current_step"):
+                self.note(e, "boss", f"Boss {p.get('name')} killed during another step's fight (step {p.get('step')})")
             elif t in ("objective_skipped", "objective_failed", "route_complete", "canary_stop", "stop"):
                 self.note(e, "route" if t != "stop" else "run", f"{t}: {p.get('detail', '')}")
         for f in fights:

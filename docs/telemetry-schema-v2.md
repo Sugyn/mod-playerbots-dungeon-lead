@@ -113,6 +113,7 @@ increments, each with its own entry here.
 | fight | `fight_started`, `fight_ended` (v2 only) | `fight_id`; end: `duration_ms`, `units`, `killed`, `leader_alive` |
 | combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid (per-instance counter), spawn (world DB creature.guid), entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |
 | mob_died | `mob_died` (v2 only) | `fight_id`, `unit` |
+| boss_killed | `boss_killed` (v2 only) | `name`, `step`, `entry`, `current_step` - a route boss died (also while another step was worked on: the step is then skipped as done) |
 | member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers` |
 | pull_members_resolved | `pull_members_resolved` (v2 only, pack locked on engage) | `pack_id`, `objective`, `requirement`, `boss`, `expected_entry`, `pack_x/y/z`, `core_members[]` (units) |
 | combat_anchor_set | `combat_anchor_set` (v2 only) | `kind` (fight_start / boss_home / held_at_fight), `x`, `y`, `z`, `radius`, `boss_home_dist` |
