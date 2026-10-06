@@ -77,7 +77,7 @@ Zul'Farrak now complete with their events; 9 of the 11 validated dungeons reach 
 ### Changed
 - A closed door only counts as blocking the way when it is near the line to where the leader is
   going, not merely nearby.
-- README, CLAUDE.md and the testing status describe the current state; the 2026-10-03
+- README and the testing status describe the current state; the 2026-10-03
   implementation record moved to `docs/history/`.
 
 ## [0.12.0-alpha] - 2026-10-05
@@ -133,7 +133,7 @@ dungeons in the route table have no live run yet.
 ## [0.11.0-alpha] - 2026-10-04
 
 The leader is now a state machine with explicit readiness, pull, recovery and wipe handling
-(see CLAUDE.md for the phase-by-phase record), plus the first hardening round (H1-H3).
+(phase-by-phase record in `docs/history/`), plus the first hardening round (H1-H3).
 Live-tested with a bot-only test party in Wailing Caverns only.
 
 ### Fixed (hardening)

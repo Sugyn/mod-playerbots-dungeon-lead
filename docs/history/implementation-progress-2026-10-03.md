@@ -1,9 +1,8 @@
 # Implementation progress - phases 0-16 (2026-10-03)
 
-Historical record moved out of `CLAUDE.md` on 2026-10-05. It describes the state on the day each
-phase was finished; statements like "only Wailing Caverns exercised live" or "doors not waited
-for" are no longer current - see `CLAUDE.md` (HARDENING PROGRESS, CURRENT STATE) and
-`docs/testing-status.md` for that.
+Historical record (2026-10-05). It describes the state on the day each phase was finished;
+statements like "only Wailing Caverns exercised live" or "doors not waited for" are no longer
+current - see `docs/testing-status.md` and `CHANGELOG.md` for that.
 
 ## Phase 0 — Baseline
 

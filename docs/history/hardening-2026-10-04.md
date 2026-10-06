@@ -1,8 +1,7 @@
 # Hardening H1-H7 (2026-10-04/05)
 
-Historical record moved out of `CLAUDE.md` on 2026-10-06. It describes the state when each round
-was finished; current state is in `CLAUDE.md` (CURRENT STATE), validation in
-`docs/testing-status.md`, releases in `CHANGELOG.md`.
+Historical record (2026-10-06). It describes the state when each round was finished; current
+validation is in `docs/testing-status.md`, releases in `CHANGELOG.md`.
 
 # HARDENING PROGRESS
 
