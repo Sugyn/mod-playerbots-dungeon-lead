@@ -93,31 +93,9 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 165,Scarlet Monastery - Library,189,0,0,Library,1,boss,Houndmaster Loksey,3974,119.9,-260.9,18.6,spawn,
 165,Scarlet Monastery - Library,189,0,0,Library,2,boss,Arcanist Doan,6487,148.3,-428.7,18.5,spawn,drops Scarlet Key
 163,Scarlet Monastery - Armory,189,0,0,Armory,1,boss,Herod,3975,1965.1,-431.6,6.3,spawn,Scarlet Key door
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,1,optional,Scarlet Centurion,4301,1064.4,1387.3,30.8,spawn,cathedral nave: the packs are pulled one by one from the door - crossing the nave pulled 13 at once
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,2,optional,Scarlet Centurion,4301,1064.8,1410.8,30.8,spawn,cathedral nave: centurions north of the door
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,3,optional,Scarlet Chaplain,4299,1081.6,1379.5,30.4,spawn,cathedral nave: south pews 1
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,4,optional,Scarlet Wizard,4300,1082.9,1417.3,30.3,spawn,cathedral nave: north pews 1
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,5,optional,Scarlet Monk,4540,1093.9,1391,30.4,spawn,cathedral nave: aisle 1 south
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,6,optional,Scarlet Abbot,4303,1093.9,1405.2,30.4,spawn,cathedral nave: aisle 1 north
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,7,optional,Scarlet Champion,4302,1106.8,1379.2,30.3,spawn,cathedral nave: south pews 2
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,8,optional,Scarlet Champion,4302,1104,1419.4,30.4,spawn,cathedral nave: north pews 2
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,9,optional,Scarlet Abbot,4303,1106.5,1395.5,30.4,spawn,cathedral nave: aisle 2
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,10,optional,Scarlet Wizard,4300,1113.1,1380.5,30.3,spawn,cathedral nave: south pews 3
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,11,optional,Scarlet Champion,4302,1123.8,1419.3,30.4,spawn,cathedral nave: north pews 3
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,12,optional,Scarlet Abbot,4303,1118.6,1394.8,30.4,spawn,cathedral nave: aisle 3
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,13,optional,Scarlet Champion,4302,1131.1,1393,30.4,spawn,cathedral nave: aisle 4 south
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,14,optional,Scarlet Abbot,4303,1131.2,1405.1,30.4,spawn,cathedral nave: aisle 4 north
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,15,optional,Scarlet Champion,4302,1138.5,1369.4,30.4,spawn,cathedral nave: by the altar
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,16,optional,South aisle (away from Mograine),1,1132,1371,30.4,spawn,path anchor: to Fairbanks' room without passing the altar
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,17,optional,Scarlet Wizard,4300,1139.4,1350.3,30.4,spawn,Fairbanks' room guards (Mograine's) before Fairbanks
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,18,optional,High Inquisitor Fairbanks,4542,1158.9,1354.3,30.4,spawn,hidden room
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,19,optional,North aisle (away from Mograine),1,1132,1424,30.4,spawn,path anchor: Mograine (altar) calls the chapels' guards when he enters combat - pass him 30+ yd away
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,20,optional,Scarlet Wizard,4300,1138.5,1443.4,30.4,spawn,north chapel guards 1 - Mograine's guards are cleared before him
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,21,optional,Scarlet Champion,4302,1153.3,1436.3,30.6,spawn,north chapel guards 2
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,22,optional,Scarlet Chaplain,4299,1152.2,1454.3,30.4,spawn,north chapel guards 3
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,23,optional,North aisle (away from Mograine),1,1132,1424,30.4,spawn,path anchor: back out of the north chapel
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,24,boss,Scarlet Commander Mograine,3976,1153.9,1398.4,32.6,spawn,clear whole cathedral first
-164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,25,event,High Inquisitor Whitemane,3977,1202.1,1399.1,29.1,spawn,enters + resurrects Mograine (scripted)
+164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,1,optional,High Inquisitor Fairbanks,4542,1158.9,1354.3,30.4,spawn,hidden room
+164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,2,boss,Scarlet Commander Mograine,3976,1153.9,1398.4,32.6,spawn,clear whole cathedral first
+164,Scarlet Monastery - Cathedral,189,0,0,Cathedral,3,event,High Inquisitor Whitemane,3977,1202.1,1399.1,29.1,spawn,enters + resurrects Mograine (scripted)
 20,Razorfen Downs,129,0,0,-,1,event,Tuten'kash,,,,,unknown,gong summons (script)
 20,Razorfen Downs,129,0,0,-,2,boss,Mordresh Fire Eye,7357,2466.6,671.4,63.5,spawn,Bone Pile
 20,Razorfen Downs,129,0,0,-,3,boss,Glutton,8567,2468.7,1006.8,23.8,spawn,

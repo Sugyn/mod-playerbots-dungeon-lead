@@ -122,31 +122,9 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 1. [Armory] **Herod** — entry 3975 @ (1965.1, -431.6, 6.3) — Scarlet Key door
 ### Scarlet Monastery - Cathedral (LFD 164, map 189)
 
-1. [Cathedral] **Scarlet Centurion** *(optional)* — entry 4301 @ (1064.4, 1387.3, 30.8) — cathedral nave: the packs are pulled one by one from the door - crossing the nave pulled 13 at once
-2. [Cathedral] **Scarlet Centurion** *(optional)* — entry 4301 @ (1064.8, 1410.8, 30.8) — cathedral nave: centurions north of the door
-3. [Cathedral] **Scarlet Chaplain** *(optional)* — entry 4299 @ (1081.6, 1379.5, 30.4) — cathedral nave: south pews 1
-4. [Cathedral] **Scarlet Wizard** *(optional)* — entry 4300 @ (1082.9, 1417.3, 30.3) — cathedral nave: north pews 1
-5. [Cathedral] **Scarlet Monk** *(optional)* — entry 4540 @ (1093.9, 1391, 30.4) — cathedral nave: aisle 1 south
-6. [Cathedral] **Scarlet Abbot** *(optional)* — entry 4303 @ (1093.9, 1405.2, 30.4) — cathedral nave: aisle 1 north
-7. [Cathedral] **Scarlet Champion** *(optional)* — entry 4302 @ (1106.8, 1379.2, 30.3) — cathedral nave: south pews 2
-8. [Cathedral] **Scarlet Champion** *(optional)* — entry 4302 @ (1104, 1419.4, 30.4) — cathedral nave: north pews 2
-9. [Cathedral] **Scarlet Abbot** *(optional)* — entry 4303 @ (1106.5, 1395.5, 30.4) — cathedral nave: aisle 2
-10. [Cathedral] **Scarlet Wizard** *(optional)* — entry 4300 @ (1113.1, 1380.5, 30.3) — cathedral nave: south pews 3
-11. [Cathedral] **Scarlet Champion** *(optional)* — entry 4302 @ (1123.8, 1419.3, 30.4) — cathedral nave: north pews 3
-12. [Cathedral] **Scarlet Abbot** *(optional)* — entry 4303 @ (1118.6, 1394.8, 30.4) — cathedral nave: aisle 3
-13. [Cathedral] **Scarlet Champion** *(optional)* — entry 4302 @ (1131.1, 1393, 30.4) — cathedral nave: aisle 4 south
-14. [Cathedral] **Scarlet Abbot** *(optional)* — entry 4303 @ (1131.2, 1405.1, 30.4) — cathedral nave: aisle 4 north
-15. [Cathedral] **Scarlet Champion** *(optional)* — entry 4302 @ (1138.5, 1369.4, 30.4) — cathedral nave: by the altar
-16. [Cathedral] **South aisle (away from Mograine)** *(optional)* — entry 1 @ (1132, 1371, 30.4) — path anchor: to Fairbanks' room without passing the altar
-17. [Cathedral] **Scarlet Wizard** *(optional)* — entry 4300 @ (1139.4, 1350.3, 30.4) — Fairbanks' room guards (Mograine's) before Fairbanks
-18. [Cathedral] **High Inquisitor Fairbanks** *(optional)* — entry 4542 @ (1158.9, 1354.3, 30.4) — hidden room
-19. [Cathedral] **North aisle (away from Mograine)** *(optional)* — entry 1 @ (1132, 1424, 30.4) — path anchor: Mograine (altar) calls the chapels' guards when he enters combat - pass him 30+ yd away
-20. [Cathedral] **Scarlet Wizard** *(optional)* — entry 4300 @ (1138.5, 1443.4, 30.4) — north chapel guards 1 - Mograine's guards are cleared before him
-21. [Cathedral] **Scarlet Champion** *(optional)* — entry 4302 @ (1153.3, 1436.3, 30.6) — north chapel guards 2
-22. [Cathedral] **Scarlet Chaplain** *(optional)* — entry 4299 @ (1152.2, 1454.3, 30.4) — north chapel guards 3
-23. [Cathedral] **North aisle (away from Mograine)** *(optional)* — entry 1 @ (1132, 1424, 30.4) — path anchor: back out of the north chapel
-24. [Cathedral] **Scarlet Commander Mograine** — entry 3976 @ (1153.9, 1398.4, 32.6) — clear whole cathedral first
-25. [Cathedral] **High Inquisitor Whitemane** **[event]** — entry 3977 @ (1202.1, 1399.1, 29.1) — enters + resurrects Mograine (scripted)
+1. [Cathedral] **High Inquisitor Fairbanks** *(optional)* — entry 4542 @ (1158.9, 1354.3, 30.4) — hidden room
+2. [Cathedral] **Scarlet Commander Mograine** — entry 3976 @ (1153.9, 1398.4, 32.6) — clear whole cathedral first
+3. [Cathedral] **High Inquisitor Whitemane** **[event]** — entry 3977 @ (1202.1, 1399.1, 29.1) — enters + resurrects Mograine (scripted)
 ### Razorfen Downs (LFD 20, map 129)
 
 1. **Tuten'kash** **[event]** `unknown` — gong summons (script)

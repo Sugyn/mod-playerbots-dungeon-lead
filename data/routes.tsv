@@ -105,31 +105,9 @@
 165	Library	1	boss	Houndmaster Loksey
 165	Library	2	boss	Arcanist Doan	drops Scarlet Key
 163	Armory	1	boss	Herod	Scarlet Key door
-164	Cathedral	1	optional	Scarlet Centurion	cathedral nave: centurions north of the door
-164	Cathedral	2	optional	Scarlet Centurion	cathedral nave: centurions north of the door
-164	Cathedral	3	optional	Scarlet Chaplain	cathedral nave: south pews 1
-164	Cathedral	4	optional	Scarlet Wizard	cathedral nave: south pews 3
-164	Cathedral	5	optional	Scarlet Monk	cathedral nave: aisle 1 south
-164	Cathedral	6	optional	Scarlet Abbot	cathedral nave: aisle 4 north
-164	Cathedral	7	optional	Scarlet Champion	cathedral nave: by the altar
-164	Cathedral	8	optional	Scarlet Champion	cathedral nave: by the altar
-164	Cathedral	9	optional	Scarlet Abbot	cathedral nave: aisle 4 north
-164	Cathedral	10	optional	Scarlet Wizard	cathedral nave: south pews 3
-164	Cathedral	11	optional	Scarlet Champion	cathedral nave: by the altar
-164	Cathedral	12	optional	Scarlet Abbot	cathedral nave: aisle 4 north
-164	Cathedral	13	optional	Scarlet Champion	cathedral nave: by the altar
-164	Cathedral	14	optional	Scarlet Abbot	cathedral nave: aisle 4 north
-164	Cathedral	15	optional	Scarlet Champion	cathedral nave: by the altar
-164	Cathedral	16	optional	South aisle (away from Mograine)	path anchor: to Fairbanks' room without passing the altar
-164	Cathedral	17	optional	Scarlet Wizard	cathedral nave: south pews 3
-164	Cathedral	18	optional	High Inquisitor Fairbanks	hidden room
-164	Cathedral	19	optional	North aisle (away from Mograine)	path anchor: back out of the north chapel
-164	Cathedral	20	optional	Scarlet Wizard	cathedral nave: south pews 3
-164	Cathedral	21	optional	Scarlet Champion	cathedral nave: by the altar
-164	Cathedral	22	optional	Scarlet Chaplain	cathedral nave: south pews 1
-164	Cathedral	23	optional	North aisle (away from Mograine)	path anchor: back out of the north chapel
-164	Cathedral	24	boss	Scarlet Commander Mograine	clear whole cathedral first
-164	Cathedral	25	event	High Inquisitor Whitemane	enters + resurrects Mograine (scripted)
+164	Cathedral	1	optional	High Inquisitor Fairbanks	hidden room
+164	Cathedral	2	boss	Scarlet Commander Mograine	clear whole cathedral first
+164	Cathedral	3	event	High Inquisitor Whitemane	enters + resurrects Mograine (scripted)
 # Razorfen Downs (src: warcraft.wiki.gg/Razorfen_Downs_(Classic))
 20	-	1	event	Tuten'kash	gong summons (script)
 20	-	2	boss	Mordresh Fire Eye	Bone Pile

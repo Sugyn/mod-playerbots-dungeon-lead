@@ -68,8 +68,9 @@ Downs and Zul'Farrak Verified (two full routes each on the same build).
 ### Changed
 - Shadowfang Keep: the courtyard packs between the Courtyard Door and Razorclaw are optional pull
   steps, taken one by one (`sql/updates/2026_10_06_00_sfk_courtyard_packs.sql`).
-- SM Cathedral: the nave's packs are optional pull steps from the door to the altar
-  (`sql/updates/2026_10_06_01_cathedral_nave_packs.sql`) - crossing the nave pulled 13 at once.
+- SM Cathedral: the nave's packs as pull steps (`2026_10_06_01`) - withdrawn after three
+  campaigns (`2026_10_07_02` restores the route): the fights grow by flee-for-assistance chains,
+  not by crossing the nave.
 
 ## [0.13.0-alpha] - 2026-10-06
 
