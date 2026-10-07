@@ -1,20 +1,30 @@
-name: Validate route data
+name: Fast tests
 
-# T0 fast validation (see architecture roadmap L1.2) - sub-second, no worldserver needed. Runs on
-# every change to the route data or the validator itself, so a bad edit is caught before it ever
-# reaches a live dungeon run.
+# T0 fast validation (see architecture roadmap L1.2) - sub-second to low-single-digit-second,
+# no worldserver needed. Runs the route validator plus the worldserver-independent C++17 kernel
+# suite and Python replay suite (tools/run_tests.sh), so a bad source/test/data edit is caught
+# before it ever reaches a live dungeon run (audit DL-011: these suites previously passed
+# locally but were never executed in CI).
 
 on:
   push:
     branches: [main]
     paths:
       - 'data/**'
+      - 'src/**'
+      - 'tests/**'
       - 'tools/validate_routes.py'
+      - 'tools/run_tests.sh'
+      - 'tools/run_replay/**'
       - '.github/workflows/validate-routes.yml'
   pull_request:
     paths:
       - 'data/**'
+      - 'src/**'
+      - 'tests/**'
       - 'tools/validate_routes.py'
+      - 'tools/run_tests.sh'
+      - 'tools/run_replay/**'
 
 jobs:
   validate:
@@ -22,3 +32,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tools/validate_routes.py
+      - run: bash tools/run_tests.sh

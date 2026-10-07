@@ -19,6 +19,10 @@ the MAJOR bar above is met.
 ## [Unreleased]
 
 ### Added
+- Run Dungeon Lead kernel, replay and route validation tests in CI (DL-011). `validate-routes.yml`
+  previously ran only `validate_routes.py` on route-data changes; it now also runs
+  `tools/run_tests.sh` (the C++17 kernel suite and Python replay suite) on changes to `src/`,
+  `tests/` or the tooling itself.
 - Telemetry v2: structured payloads for objectives, checkpoints, wipes, recovery and
   interactions; the world DB spawn id on every unit; the navmesh path on every path decision;
   `boss_killed`.

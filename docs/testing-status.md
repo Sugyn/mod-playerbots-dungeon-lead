@@ -6,6 +6,25 @@ world/travelnode databases but no live run yet. "Has a door/gate" means the rout
 `door`/`event` step; the leader opens a door the way a player can (hand lock, key, lever on its
 side) or waits for it (up to `DoorWaitSeconds`). See `data/routes.tsv` for the exact step.
 
+## Fast-test baseline (hardening audit Phase 0, 2026-10-07)
+
+Recorded at module SHA `e1c9f8a` (then HEAD of `main`), the SHA the 2026-10-07 hardening audit
+analyzed (`DUNGEON_LEAD_IMPLEMENTATION_PLAN.md`). No AzerothCore/mod-playerbots checkout, live DB
+or mmaps were available in this environment, so only the worldserver-independent suites below
+were run; the real module build against pinned core/playerbots revisions is a separate,
+**requires runtime verification** gate, not covered here.
+
+- `bash tools/run_tests.sh`: 304 C++17 kernel checks, 0 failures; 17 Python replay tests, all
+  passing (includes six real telemetry-v2 golden runs).
+- `python3 tools/validate_routes.py`: 438 rows, 96 LFG entries, 0 errors, 29 warnings - 16
+  script-spawn rows (creature template exists, no static spawn on the map), 6 unresolved
+  `heroic_only` rows (no resolved position - `resolve_routes.py` doesn't resolve this kind yet),
+  2 zero-axis spawn warnings (worth double-checking, not confirmed wrong), 5 noncontiguous step
+  sequences (not load-bearing - route execution uses vector order, not step number).
+- CI (`.github/workflows/validate-routes.yml`) now runs both of the above on every change to
+  `src/`, `tests/`, `data/` or the tooling itself, not only route-data changes (audit DL-011:
+  these suites previously passed locally but were never executed in CI).
+
 ## Live validation (2026-10-04/05)
 
 Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) and door opening
