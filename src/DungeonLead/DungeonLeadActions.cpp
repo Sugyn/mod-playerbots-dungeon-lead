@@ -1286,6 +1286,12 @@ void DungeonLead::GuardActiveSessions()
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
         DungeonTargetManager::Update(botAI);
         DungeonPullController::Update(botAI, party);
+        // The pull controller can end the session (out of attempts -> FailObjective -> Stop). The
+        // rest of this pass must not run for it: below, the "strategy missing" repair took the
+        // stopped session for an external AI reset and switched it back on (SFK: after Arugal's
+        // abort the leader started the Apothecary Hummel route and Stop() never completed).
+        if (!sDungeonRouteMgr.HasState(guid) || !DungeonLeadKernel::IsActive(sDungeonRouteMgr.State(guid).state))
+            continue;
         if (!DungeonInteractionController::Update(botAI))
             continue;  // session ended (blocked for good)
         if (!DungeonRecoveryController::Update(botAI, party))
