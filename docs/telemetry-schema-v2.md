@@ -108,7 +108,7 @@ increments, each with its own entry here.
 | Semantic event | v2 event_type | Payload |
 |---|---|---|
 | leader path | `position_sample` (v2 only) | `moving`, `in_combat` (+ envelope position) |
-| walk decision | `path_decision` (v2 only) | `kind` (direct / path_end / short_detour / probe / no_path), `objective`, `dest_*`, `move_*`, `path_type`, `path_points`, `path_length`, `path` (<= 16 `[x,y,z]` points; for direct/probe/no_path the path the navmesh gives to the move target, computed for the record) |
+| walk decision | `path_decision` (v2 only) | `kind` (direct / path_end / short_detour / route_waypoint / probe / no_path), `objective`, `dest_*`, `move_*`, `path_type`, `path_points`, `path_length`, `path` (<= 16 `[x,y,z]` points; for direct/probe/no_path the path the navmesh gives to the move target, computed for the record) |
 | party | `party_roster` (v2 only, first guard pass) | `members[]`: `name`, `guid`, `role`, `class`, `level`, `leader`, `bot` |
 | fight | `fight_started`, `fight_ended` (v2 only) | `fight_id`; end: `duration_ms`, `units`, `killed`, `leader_alive` |
 | combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid (per-instance counter), spawn (world DB creature.guid), entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |

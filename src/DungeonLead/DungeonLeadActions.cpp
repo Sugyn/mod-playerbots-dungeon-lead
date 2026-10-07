@@ -2960,6 +2960,34 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         }
     }
 
+    // No usable path to the step at all - typically far away, e.g. walking back from the entrance
+    // after a wipe (Deadmines: 390 yd to Mr. Smite, NOPATH from the tunnels, the probes below then
+    // wandered until the step failed). Walk the route's own earlier stops instead: the latest one a
+    // path reaches (and that is not where the leader stands) brings it closest along the route;
+    // from there the next stretch opens up. Not more often than every 3 s.
+    if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+    {
+        if (!st.routeWaypointTs || GetMSTimeDiffToNow(st.routeWaypointTs) >= 3000)
+        {
+            st.routeWaypointTs = getMSTime();
+            for (int j = int(std::min<size_t>(st.stepIndex, route->steps.size())) - 1; j >= 0; --j)
+            {
+                DungeonRouteStep const& w = route->steps[j];
+                if (!w.HasPosition() || bot->GetExactDist(w.x, w.y, w.z) < 10.0f)
+                    continue;
+                PathGenerator wp(bot);
+                wp.CalculatePath(w.x, w.y, w.z);
+                if (wp.GetPathType() & ~typeOk)
+                    continue;
+                G3D::Vector3 const& end = wp.GetActualEndPosition();
+                if (bot->GetExactDist(end.x, end.y, end.z) < 5.0f)
+                    continue;
+                recordPath("route_waypoint", &wp, end.x, end.y, end.z);
+                return MoveTo(bot->GetMapId(), end.x, end.y, end.z, false, false, false, true);
+            }
+        }
+    }
+
     // blocked: sample a wide-ish forward cone for a reachable stepping stone. More attempts than a
     // plain forward-only search (so a column/wall corner right on the line to dest doesn't box the
     // bot in), but still biased forward and close-range rather than a full 360 degree search -

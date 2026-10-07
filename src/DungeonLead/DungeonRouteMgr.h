@@ -293,6 +293,7 @@ struct DungeonLeadState
     uint32 escalationDeferSince = 0;
     bool recoveryWalkBack = false;
     std::vector<std::pair<ObjectGuid, uint32>> staleCombatSince;  // members in combat with no enemy, since          // the leader is on a recovery walk back to a straggler        // recovery escalation waiting for the leader to be on the ground
+    uint32 routeWaypointTs = 0;             // last search for a route stop to walk to (MoveRouteTo)
     uint32 lastPathDecisionTs = 0;          // path_decision throttle (MoveRouteTo)
     char const* lastPathDecisionKind = "";
     uint32 fightId = 0;
