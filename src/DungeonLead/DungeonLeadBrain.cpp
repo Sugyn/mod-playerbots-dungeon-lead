@@ -124,7 +124,8 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
                   DungeonLeadKernel::ReadyStatus::Ready;
     f.msInState = st.stateSinceTs ? GetMSTimeDiffToNow(st.stateSinceTs) : 0;
     f.postCombatMinMs = sDungeonLeadConfig.dungeonLeadPostCombatMinSeconds * IN_MILLISECONDS;
-    f.preparingPull = st.pullState == DungeonLeadKernel::PullState::Marking;
+    f.preparingPull = DungeonLeadKernel::PullHoldsLeader(st.pullState,
+                                                         st.pullStateTs ? GetMSTimeDiffToNow(st.pullStateTs) : 0);
     f.recovering = st.recovery.reason != DungeonLeadKernel::RecoveryReason::None;
     f.bossPack = st.bossPackCurrent;
     f.bossEngaged = st.bossEngaged;

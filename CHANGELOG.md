@@ -25,6 +25,10 @@ the MAJOR bar above is met.
 - `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
 
 ### Fixed
+- A pull waiting for the party holds the tank in place (at most 20 s). It kept walking toward the
+  pack and pulled it by aggro: 53 of 62 waits ended in a fight without a mark.
+- A pull waits (at most 20 s) for a patrol walking past the target. Patrols were in 8 of the 14
+  fights in which the tank died in Shadowfang Keep's courtyard.
 - The leader's walk back to a straggler stops when the recovery ends. It went on to the
   straggler's old spot - in Shadowfang Keep from the courtyard back into the cells, where the next
   walk met the closed Cell Door and the run aborted. (Earlier put down to looting alone.)

@@ -498,7 +498,7 @@ namespace DungeonLeadKernel
         bool routeComplete = false;
         bool anyInCombat = false;  // leader or a living same-map member
         bool walkReady = false;    // EvaluateReadiness(..., Walk) == Ready
-        bool preparingPull = false;  // pull controller: Marking
+        bool preparingPull = false;  // pull controller holds the leader (PullHoldsLeader)
         bool pulling = false;        // pull controller: Initiating / Establishing
         uint32_t msInState = 0;
         uint32_t postCombatMinMs = 3000;  // shortest pause between two fights
@@ -754,6 +754,7 @@ namespace DungeonLeadKernel
         None,          // no pullable pack (travel node, cleared, interaction)
         Approaching,   // pack known, tank not in pull range yet
         WaitingParty,  // in range, party not ready for a pull
+        WaitingPatrol, // in range, ready, a patrol walking past the target - let it pass
         Marking,       // ready - put the skull on the pull target
         Initiating,    // attack ordered, waiting for the tank to be in combat
         Establishing,  // tank fighting, waiting for the pack to be engaged on it
@@ -768,6 +769,7 @@ namespace DungeonLeadKernel
             case PullState::None:         return "none";
             case PullState::Approaching:  return "approaching";
             case PullState::WaitingParty: return "waiting_party";
+            case PullState::WaitingPatrol: return "waiting_patrol";
             case PullState::Marking:      return "marking";
             case PullState::Initiating:   return "initiating";
             case PullState::Establishing: return "establishing";
@@ -789,6 +791,8 @@ namespace DungeonLeadKernel
         bool inRangeNoSight = false;  // within PullRange but not in line of sight (behind a wall, a fence)
         uint32_t msNoSightStill = 0;  // how long the leader has stood still in range without sight
         bool partyReady = false;    // EvaluateReadiness(..., Pull) == Ready
+        bool patrolNear = false;    // an unengaged patrol (not of the pack) close to the pull target
+        uint32_t msPatrolHeld = 0;  // how long this pack's pull has already waited for patrols
         bool targetMarked = false;  // skull is on a living member of the pack
         bool leaderInCombat = false;
         bool orderRefused = false;  // the attack order for this attempt was not accepted
@@ -803,6 +807,9 @@ namespace DungeonLeadKernel
         // In range of the target but without sight of it this long: a failed try, not a wait
         // forever (SFK: a fel steed in its stall - the run stood 45 minutes in Approaching).
         uint32_t approachNoSightTimeoutMs = 15000;
+        // Longest wait for patrols to pass before pulling anyway - a patrol that stands or loops
+        // around the pack never passes (SFK courtyard: patrols joined 8 of 14 tank deaths).
+        uint32_t patrolHoldMaxMs = 20000;  // = kPullHoldStillMaxMs: the leader holds that long
     };
 
     inline PullState DecidePull(PullFacts const& f, PullPolicy const& p)
@@ -836,7 +843,7 @@ namespace DungeonLeadKernel
                     return PullState::Initiating;
                 // the skull is held by someone else's live mark - don't fight over it forever
                 return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Marking;
-            default:  // None, Approaching, WaitingParty
+            default:  // None, Approaching, WaitingParty, WaitingPatrol
                 // a fight that isn't this pack (trash, a CC'd leftover) finishes first
                 // standing still, in range, no sight: walking up a spiral stair to the target is not this
                 if (f.current == PullState::Approaching && f.packAlive && f.inRangeNoSight && !f.leaderInCombat &&
@@ -844,8 +851,27 @@ namespace DungeonLeadKernel
                     return PullState::Failed;
                 if (!f.packAlive || !f.inPullRange || f.leaderInCombat)
                     return PullState::Approaching;
-                return f.partyReady ? PullState::Marking : PullState::WaitingParty;
+                if (!f.partyReady)
+                    return PullState::WaitingParty;
+                if (f.patrolNear && f.msPatrolHeld < p.patrolHoldMaxMs)
+                    return PullState::WaitingPatrol;
+                return PullState::Marking;
         }
+    }
+
+    // Longest the leader stands still for a held pull before walking on as before - a member
+    // that never closes up (stuck, a soft-range spread that doesn't resolve) can't hold the run.
+    constexpr uint32_t kPullHoldStillMaxMs = 20000;
+
+    // Whether the pull controller holds the leader in place (PrePull/BossPrep instead of
+    // Travelling): marking, and a pull waiting for the party or a patrol. Travelling on toward the
+    // pack's coordinates while "holding" walked the tank into aggro range - 53 of 62 waits ended
+    // in a fight without a mark (campaigns 5f3d706..bc537b9).
+    inline bool PullHoldsLeader(PullState s, uint32_t msInState)
+    {
+        if (s == PullState::Marking)
+            return true;
+        return (s == PullState::WaitingParty || s == PullState::WaitingPatrol) && msInState < kPullHoldStillMaxMs;
     }
 
     // ---------------------------------------------------------------------------------------

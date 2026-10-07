@@ -8,6 +8,7 @@
 
 #include "DungeonPullController.h"
 
+#include "CellImpl.h"
 #include "Creature.h"
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
@@ -15,8 +16,11 @@
 #include "DungeonPartyState.h"
 #include "DungeonRouteMgr.h"
 #include "Event.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "Group.h"
 #include "Log.h"
+#include "MotionMaster.h"
 #include "Player.h"
 #include "Playerbots.h"
 #include "RtiTargetValue.h"
@@ -32,6 +36,9 @@ namespace
     // skipped - bounds a boss that keeps resetting. Fights with its trash don't count: they are
     // progress, however many there are.
     constexpr uint8 kMaxPackResets = 3;
+
+    // A patrol this close to the pull target joins the pull - let it walk past first.
+    constexpr float kPatrolHoldRadius = 15.0f;
 
     void SetPullState(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPack const& pack, PullState next,
                       std::string const& detail = "")
@@ -56,6 +63,27 @@ namespace
                std::find(pack.expectedEntries.begin(), pack.expectedEntries.end(), c->GetEntry()) !=
                    pack.expectedEntries.end() &&
                c->GetExactDist(pack.x, pack.y, pack.z) <= pack.probeRadius;
+    }
+
+    // The nearest unengaged hostile on a waypoint path (a patrol) close to the pull target, not
+    // the target itself nor of its pack.
+    Creature* PatrolNear(Player* bot, Creature* target, DungeonPack const& pack)
+    {
+        std::list<Unit*> units;
+        Acore::AnyUnfriendlyUnitInObjectRangeCheck check(target, bot, kPatrolHoldRadius);
+        Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(target, units, check);
+        Cell::VisitObjects(target, searcher, kPatrolHoldRadius);
+        Creature* nearest = nullptr;
+        for (Unit* u : units)
+        {
+            Creature* c = u->ToCreature();
+            if (!c || c == target || c->IsInCombat() || IsPackMember(pack, c) ||
+                c->GetMotionMaster()->GetCurrentMovementGeneratorType() != WAYPOINT_MOTION_TYPE)
+                continue;
+            if (!nearest || target->GetExactDist(c) < target->GetExactDist(nearest))
+                nearest = c;
+        }
+        return nearest;
     }
 }
 
@@ -119,6 +147,14 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     f.targetMarked = skull && skull->IsAlive() && (skull->GetGUID() == st.targetPrimary || IsPackMember(pack, skull));
     f.leaderInCombat = bot->IsInCombat();
     f.orderRefused = st.pullOrderRefused;
+    // Patrols only matter once the pull is about to be made (in range, party ready).
+    Creature* patrol = nullptr;
+    if (target && f.inPullRange && f.partyReady && !f.leaderInCombat &&
+        (st.pullState == PullState::Approaching || st.pullState == PullState::WaitingParty ||
+         st.pullState == PullState::WaitingPatrol))
+        patrol = PatrolNear(bot, target, pack);
+    f.patrolNear = patrol != nullptr;
+    f.msPatrolHeld = st.pullPatrolSince ? GetMSTimeDiffToNow(st.pullPatrolSince) : 0;
     f.attempts = st.pullAttempts;
 
     DungeonLeadKernel::PullPolicy policy;
@@ -152,6 +188,14 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
         if (Player* who = party.Member(ready.offender))
             waitReason += " (" + who->GetName() + ")";
     }
+    else if (next == PullState::WaitingPatrol)
+    {
+        if (!st.pullPatrolSince)
+            st.pullPatrolSince = getMSTime();
+        if (patrol)
+            waitReason = "patrol=" + patrol->GetName() + " spawn=" + std::to_string(patrol->GetSpawnId()) +
+                         " dist=" + std::to_string(int(target->GetExactDist(patrol)));
+    }
     SetPullState(botAI, st, pack, next, waitReason);
 
     switch (next)
@@ -179,6 +223,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
             if (changed)
             {
                 st.pullAttempts = 0;  // a fight happened - failures are counted per failed try only
+                st.pullPatrolSince = 0;
                 st.pullPackFought = f.packEngaged;
                 DungeonLead::RecordEvent(botAI, "pull_established",
                                          pack.name + " target=" + (target ? target->GetName() : "?") +

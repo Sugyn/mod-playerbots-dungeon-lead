@@ -2026,6 +2026,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.pullFights = 0;
     st.pullPackFought = false;
     st.pullNoSightSince = 0;
+    st.pullPatrolSince = 0;
     st.objectiveFailures = 0;
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
@@ -2059,6 +2060,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.pullFights = 0;
     st.pullPackFought = false;
     st.pullNoSightSince = 0;
+    st.pullPatrolSince = 0;
     st.anchorSet = false;
     st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
     st.arrivedTold = false;
