@@ -242,6 +242,7 @@ char const* ToString(DungeonFailureReason v)
         case DungeonFailureReason::PlayerMissing:     return "player_missing";
         case DungeonFailureReason::UnsupportedEvent:  return "unsupported_event";
         case DungeonFailureReason::InternalInvariant: return "internal_invariant";
+        case DungeonFailureReason::RouteDataInvalid:  return "route_data_invalid";
     }
     return "unknown";
 }

@@ -10,5 +10,6 @@ mkdir -p "$out"
     "$root"/tests/*.cpp -o "$out/run_tests"
 "$out/run_tests"
 
-# replay tools (tools/run_replay) - Python, also worldserver-independent
-(cd "$root" && python3 -m unittest tests.test_run_replay)
+# replay tools (tools/run_replay) and the route validator (tools/validate_routes) - Python, also
+# worldserver-independent
+(cd "$root" && python3 -m unittest tests.test_run_replay tests.test_validate_routes)

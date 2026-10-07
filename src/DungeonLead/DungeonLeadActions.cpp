@@ -2313,7 +2313,15 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // DL-001: entry-wide kill memory only ever applies to boss steps (see
         // EntryKillMemoryEligible) - a trash step with the same entry as an earlier cleared pack
         // must still be reached and observed on its own.
-        bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
+        //
+        // DL-008: an unwalkable row (no resolved position) is only silently skippable here if it is
+        // ALSO not mandatory. A mandatory-by-kind row (boss/required/door/use/talk, per
+        // IsMandatory()) that has no position is invalid route data, not harmless-to-skip content -
+        // this loop stops advancing and leaves stepIndex pointing at it, so the dispatch below can
+        // run it through the same objective-failure policy (retry rounds, then Partial) as any other
+        // mandatory objective that can't be completed, instead of the route silently reporting
+        // Complete having never attempted it.
+        bool skip = st.visited[st.stepIndex] || (!s.IsWalkable() && !s.IsMandatory()) ||
                     (s.NodeType() == DungeonRouteNodeType::Pull && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
                     (s.entry && EntryKillMemoryEligible(s.NodeType()) && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
@@ -2424,6 +2432,31 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     }
 
     DungeonRouteStep const& step = route->steps[st.stepIndex];
+
+    // DL-008: the skip loop above only lets a mandatory-by-kind row through unwalkable (no
+    // resolved position) - never an optional one, which it already skipped silently. Do NOT
+    // dispatch this to WalkDoorStep/WalkUseStep/WalkTalkStep/the pack handling below: step.x/y/z
+    // are all 0.f (HasPosition() is false), so there is nothing valid to path to or interact with.
+    // Route it through the same objective-failure policy as any other mandatory objective that
+    // can't be completed (DungeonLead::FailObjective: a few retry rounds, then the run stops as
+    // Partial) instead of either silently advancing past it or acting on a bogus (0,0,0) position.
+    // Reuses stuckTs as the round timer, same as MoveRouteTo's own stuck detection - safe here
+    // because this branch returns before MoveRouteTo (or anything else that reads/writes stuckTs
+    // for this step) ever runs, and AdvanceStep()/ResetStepState() already clear it on every step
+    // change or retry round, exactly the cadence a "round" needs.
+    if (!step.IsWalkable() && step.IsMandatory())
+    {
+        if (st.stuckTs == 0)
+            st.stuckTs = getMSTime();
+        else if (GetMSTimeDiffToNow(st.stuckTs) >= sDungeonLeadConfig.dungeonLeadStuckSeconds * IN_MILLISECONDS)
+        {
+            DungeonLead::RecordEvent(botAI, "route_data_invalid", step.boss);
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Infrastructure,
+                                       DungeonFailureReason::RouteDataInvalid, "unwalkable_no_position");
+        }
+        return true;
+    }
+
     WorldPosition dest(bot->GetMapId(), step.x, step.y, step.z, 0.f);
 
     if (st.announcedStep != int32(st.stepIndex))

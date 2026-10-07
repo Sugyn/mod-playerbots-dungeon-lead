@@ -48,11 +48,21 @@ struct DungeonRouteStep
     }
 
     // Policy boundary for "must this be satisfied for the run to count as Complete rather than
-    // Partial" - kept as one named function instead of repeating `kind == Boss` at every call
-    // site, since a future mandatory kind (a required door/event, not just a boss) should only
-    // need this one line updated, not every place that currently checks it. See the architecture
-    // roadmap's L0 closeout notes.
-    bool IsMandatory() const { return kind == DungeonRouteKind::Boss || kind == DungeonRouteKind::Required; }
+    // Partial" - kept as one named function instead of repeating a kind check at every call site.
+    //
+    // 2026-10-07 (audit finding DL-008 - "required route objectives executable and authoritative"):
+    // this used to be its own `kind == Boss || kind == Required` test, independent of Requirement()
+    // below. That let a Door/Use/Talk row - which Requirement() already calls Required ("nothing
+    // past it is reachable") and which DungeonLead::FailObjective already retries/aborts on when it
+    // fails at execution time - NOT count toward HasAnyMandatory()/the route's Complete-vs-Partial
+    // verdict at all. Combined with the step-advance skip loop treating an unwalkable (no resolved
+    // position) row as simply skippable, a route with a resolved boss plus an unresolved required
+    // door could report full Complete having never attempted, or even recorded as blocked, the
+    // broken door. Deriving from Requirement() makes the two agree by construction: whichever kinds
+    // Requirement() calls Required or Boss are exactly the kinds IsMandatory() reports true for.
+    // Requirement() already carries the path-anchor exemption (entry==kPathAnchorEntry is always
+    // Optional regardless of kind), so that exemption is preserved here too without repeating it.
+    bool IsMandatory() const { return Requirement() != DungeonObjectiveRequirement::Optional; }
 
     // 2026-09-15 (independent architecture review DL-011 - "navigation identity, execution, and
     // observation are conflated"): entry=1 is AzerothCore's universal "Waypoint (Only GM can see
@@ -106,7 +116,11 @@ enum class DungeonFailureReason : uint8
     PartyWipe,
     PlayerMissing,
     UnsupportedEvent,
-    InternalInvariant
+    InternalInvariant,
+    // DL-008: a mandatory-by-kind row (boss/required/door/use/talk) has no resolved position -
+    // invalid/unresolved route data, not a live-run failure. See FailObjective's call site in the
+    // step-advance skip loop (DungeonLeadNextAction::Execute).
+    RouteDataInvalid
 };
 
 char const* ToString(DungeonRunOutcome v);

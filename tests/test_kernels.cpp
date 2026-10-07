@@ -1009,6 +1009,89 @@ namespace
 
 namespace
 {
+    // Audit finding DL-008 ("required route objectives executable and authoritative"):
+    // DungeonRouteStep::IsMandatory() used to be its own `kind == Boss || kind == Required` test,
+    // independent of Requirement()/ClassifyRequirement() - so a Door/Use/Talk row (which
+    // Requirement() already calls Required) did not count as IsMandatory(), and HasAnyMandatory()
+    // could be true=false in ways that disagreed with what FailObjective actually enforced at
+    // execution time. The fix makes IsMandatory() just `return Requirement() != Optional;` (see
+    // DungeonRouteMgr.h), so IsMandatory()/HasAnyMandatory() and ClassifyRequirement() can no
+    // longer disagree - by construction, not by keeping two switch statements in sync by hand.
+    //
+    // DungeonRouteStep/DungeonRoute themselves live in DungeonRouteMgr.h, which pulls in
+    // AzerothCore's Common.h/ObjectGuid.h - not available to this dependency-free test binary (see
+    // tools/run_tests.sh's include path: only src/DungeonLead, and this file only ever includes
+    // DungeonRouteTypes.h). So this exercises the unified definition at the one layer that IS
+    // testable here, ClassifyRequirement() - the exact function IsMandatory() now delegates to -
+    // plus a local mirror of HasAnyMandatory()'s "any row mandatory" aggregation. Verified by
+    // reading DungeonRouteMgr.h's current IsMandatory()/HasAnyMandatory() bodies, not by compiling
+    // them (out of reach here); flagged in the report for a human to double-check against the
+    // real header if that reading was wrong.
+    bool IsMandatoryMirror(DungeonRouteKind kind, uint32_t entry)
+    {
+        return ClassifyRequirement(kind, entry) != DungeonObjectiveRequirement::Optional;
+    }
+
+    // Mirrors DungeonRoute::HasAnyMandatory(): true iff any step in the route is mandatory.
+    bool HasAnyMandatoryMirror(std::vector<std::pair<DungeonRouteKind, uint32_t>> const& steps)
+    {
+        for (auto const& s : steps)
+            if (IsMandatoryMirror(s.first, s.second))
+                return true;
+        return false;
+    }
+
+    void TestRequiredRouteContract()
+    {
+        // Required/Door/Use/Talk now correctly report mandatory - the exact bug DL-008 fixes: a
+        // Door/Use/Talk row used to NOT count toward HasAnyMandatory()/the route-completion check.
+        Check(IsMandatoryMirror(DungeonRouteKind::Required, 4424), "required trash is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Door, 16397), "a door is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Use, 141070), "a use objective is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Talk, 7604), "a talk objective is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Boss, 3653), "a boss is (and always was) mandatory");
+
+        // Optional/HeroicOnly/Event/Skip/Unknown all stay non-mandatory.
+        Check(!IsMandatoryMirror(DungeonRouteKind::Optional, 3654), "optional trash is not mandatory");
+        Check(!IsMandatoryMirror(DungeonRouteKind::HeroicOnly, 500),
+              "heroic_only is not mandatory - a separately tracked, already-acknowledged gap (DL-021), "
+              "not this finding's silently-bypassed-required-objective failure mode");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Event, 42), "an event row is not mandatory");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Skip, 0), "a skip row is not mandatory");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Unknown, 0), "an unparsed/unknown kind is not mandatory");
+
+        // The path-anchor exemption survives the rewrite regardless of declared kind - a path
+        // anchor on an otherwise-mandatory kind must stay non-mandatory (and, per IsWalkable(),
+        // always walkable), exactly as it must stay non-skippable in the route-advance loop.
+        Check(!IsMandatoryMirror(DungeonRouteKind::Boss, kPathAnchorEntry),
+              "a path anchor stays non-mandatory even declared as kind=boss");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Required, kPathAnchorEntry),
+              "a path anchor stays non-mandatory even declared as kind=required");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Door, kPathAnchorEntry),
+              "a path anchor stays non-mandatory even declared as kind=door");
+
+        // HasAnyMandatory(): a route built only from optional/event/path-anchor rows still reports
+        // no mandatory step at all - the "zero executable mandatory route -> Blocked, not Complete"
+        // downgrade (DL-003, hadNothingToVerify in DungeonLeadNextAction::Execute) must keep firing
+        // for this case after the rewrite, not just before it.
+        Check(!HasAnyMandatoryMirror({{DungeonRouteKind::Optional, 100},
+                                      {DungeonRouteKind::Event, 101},
+                                      {DungeonRouteKind::Boss, kPathAnchorEntry}}),
+              "an all-optional/event/path-anchor route has no mandatory step -> still Blocked, not Complete");
+
+        // The same route with one genuinely mandatory row (any of boss/required/door/use/talk)
+        // added anywhere flips HasAnyMandatory() true - including when that row is a Door/Use/Talk,
+        // which used to be exactly the gap this finding describes.
+        Check(HasAnyMandatoryMirror({{DungeonRouteKind::Optional, 100}, {DungeonRouteKind::Door, 102}}),
+              "a required door among otherwise-optional rows now makes the route report a mandatory step");
+        Check(HasAnyMandatoryMirror({{DungeonRouteKind::Optional, 100}, {DungeonRouteKind::Talk, 103}}),
+              "a required talk objective among otherwise-optional rows now makes the route report a mandatory step");
+        Check(HasAnyMandatoryMirror({{DungeonRouteKind::Boss, 200}}), "a route with a boss has a mandatory step");
+    }
+}
+
+namespace
+{
     PackUnitFacts U(uint64_t id, bool expected, bool alive, bool inCombat, bool attacking, float dist, float home)
     {
         PackUnitFacts u;
@@ -1191,6 +1274,7 @@ int main()
     TestTelemetryBuffer();
     TestTelemetryV2();
     TestObjectivePolicy();
+    TestRequiredRouteContract();
     TestPackIdentity();
     TestInteraction();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
