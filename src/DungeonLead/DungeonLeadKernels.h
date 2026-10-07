@@ -1027,26 +1027,41 @@ namespace DungeonLeadKernel
     // failure. Each reason gets its own fresh window when the reason changes (a new problem must
     // not inherit an almost-expired timeout), and the episode as a whole - as long as *some*
     // recovery problem persists - has a hard cap, so flapping between reasons can't loop forever.
-    // Ordinary waits (drinking, mana, health, the real player's position) are not recoveries.
-
+    //
+    // DL-003 (audit finding): MasterUnavailable/MasterTooFar and the three persistent-wait
+    // statuses used to all map to None below ("ordinary waits are not recoveries") - but a dead
+    // real player who never releases, one stuck 70 yd past the leash, or someone stuck
+    // eating/drinking/low on mana forever each held a MANUAL (human-led) session open with no
+    // bound at all. They are recoveries too now, just ones where escalation is deliberately a
+    // no-op (see the `movable` whitelist in DungeonRecoveryController::Update()'s Escalate case) -
+    // waiting itself is still the only "action", Abort is the actual bound.
     enum class RecoveryReason : uint8_t
     {
         None,
-        LeadershipLost,   // someone else is group leader now
-        MemberLost,       // a living member on another map / offline
-        PartyFragmented,  // a member beyond the hard range
-        MemberDead,       // a party member (not the leader) dead
+        LeadershipLost,     // someone else is group leader now
+        MemberLost,         // a living member on another map / offline
+        PartyFragmented,    // a member beyond the hard range
+        MemberDead,         // a party member (not the leader) dead
+        MasterUnavailable,  // the real player dead, disconnected, or left the group
+        MasterTooFar,       // the real player off-map or beyond the leash - distinct from the above:
+                            // a different real-world situation (and fix - walk back vs. reconnect)
+        PersistentWait,     // drinking/low health/low healer mana held long enough to need a bound -
+                            // one shared reason: the plan treats prolonged resource waits as one
+                            // category, and none of the three need their own escalation behaviour
     };
 
     inline char const* ToString(RecoveryReason r)
     {
         switch (r)
         {
-            case RecoveryReason::None:            return "none";
-            case RecoveryReason::LeadershipLost:  return "leadership_lost";
-            case RecoveryReason::MemberLost:      return "member_lost";
-            case RecoveryReason::PartyFragmented: return "party_fragmented";
-            case RecoveryReason::MemberDead:      return "member_dead";
+            case RecoveryReason::None:              return "none";
+            case RecoveryReason::LeadershipLost:    return "leadership_lost";
+            case RecoveryReason::MemberLost:        return "member_lost";
+            case RecoveryReason::PartyFragmented:   return "party_fragmented";
+            case RecoveryReason::MemberDead:        return "member_dead";
+            case RecoveryReason::MasterUnavailable: return "master_unavailable";
+            case RecoveryReason::MasterTooFar:      return "master_too_far";
+            case RecoveryReason::PersistentWait:    return "persistent_wait";
         }
         return "unknown";
     }
@@ -1197,6 +1212,18 @@ namespace DungeonLeadKernel
         return haveLastGood ? EscalationGate::LeaderToLastGood : EscalationGate::Escalate;
     }
 
+    // DL-003: MasterUnavailable/MasterTooFar and the three persistent-wait statuses used to all
+    // fall through to None here ("ordinary waits are not recoveries") - each could then hold a
+    // manual session open forever (dead/departed real player, one stuck past the leash, someone
+    // stuck eating/drinking/low on mana/health indefinitely). They now get a bounded bystander
+    // recovery - see DungeonRecoveryController::Update()'s Escalate case for why mapping them here
+    // is safe: `movable` there only ever acts on PartyFragmented/MemberLost, so none of these new,
+    // human-only reasons can trigger a teleport, only the existing act/escalate(no-op)/abort clock.
+    // Drinking/LowHealth/LowHealerMana share one reason (PersistentWait): the plan treats prolonged
+    // resource waits as one category, and ordinary short drinking/healing never gets near the
+    // existing act+escalate windows (60s+60s default) before it resolves on its own and the
+    // DungeonRecoveryController's generic "observed == None" branch clears the reason - no separate
+    // grace period is needed on top of that.
     inline RecoveryReason RecoveryFor(ReadyStatus status, bool healerAlive)
     {
         switch (status)
@@ -1205,7 +1232,12 @@ namespace DungeonLeadKernel
             case ReadyStatus::Fragmented:        return RecoveryReason::PartyFragmented;
             case ReadyStatus::MemberDead:        return RecoveryReason::MemberDead;
             case ReadyStatus::HealerUnavailable: return healerAlive ? RecoveryReason::MemberLost : RecoveryReason::MemberDead;
-            default:                             return RecoveryReason::None;
+            case ReadyStatus::MasterUnavailable: return RecoveryReason::MasterUnavailable;
+            case ReadyStatus::MasterTooFar:      return RecoveryReason::MasterTooFar;
+            case ReadyStatus::Drinking:
+            case ReadyStatus::LowHealth:
+            case ReadyStatus::LowHealerMana:     return RecoveryReason::PersistentWait;
+            default:                             return RecoveryReason::None;  // Ready / PartyInCombat / PartySpread
         }
     }
 

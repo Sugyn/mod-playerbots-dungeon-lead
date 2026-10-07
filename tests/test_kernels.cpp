@@ -867,9 +867,67 @@ namespace
         Check(RecoveryFor(ReadyStatus::MemberDead, true) == RecoveryReason::MemberDead, "dead member -> recovery");
         Check(RecoveryFor(ReadyStatus::HealerUnavailable, false) == RecoveryReason::MemberDead, "dead healer -> member dead");
         Check(RecoveryFor(ReadyStatus::HealerUnavailable, true) == RecoveryReason::MemberLost, "healer elsewhere -> member lost");
-        Check(RecoveryFor(ReadyStatus::Drinking, true) == RecoveryReason::None, "drinking is a wait, not a recovery");
-        Check(RecoveryFor(ReadyStatus::MasterTooFar, true) == RecoveryReason::None, "the real player is waited for, never recovered");
-        Check(RecoveryFor(ReadyStatus::LowHealth, true) == RecoveryReason::None, "low health is a wait");
+
+        // DL-003: these five used to all return None ("ordinary waits are not recoveries") and
+        // could then hold a manual session open forever - see DungeonLeadKernels.h's RecoveryFor.
+        Check(RecoveryFor(ReadyStatus::MasterUnavailable, true) == RecoveryReason::MasterUnavailable,
+              "dead/disconnected/departed master -> bounded recovery, not an indefinite wait");
+        Check(RecoveryFor(ReadyStatus::MasterTooFar, true) == RecoveryReason::MasterTooFar,
+              "master beyond the leash -> bounded recovery, distinct from MasterUnavailable");
+        Check(RecoveryFor(ReadyStatus::Drinking, true) == RecoveryReason::PersistentWait, "drinking -> persistent wait");
+        Check(RecoveryFor(ReadyStatus::LowHealth, true) == RecoveryReason::PersistentWait, "low health -> persistent wait");
+        Check(RecoveryFor(ReadyStatus::LowHealerMana, true) == RecoveryReason::PersistentWait, "low healer mana -> persistent wait");
+        // still not recoveries: these three are not in RecoveryFor's switch at all
+        Check(RecoveryFor(ReadyStatus::Ready, true) == RecoveryReason::None, "ready -> no recovery");
+        Check(RecoveryFor(ReadyStatus::PartyInCombat, true) == RecoveryReason::None, "a fight is the class AI's business, not a recovery");
+        Check(RecoveryFor(ReadyStatus::PartySpread, true) == RecoveryReason::None, "spread (pulls only) holds the pull itself, no recovery needed");
+
+        // A dead/departed master never comes back: the clock reaches Abort within the normal
+        // act+escalate window, same bound as every other reason (RecoveryController's Escalate
+        // step is a no-op for it either way - who is never a bot - so Act and Escalate are
+        // functionally identical waits; Abort is what actually ends it).
+        Check(DecideRecovery(RecoveryReason::MasterUnavailable, 0, 0, p) == RecoveryStep::Act,
+              "master just went unavailable -> act (wait)");
+        Check(DecideRecovery(RecoveryReason::MasterUnavailable, 119999, 119999, p) == RecoveryStep::Escalate,
+              "master still unavailable, inside escalation -> escalate (still just a wait)");
+        Check(DecideRecovery(RecoveryReason::MasterUnavailable, 120000, 120000, p) == RecoveryStep::Abort,
+              "master never came back -> abort, bounded like every other reason");
+
+        // A master 70 yd away is beyond the 60 yd leash (MasterTooFar) but inside the 90 yd hard
+        // range (not Fragmented) - distinguishing the two matters: MasterTooFar is "wait for the
+        // human", Fragmented would (for a bot) imply walking back to them instead.
+        {
+            PartyFacts tooFar = Party();
+            tooFar.master.distance = 70.0f;
+            Readiness const r = EvaluateReadiness(tooFar, kReady, ReadyPurpose::Walk);
+            Check(r.status == ReadyStatus::MasterTooFar, "master 70 yd away (past 60 leash, inside 90 hard range) -> MasterTooFar");
+            Check(RecoveryFor(r.status, true) == RecoveryReason::MasterTooFar, "-> bounded recovery, not silently stalled");
+            Check(DecideRecovery(RecoveryReason::MasterTooFar, 120000, 120000, p) == RecoveryStep::Abort,
+                  "master still too far after the full window -> abort");
+        }
+
+        // Persistent vs. momentary waits (Drinking/LowHealth/LowHealerMana): DecideRecovery itself
+        // already bounds this with no extra grace period needed - a momentary instance clears
+        // (observed -> None) long before the act window, same as every other reason; a persistent
+        // one reaches Abort exactly like MasterUnavailable above.
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 0, 0, p) == RecoveryStep::Act,
+              "someone just sat down / dropped low -> act (wait), not an immediate escalation");
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 500, 500, p) == RecoveryStep::Act,
+              "half a second of drinking -> still just a wait, nowhere near escalate/abort");
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 120000, 120000, p) == RecoveryStep::Abort,
+              "someone stuck drinking/low/out of mana for the full window -> abort, bounded");
+        {
+            // A momentary sit (one tick, then up again) clears via the generic None branch before
+            // the clock ever advances past Act - RecoveryTimers never even reaches Escalate.
+            RecoveryTimers mt;
+            uint32_t mNow = 0;
+            Check(ObserveRecovery(mt, RecoveryReason::PersistentWait, mNow), "member sits down -> recovery starts");
+            mNow += 2000;  // two seconds of drinking
+            Check(DecideRecovery(mt.reason, mNow - mt.reasonSince, mNow - mt.episodeSince, p) == RecoveryStep::Act,
+                  "2 s into drinking -> still act, far from escalate");
+            Check(!ObserveRecovery(mt, RecoveryReason::None, mNow) && mt.reason == RecoveryReason::None,
+                  "member stands back up -> recovery clears, never escalated");
+        }
 
         ActiveFacts a = Active(LeadState::WaitingReady);
         a.walkReady = false;

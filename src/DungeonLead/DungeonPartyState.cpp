@@ -12,6 +12,7 @@
 #include "DungeonRouteMgr.h"
 #include "Timer.h"
 #include "Group.h"
+#include "ObjectAccessor.h"
 #include "Player.h"
 #include "Playerbots.h"
 
@@ -55,7 +56,13 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
     f.hasGroup = group != nullptr;
     f.selfInCombat = CombatWithEnemy(bot, bot);
 
+    // Only touch session state when a session actually exists for this leader (readiness is also
+    // evaluated outside an active session, e.g. canary probing) - same guard CombatWithEnemy() uses.
+    bool const haveSession = sDungeonRouteMgr.HasState(bot->GetGUID());
+    DungeonLeadState* st = haveSession ? &sDungeonRouteMgr.State(bot->GetGUID()) : nullptr;
+
     Player* master = leaderAI->GetMaster();
+    ObjectGuid masterGuid;
     if (master && master != bot)
     {
         f.master.assigned = true;
@@ -65,34 +72,91 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
         f.master.sameMap = master->GetMap() == bot->GetMap();
         if (f.master.sameMap)
             f.master.distance = bot->GetDistance(master);
+        masterGuid = master->GetGUID();
+        if (st)
+            st->masterGuid = masterGuid;
+    }
+    else if (st && st->masterGuid)
+    {
+        // DL-004 (the master is the same "offline identity disappears" problem one level up, fed
+        // into DL-003's recovery mapping): PlayerbotAI::GetMaster() returns null once
+        // mod-playerbots' own RandomPlayerbotMgr::OnPlayerLogout clears it on a full logout
+        // (verified against the real source on acore-clean) - by then the Player object is
+        // already deleted, so there is nothing left to query online/alive/inGroup on directly.
+        // Report the last-known master as offline instead of letting it drop out of f.master
+        // entirely: without this, ReadyStatus::MasterUnavailable could never actually fire for
+        // the single most common case (the real player's client disconnecting), since
+        // f.master.assigned would simply go back to false.
+        f.master.assigned = true;
+        f.master.online = false;
+        f.master.alive = false;
+        f.master.inGroup = !group || group->IsMember(st->masterGuid);
+        f.master.sameMap = false;
+        f.master.distance = 0.0f;
+        masterGuid = st->masterGuid;
     }
 
     if (!group)
         return snap;
 
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    // DL-004: Group::GetFirstMember() only walks currently-resolvable (online) Player* objects -
+    // a fully offline member's slot never produces one at all, so it silently disappears from
+    // f.members instead of appearing unavailable. GetMemberSlots() is the full roster (online and
+    // offline alike); resolve each slot individually instead.
+    for (Group::MemberSlot const& slot : group->GetMemberSlots())
     {
-        Player* member = ref->GetSource();
-        if (!member)
-            continue;
+        Player* member = ObjectAccessor::FindPlayer(slot.guid);
         DungeonLeadKernel::PartyMemberFacts m;
-        m.isSelf = member == bot;
-        m.isMaster = f.master.assigned && member == master;
-        // bySpec=true for availability: the default lags behind a fresh talent change (see
-        // DungeonTestBotPool's VerifyReady); the mana check keeps mod-playerbots' own default,
-        // same as its "healer low mana" value did.
-        m.isHealerBySpec = PlayerbotAI::IsHeal(member, /*bySpec*/ true);
-        m.isHealerRole = PlayerbotAI::IsHeal(member);
-        m.gameMaster = member->IsGameMaster();
-        m.alive = member->IsAlive();  // a ghost is DeathState::Dead too
-        m.online = member->IsInWorld() && member->GetSession();
-        m.sameMap = member->GetMap() == bot->GetMap();
-        m.inCombat = CombatWithEnemy(bot, member);
-        m.sitting = member->IsSitState();
-        m.manaPct = member->GetPowerPct(POWER_MANA);
-        m.healthPct = member->GetHealthPct();
-        if (m.sameMap)
-            m.distance = bot->GetDistance(member);
+        m.isSelf = slot.guid == bot->GetGUID();
+        m.isMaster = masterGuid && slot.guid == masterGuid;
+        if (member)
+        {
+            // bySpec=true for availability: the default lags behind a fresh talent change (see
+            // DungeonTestBotPool's VerifyReady); the mana check keeps mod-playerbots' own default,
+            // same as its "healer low mana" value did.
+            m.isHealerBySpec = PlayerbotAI::IsHeal(member, /*bySpec*/ true);
+            m.isHealerRole = PlayerbotAI::IsHeal(member);
+            m.gameMaster = member->IsGameMaster();
+            m.alive = member->IsAlive();  // a ghost is DeathState::Dead too
+            m.online = member->IsInWorld() && member->GetSession();
+            m.sameMap = member->GetMap() == bot->GetMap();
+            m.inCombat = CombatWithEnemy(bot, member);
+            m.sitting = member->IsSitState();
+            m.manaPct = member->GetPowerPct(POWER_MANA);
+            m.healthPct = member->GetHealthPct();
+            if (m.sameMap)
+                m.distance = bot->GetDistance(member);
+            if (st)
+            {
+                auto it = std::find_if(st->knownHealerRole.begin(), st->knownHealerRole.end(),
+                                       [&](auto const& p) { return p.first == slot.guid; });
+                if (it == st->knownHealerRole.end())
+                    st->knownHealerRole.emplace_back(slot.guid, m.isHealerRole);
+                else
+                    it->second = m.isHealerRole;
+            }
+        }
+        else
+        {
+            // Offline: no live Player* to ask anything of. online/alive/sameMap/distance all read
+            // as "not here", matching PartyMemberFacts' existing semantics (see
+            // DungeonLeadKernels.h) - this is what lets EvaluateCohesion()/EvaluateHealer() see a
+            // LostMember/Unavailable instead of nothing. The role can only come from the last time
+            // this guid was actually seen online in this session; a guid never seen before
+            // defaults to isHealerRole = isHealerBySpec = false - an explicit "unknown", not a
+            // guess, same policy as the master cache above.
+            m.online = false;
+            m.alive = false;
+            m.sameMap = false;
+            m.distance = 0.0f;
+            if (st)
+            {
+                auto it = std::find_if(st->knownHealerRole.begin(), st->knownHealerRole.end(),
+                                       [&](auto const& p) { return p.first == slot.guid; });
+                if (it != st->knownHealerRole.end())
+                    m.isHealerBySpec = m.isHealerRole = it->second;
+            }
+        }
         f.members.push_back(m);
         snap.members.push_back(member);
     }

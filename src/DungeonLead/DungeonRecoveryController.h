@@ -11,14 +11,22 @@
  * success condition (the problem is no longer observed), a timeout, an escalation and finally an
  * abort that stops the session as failed - decided by DungeonLeadKernel::DecideRecovery.
  *
- *   reason            act (RecoveryTimeoutSeconds)       escalate (RecoveryEscalationSeconds)
- *   party_fragmented  leader walks back to the member    bring that bot member to the leader
- *   member_lost       wait (zoning, reconnect)           bring that bot member to the leader
- *   member_dead       wait for a resurrection            none - recorded
- *   leadership_lost   wait for it to come back           none - recorded
+ *   reason              act (RecoveryTimeoutSeconds)       escalate (RecoveryEscalationSeconds)
+ *   party_fragmented    leader walks back to the member    bring that bot member to the leader
+ *   member_lost         wait (zoning, reconnect)           bring that bot member to the leader
+ *   member_dead         wait for a resurrection             none - recorded
+ *   leadership_lost     wait for it to come back           none - recorded
+ *   master_unavailable  wait (reconnect, release, rejoin)  none - recorded (DL-003)
+ *   master_too_far      wait for the real player to return  none - recorded (DL-003)
+ *   persistent_wait     wait (drink/heal/mana up)          none - recorded (DL-003)
  *
- * A real player is never moved: only bot members are brought over. Ordinary waits (drinking,
- * mana, health, the real player's own position) are not recoveries and are not timed out here.
+ * A real player is never moved: only bot members are brought over (see DungeonRecoveryController
+ * .cpp's `movable` check in the Escalate step - only party_fragmented/member_lost ever qualify).
+ * master_unavailable/master_too_far/persistent_wait exist so a session can't be held open forever
+ * by a dead/departed real player, one stuck past the leash, or a resource wait that never
+ * resolves - but escalation for them is still a no-op: waiting is the only "action", abort is the
+ * actual bound. Ordinary, brief instances of these (a normal drink, a moment of low health) never
+ * reach escalate/abort at all; only a persistent one does.
  * The leader's own death is the brain's WipeRecovery, not this.
  */
 
