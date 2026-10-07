@@ -87,6 +87,46 @@ namespace
     }
 }
 
+bool DungeonPullController::StopForPull(PlayerbotAI* botAI, DungeonLeadState& st)
+{
+    // the controller's own next pass covers this within kPullStopMaxMs
+    constexpr uint32 kPullStopMaxMs = 5000;
+    if (st.pullState != PullState::Approaching)
+    {
+        st.pullStopSince = 0;
+        return false;
+    }
+    if (st.pullStopSince && GetMSTimeDiffToNow(st.pullStopSince) >= kPullStopMaxMs)
+        return false;  // not picked up: walk on (stays so until the pull state changes)
+
+    Player* bot = botAI->GetBot();
+    DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
+    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex) : DungeonPack();
+    if (!pack.Exists() || (pack.type != DungeonRouteNodeType::Pull && pack.type != DungeonRouteNodeType::Boss))
+        return false;
+
+    // the same target and range test as Update()
+    Creature* target = nullptr;
+    if (Unit* primary = st.targetPrimary.IsEmpty() ? nullptr : botAI->GetUnit(st.targetPrimary))
+        if (primary->IsAlive())
+            target = primary->ToCreature();
+    if (!target)
+        for (uint32 entry : pack.expectedEntries)
+        {
+            Creature* c = bot->FindNearestCreature(entry, sDungeonLeadConfig.dungeonLeadPullRange, true);
+            if (c && IsPackMember(pack, c))
+            {
+                target = c;
+                break;
+            }
+        }
+    if (!target || bot->GetDistance(target) > sDungeonLeadConfig.dungeonLeadPullRange || !bot->IsWithinLOSInMap(target))
+        return false;
+    if (!st.pullStopSince)
+        st.pullStopSince = getMSTime();
+    return true;
+}
+
 void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& party)
 {
     Player* bot = botAI->GetBot();

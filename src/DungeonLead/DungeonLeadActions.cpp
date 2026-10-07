@@ -1744,6 +1744,12 @@ bool DungeonLeadNextAction::isUseful()
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
     if (st.paused)
         return false;  // "startdungeon pause": stand still until "startdungeon continue"
+    if (st.state == DungeonLeadKernel::LeadState::Travelling && DungeonPullController::StopForPull(botAI, st))
+    {
+        if (bot->isMoving())
+            bot->StopMoving();
+        return false;  // in pull range: the pull controller takes it from here
+    }
 
     // "waiting for you": a one-shot chat ping on the transition into master-too-far, not spammed
     // every tick, and cleared as soon as the player is back in range.
@@ -2027,6 +2033,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.pullPackFought = false;
     st.pullNoSightSince = 0;
     st.pullPatrolSince = 0;
+    st.pullStopSince = 0;
     st.objectiveFailures = 0;
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
@@ -2061,6 +2068,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.pullPackFought = false;
     st.pullNoSightSince = 0;
     st.pullPatrolSince = 0;
+    st.pullStopSince = 0;
     st.anchorSet = false;
     st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
     st.arrivedTold = false;

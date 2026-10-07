@@ -21,6 +21,7 @@
 #define MOD_DUNGEONLEAD_PULLCONTROLLER_H
 
 class PlayerbotAI;
+struct DungeonLeadState;
 struct DungeonPartySnapshot;
 
 namespace DungeonPullController
@@ -29,6 +30,12 @@ namespace DungeonPullController
     // all map updates have joined). Runs before DungeonLeadBrain::Update so the brain sees the
     // current pull state.
     void Update(PlayerbotAI* botAI, DungeonPartySnapshot const& party);
+
+    // For the walk (every AI tick): the leader has just come into pull range and sight of the
+    // current pack's pull target while the controller is still Approaching - stop here instead
+    // of running on until its next pass (2 s, ~14 yd: into aggro in SFK's courtyard). Bounded:
+    // a stop the controller doesn't pick up within a few seconds lets the walk go on.
+    bool StopForPull(PlayerbotAI* botAI, DungeonLeadState& st);
 }
 
 #endif

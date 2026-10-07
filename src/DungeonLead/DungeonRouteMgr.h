@@ -230,6 +230,7 @@ struct DungeonLeadState
     bool pullOrderRefused = false;   // upstream's Attack() refused the current attempt's order
     uint32 pullNoSightSince = 0;     // leader standing still in pull range without sight of the target
     uint32 pullPatrolSince = 0;      // first wait for a patrol on the current pack (bounds the waits)
+    uint32 pullStopSince = 0;        // walk stopped in pull range, waiting for the controller (StopForPull)
     uint8 pullFights = 0;            // fights in which the pack itself engaged and survived (resets)
     bool pullPackFought = false;     // the pack itself engaged during the current fight
     // Combat anchor: where the current fight began (set by DungeonLeadBrain on entering Combat,
