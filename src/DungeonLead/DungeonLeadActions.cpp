@@ -1992,6 +1992,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.pullOrderRefused = false;
     st.pullFights = 0;
     st.pullPackFought = false;
+    st.pullNoSightSince = 0;
     st.objectiveFailures = 0;
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
@@ -2024,6 +2025,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.pullOrderRefused = false;
     st.pullFights = 0;
     st.pullPackFought = false;
+    st.pullNoSightSince = 0;
     st.anchorSet = false;
     st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
     st.arrivedTold = false;
@@ -2170,6 +2172,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     }
 
     // advance to the next step that is worth walking to
+    uint32 const stepBefore = st.stepIndex;
     while (st.stepIndex < route->steps.size())
     {
         DungeonRouteStep const& s = route->steps[st.stepIndex];
@@ -2182,6 +2185,11 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             break;
         ++st.stepIndex;
     }
+    // Skipped past steps (one already killed - e.g. a boss that died in a fight on its own step):
+    // the new step starts from scratch, as AdvanceStep() would. Without this the pull counters
+    // carried over (SFK: Nandos' pack resets made Arugal fail "reset_too_often" on first sight).
+    if (st.stepIndex != stepBefore)
+        DungeonLead::ResetStepState(st);
 
     if (st.stepIndex >= route->steps.size())
     {

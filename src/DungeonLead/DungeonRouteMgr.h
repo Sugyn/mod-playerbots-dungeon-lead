@@ -228,6 +228,7 @@ struct DungeonLeadState
     uint32 pullStateTs = 0;          // getMSTime() of the last pull state change
     uint8 pullAttempts = 0;          // pulls initiated on the current pack
     bool pullOrderRefused = false;   // upstream's Attack() refused the current attempt's order
+    uint32 pullNoSightSince = 0;     // leader standing still in pull range without sight of the target
     uint8 pullFights = 0;            // fights in which the pack itself engaged and survived (resets)
     bool pullPackFought = false;     // the pack itself engaged during the current fight
     // Combat anchor: where the current fight began (set by DungeonLeadBrain on entering Combat,

@@ -18,6 +18,7 @@ _WHY_CLASS = {
     "not_found": ("ROUTE", "the objective was not found where the route expects it"),
     "path": ("ROUTE", "no usable path to the objective"),
     "stuck": ("ROUTE", "the leader got stuck on the way"),
+    "reset_too_often": ("BOSS", "the objective's pack kept resetting (evade, a scripted move or teleport)"),
 }
 
 

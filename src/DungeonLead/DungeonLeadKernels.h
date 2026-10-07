@@ -776,6 +776,7 @@ namespace DungeonLeadKernel
         bool primaryEngaged = false;  // the target plan's primary (may be trash next to the pack) fighting
         bool inPullRange = false;   // tank within PullRange of the pull target
         bool inRangeNoSight = false;  // within PullRange but not in line of sight (behind a wall, a fence)
+        uint32_t msNoSightStill = 0;  // how long the leader has stood still in range without sight
         bool partyReady = false;    // EvaluateReadiness(..., Pull) == Ready
         bool targetMarked = false;  // skull is on a living member of the pack
         bool leaderInCombat = false;
@@ -826,8 +827,9 @@ namespace DungeonLeadKernel
                 return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Marking;
             default:  // None, Approaching, WaitingParty
                 // a fight that isn't this pack (trash, a CC'd leftover) finishes first
+                // standing still, in range, no sight: walking up a spiral stair to the target is not this
                 if (f.current == PullState::Approaching && f.packAlive && f.inRangeNoSight && !f.leaderInCombat &&
-                    f.msInState >= p.approachNoSightTimeoutMs)
+                    f.msNoSightStill >= p.approachNoSightTimeoutMs)
                     return PullState::Failed;
                 if (!f.packAlive || !f.inPullRange || f.leaderInCombat)
                     return PullState::Approaching;

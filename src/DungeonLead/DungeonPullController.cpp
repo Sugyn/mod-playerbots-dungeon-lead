@@ -106,6 +106,14 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                     bot->IsWithinLOSInMap(target);
     f.inRangeNoSight = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange &&
                        !bot->IsWithinLOSInMap(target);
+    if (f.inRangeNoSight && !bot->isMoving())
+    {
+        if (!st.pullNoSightSince)
+            st.pullNoSightSince = getMSTime();
+    }
+    else
+        st.pullNoSightSince = 0;
+    f.msNoSightStill = st.pullNoSightSince ? GetMSTimeDiffToNow(st.pullNoSightSince) : 0;
     DungeonLeadKernel::Readiness const ready = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
     f.partyReady = ready.status == DungeonLeadKernel::ReadyStatus::Ready;
     f.targetMarked = skull && skull->IsAlive() && (skull->GetGUID() == st.targetPrimary || IsPackMember(pack, skull));
