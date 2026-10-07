@@ -661,10 +661,11 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
             RecordEventV2(botAI, "mob_died", JsonLine().Num("fight_id", uint32_t(st.fightId)).Raw("unit", UnitJson(c)).Done());
             // A route boss killed while the party worked on another step (ZF: Antu'sul came down
             // to a fight at Theka's) is done: remember it, or its own step finds nobody and the
-            // run aborts on "not found". Bosses only - trash steps share entries across packs.
+            // run aborts on "not found". Bosses only (DL-001: EntryKillMemoryEligible) - trash
+            // steps share entries across packs.
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
                 for (uint32 i = 0; i < route->steps.size(); ++i)
-                    if (route->steps[i].kind == DungeonRouteKind::Boss && route->steps[i].entry == c->GetEntry() &&
+                    if (EntryKillMemoryEligible(route->steps[i].NodeType()) && route->steps[i].entry == c->GetEntry() &&
                         !sDungeonRouteMgr.IsStepKilled(st.instanceId, c->GetEntry()))
                     {
                         sDungeonRouteMgr.MarkStepKilled(st.instanceId, c->GetEntry());
@@ -2221,9 +2222,12 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         DungeonRouteStep const& s = route->steps[st.stepIndex];
         // SkipOptional skips optional fights (Pull nodes) only - a path anchor on an optional row
         // is a Travel node and must stay, or routes that need it stop being walkable (DL-011).
+        // DL-001: entry-wide kill memory only ever applies to boss steps (see
+        // EntryKillMemoryEligible) - a trash step with the same entry as an earlier cleared pack
+        // must still be reached and observed on its own.
         bool skip = st.visited[st.stepIndex] || !s.IsWalkable() ||
                     (s.NodeType() == DungeonRouteNodeType::Pull && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
-                    (s.entry && !s.IsInteractionStep() && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
+                    (s.entry && EntryKillMemoryEligible(s.NodeType()) && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;
         ++st.stepIndex;
@@ -2367,7 +2371,9 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         botAI->TellMasterNoFacing(out);
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}' already dead, next", bot->GetName(), step.step, step.boss);
         DungeonLead::RecordEvent(botAI, "already_dead", step.boss);
-        if (step.entry)
+        // DL-001: only remember a boss kill instance-wide; a cleared trash pack must not make a
+        // later, still-live pack with the same entry look already dead too.
+        if (step.entry && EntryKillMemoryEligible(step.NodeType()))
             sDungeonRouteMgr.MarkStepKilled(st.instanceId, step.entry);
         DungeonLead::AdvanceStep(st, /*confirmed*/ true);
         return true;

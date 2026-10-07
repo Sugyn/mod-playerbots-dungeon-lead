@@ -79,7 +79,9 @@ DungeonPackSighting DungeonPacks::Observe(Player* bot, DungeonPack const& pack, 
     };
     for (uint32_t entry : pack.expectedEntries)
     {
-        if (sDungeonRouteMgr.IsStepKilled(instanceId, entry))
+        // DL-001: trash entries repeat across spatially distinct packs (e.g. Deadmines' six
+        // Craftsman stops, entry 1731) - only a boss step's own kill is remembered instance-wide.
+        if (EntryKillMemoryEligible(pack.type) && sDungeonRouteMgr.IsStepKilled(instanceId, entry))
             sighting.observation.rememberedKilled = true;
         // AzerothCore's grid search is centred on a WorldObject only, so search around the bot and
         // then keep what stands in the pack's area (review DL-015).

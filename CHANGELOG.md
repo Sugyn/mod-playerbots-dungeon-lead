@@ -35,6 +35,13 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Clearing one trash pack no longer skips other route stops with the same creature entry
+  (DL-001). The instance kill cache that remembers an off-step boss kill (`boss_killed`, below)
+  was also fed by every cleared step, boss or not - a route commonly routes several spatially
+  distinct trash packs through the same creature entry (Deadmines' six Craftsman stops, entry
+  1731; Shadowfang Keep's repeated Worg/Moonwalker stops), so clearing the first pack silently
+  marked every later same-entry pack "already dead". Kill memory is now boss-only; trash
+  progress relies on the existing per-step/pack state.
 - A pull's "in range, no sight" timeout counts only while the leader may walk, and restarts after
   a failed try. Held after a fight next to Amnennar (RFD), the pull failed twice and the run ended.
 - The walk stops as soon as the pull target is in range and sight, not at the pull controller's

@@ -396,6 +396,36 @@ namespace
         Check(ClassifyRouteStep(DungeonRouteKind::Door, 42) == DungeonRouteNodeType::Door, "door -> Door");
         Check(std::string(ToString(DungeonRouteNodeType::TankPosition)) == "tank_position", "node type names");
     }
+
+    // DL-001: an instance kill cache keyed only by creature entry must stay boss-only. A route
+    // commonly routes several spatially distinct trash packs through the same entry (Deadmines'
+    // six Craftsman stops, entry 1731; SFK's repeated Worg/Moonwalker stops) - if those fed the
+    // same cache as bosses, clearing the first pack would silently mark every later same-entry
+    // pack "already dead" (DungeonLeadActions::Execute's skip loop and DungeonPacks::Observe both
+    // read this cache; the "already_dead" branch and ObserveCombatEvidence's off-step boss-death
+    // fix both write it).
+    void TestRepeatedEntryObjectives()
+    {
+        Check(EntryKillMemoryEligible(DungeonRouteNodeType::Boss), "boss steps use instance-wide kill memory");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Pull),
+              "trash/pull steps (repeated entries like Deadmines' Craftsman 1731) must not");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Travel), "path anchors (entry=1) never enter kill memory");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Door), "doors are not creature kills");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Interaction), "use/talk objectives are not creature kills");
+
+        // Off-step boss kill memory (ZF: Antu'sul killed at Theka's fight) still works: a boss
+        // row, wherever killed, is eligible; trash rows sharing its creature entry never are.
+        Check(EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Boss, 3653)),
+              "a boss row classifies as kill-memory eligible");
+        Check(EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::HeroicOnly, 500)),
+              "heroic-only boss rows classify the same as Boss");
+        Check(!EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Required, 1731)),
+              "required trash (route-gating, still not a boss) stays out of entry-wide memory");
+        Check(!EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Optional, 1731)),
+              "Deadmines Craftsman 1731: six stops, same entry, none of them a boss");
+        Check(!EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Boss, kPathAnchorEntry)),
+              "a path anchor (entry=1) is Travel regardless of declared kind, so it never enters kill memory");
+    }
 }
 
 namespace
@@ -1145,6 +1175,7 @@ int main()
     TestReadiness();
     TestBrain();
     TestRouteTypes();
+    TestRepeatedEntryObjectives();
     TestPack();
     TestPull();
     TestLeash();

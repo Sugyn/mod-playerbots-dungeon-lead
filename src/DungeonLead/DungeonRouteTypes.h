@@ -107,6 +107,18 @@ inline DungeonRouteNodeType ClassifyRouteStep(DungeonRouteKind kind, uint32_t en
     return DungeonRouteNodeType::Travel;
 }
 
+// Whether a kill at this node type may be remembered instance-wide by creature entry
+// (DungeonRouteMgr::MarkStepKilled/IsStepKilled), so a later step with the same entry is treated
+// as already cleared without re-observing it. Bosses only: a route commonly places several
+// spatially distinct trash packs under the same creature entry (audit DL-001 - e.g. Deadmines'
+// six Craftsman stops, entry 1731), and an instance-wide memory would silently bypass every pack
+// after the first one cleared. Trash progress instead relies on the per-step/pack state the
+// route walk and DungeonPacks already track.
+inline bool EntryKillMemoryEligible(DungeonRouteNodeType nodeType)
+{
+    return nodeType == DungeonRouteNodeType::Boss;
+}
+
 // How much a route objective matters if it can't be completed. Only Optional content may ever
 // be skipped; Required and Boss objectives are retried and, if still unresolved, end the run as
 // partial - the route never advances past them.
