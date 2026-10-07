@@ -116,7 +116,7 @@ increments, each with its own entry here.
 | mob_fleeing | `mob_fleeing` (v2 only) | `name`, `entry`, `spawn`, `health_pct`, `x`, `y`, `z`, `fight_id` - a fight member started running for help (flee for assistance) or fleeing; once per unit and fight |
 | recovery_walk_stopped | `recovery_walk_stopped` (v2 only) | `reason` - the recovery ended while the leader was still on its walk back to a straggler; the walk was stopped |
 | boss_killed | `boss_killed` (v2 only) | `name`, `step`, `entry`, `current_step` - a route boss died (also while another step was worked on: the step is then skipped as done) |
-| member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers` |
+| member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers`; died: `party[]` - each other member's `name`, `role`, `dist`, `los`, `alive`, `health_pct`, `mana_pct`, `casting`, `attackers` |
 | pull_members_resolved | `pull_members_resolved` (v2 only, pack locked on engage) | `pack_id`, `objective`, `requirement`, `boss`, `expected_entry`, `pack_x/y/z`, `core_members[]` (units) |
 | combat_anchor_set | `combat_anchor_set` (v2 only) | `kind` (fight_start / boss_home / held_at_fight), `x`, `y`, `z`, `radius`, `boss_home_dist` |
 | state | `state_transition` | `from`, `to`, `reason`, `after_ms`, `objective` (+ `detail`) |

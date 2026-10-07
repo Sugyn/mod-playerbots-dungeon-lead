@@ -243,6 +243,7 @@ class _Builder:
         return [{"run_ms": e["run_ms"], "name": e["payload"]["name"], "role": e["payload"].get("role"),
                  "leader": e["payload"].get("leader"), "fight_id": e["payload"].get("fight_id"),
                  "attackers": e["payload"].get("attackers"),
+                 "party": e["payload"].get("party"),
                  "position": _unit_pos(e["payload"])}
                 for e in self.events if e["event_type"] == "member_died"]
 

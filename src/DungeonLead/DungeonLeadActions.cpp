@@ -240,6 +240,32 @@ namespace
         return out;
     }
 
+    // Everyone else when a member dies: who stood where, alive, mana, health, casting - the healer's
+    // distance and state are what a tank death is usually about.
+    std::string PartyAtDeath(Group* group, Player* dead)
+    {
+        std::string out;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || m == dead || m->GetMap() != dead->GetMap())
+                continue;
+            out += (out.empty() ? "" : ",") +
+                   DungeonLeadKernel::JsonLine()
+                       .Str("name", m->GetName())
+                       .Str("role", PlayerbotAI::IsTank(m) ? "tank" : PlayerbotAI::IsHeal(m) ? "healer" : "dps")
+                       .Num("dist", m->GetDistance(dead))
+                       .Bool("los", m->IsWithinLOSInMap(dead))
+                       .Bool("alive", m->IsAlive())
+                       .Num("health_pct", uint32_t(m->GetHealthPct()))
+                       .Num("mana_pct", uint32_t(m->GetPowerPct(POWER_MANA)))
+                       .Bool("casting", m->IsNonMeleeSpellCast(false))
+                       .Num("attackers", uint32_t(m->getAttackers().size()))
+                       .Done();
+        }
+        return "[" + out + "]";
+    }
+
     // A unit for v2 payloads: identity and where it stands now.
     std::string UnitJson(Unit const* u)
     {
@@ -590,6 +616,7 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
                               .Num("z", member->GetPositionZ())
                               .Num("fight_id", uint32_t(st.fightId))
                               .Num("attackers", uint32_t(member->getAttackers().size()))
+                              .Raw("party", alive ? "" : PartyAtDeath(group, member))
                               .Done());
         }
 

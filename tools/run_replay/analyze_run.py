@@ -63,6 +63,13 @@ def _wipe_findings(m):
         f = _last_wiped_fight(m, w["run_ms"])
         facts = [f"wipe #{w['wipe']} at {w['run_ms'] // 1000} s",
                  f"first death: {w['first_death'] or 'not recorded'}"]
+        first = w["deaths_before"][0] if w["deaths_before"] else None
+        healer = next((p for p in (first.get("party") or []) if p.get("role") == "healer"), None) if first else None
+        if healer:
+            facts.append(f"healer {healer['name']} at {first['name']}'s death: {healer['dist']:.0f} yd, "
+                         f"{'in' if healer.get('los') else 'out of'} sight, mana {healer.get('mana_pct')}%, "
+                         f"{'casting' if healer.get('casting') else 'not casting'}"
+                         f"{'' if healer.get('alive') else ', dead'}")
         evidence = [f"W{w['wipe']}"]
         if f is None:
             out.append(_finding("OBSERVABILITY", f"Wipe #{w['wipe']}: no fight evidence", facts,
