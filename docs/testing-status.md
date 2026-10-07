@@ -25,6 +25,24 @@ were run; the real module build against pinned core/playerbots revisions is a se
   `src/`, `tests/`, `data/` or the tooling itself, not only route-data changes (audit DL-011:
   these suites previously passed locally but were never executed in CI).
 
+## Real module build (hardening fixes, 2026-10-07)
+
+The DL-001/DL-002/DL-005/DL-007/DL-009 fixes (commits `0094fa2`, `caf16e4`, `30704f2`, `4baaec1`
+on `main`) were compiled against the real, current AzerothCore + mod-playerbots source tree on
+`acore-clean` (`/home/prgadm/azerothcore`, build directory `build/`, CMakeCache dated 2026-10-02 -
+the tree the currently-running production `worldserver` was itself built from, last installed
+2026-10-07 05:08). Changed files (`DungeonLeadActions.cpp`, `DungeonPack.cpp`,
+`DungeonRouteTypes.h`, `DungeonLeadKernels.h`) were copied into
+`modules/mod-dungeon-lead/src/DungeonLead/` (checksummed before/after to confirm exactly these
+four files changed and nothing else drifted), then `cmake --build build --target worldserver -j12`
+run. Result: clean build, zero errors - `[100%] Built target worldserver` - no `make install`, no
+restart; the running production binary was not touched. An earlier attempt against the separate
+ASAN build tree (`build-asan`) failed to link, but that tree's CMakeCache dates to 2026-09-16,
+predating the 2026-10-02/03 patch-to-module migration - its own undefined-reference errors
+(`DungeonLead::AcquireTestBot` and others, a known signature mismatch between the new module and
+still-unported legacy GM commands in `modules/mod-playerbots/src/Script/PlayerbotCommandScript.cpp`,
+unrelated to this module) confirm it is simply stale, not a regression from this work.
+
 ## Live validation (2026-10-04/05)
 
 Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) and door opening
