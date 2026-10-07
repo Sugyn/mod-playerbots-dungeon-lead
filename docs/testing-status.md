@@ -25,16 +25,16 @@ runs on the same commit and validation profile, health not unhealthy.
 
 | Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
 |---|---|---|---|---|
-| Deadmines | **Verified** | `5f3d706` | `5f3d706` | full route; full route |
-| Ragefire Chasm | **Verified** | `5f3d706` | `5f3d706` | full route (warning) PACK_IDENTITY; full route |
-| Razorfen Downs | **Verified** | `5f3d706` | `5f3d706` | full route; full route |
-| Scarlet Monastery - Armory | **Verified** | `5f3d706` | `5f3d706` | full route; full route |
-| Scarlet Monastery - Cathedral | **Verified** | `5f3d706` | `5f3d706` | full route (warning) PULL; full route (warning) PULL |
-| Scarlet Monastery - Library | **Verified** | `5f3d706` | `5f3d706` | full route; full route (warning) PULL |
-| Shadowfang Keep | **Verified** | `5f3d706` | `5f3d706` | full route (warning) PACK_IDENTITY; full route |
-| Zul'Farrak | **Verified** | `d1f1ddf` | `5f3d706` | full route; partial (unhealthy) ROUTE |
+| Deadmines | **Verified** | `bc537b9` | `bc537b9` | full route; full route (warning) PACK_IDENTITY, PULL |
+| Ragefire Chasm | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
+| Razorfen Downs | **Verified** | `5f3d706` | `bc537b9` | full route; partial (unhealthy) PULL |
+| Scarlet Monastery - Armory | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
+| Scarlet Monastery - Cathedral | **Verified** | `bc537b9` | `bc537b9` | full route; full route (warning) PACK_IDENTITY |
+| Scarlet Monastery - Library | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
+| Shadowfang Keep | **Verified** | `5f3d706` | `bc537b9` | full route (warning) PULL; partial (warning) PACK_IDENTITY, WIPE |
+| Zul'Farrak | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
 
-From 36 runs in 3 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261006-1911-5f3d706).
+From 100 runs in 9 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261007-0327-bc537b9).
 
 <!-- END GENERATED -->
 
