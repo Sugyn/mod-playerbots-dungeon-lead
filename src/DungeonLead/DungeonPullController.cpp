@@ -134,7 +134,9 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                     bot->IsWithinLOSInMap(target);
     f.inRangeNoSight = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange &&
                        !bot->IsWithinLOSInMap(target);
-    if (f.inRangeNoSight && !bot->isMoving())
+    // Standing still only counts while the brain lets the leader walk: held in PostCombat or a
+    // fight next to the target is not "can't get there" (RFD: Amnennar given up after a pause).
+    if (f.inRangeNoSight && !bot->isMoving() && st.state == DungeonLeadKernel::LeadState::Travelling)
     {
         if (!st.pullNoSightSince)
             st.pullNoSightSince = getMSTime();
@@ -258,6 +260,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
             // only from Initiating) - without this a marking that keeps timing out loops forever.
             if (previous == PullState::Marking || previous == PullState::Approaching)
                 ++st.pullAttempts;
+            st.pullNoSightSince = 0;  // the next try gets its own time (it failed at once)
             DungeonLead::RecordEvent(botAI, "pull_failed", pack.name + " attempt=" + std::to_string(st.pullAttempts) +
                                                                " from=" + DungeonLeadKernel::ToString(previous));
             if (st.pullAttempts < policy.maxAttempts)

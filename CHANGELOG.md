@@ -25,6 +25,8 @@ the MAJOR bar above is met.
 - `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
 
 ### Fixed
+- A pull's "in range, no sight" timeout counts only while the leader may walk, and restarts after
+  a failed try. Held after a fight next to Amnennar (RFD), the pull failed twice and the run ended.
 - A pull waiting for the party holds the tank in place (at most 20 s). It kept walking toward the
   pack and pulled it by aggro: 53 of 62 waits ended in a fight without a mark.
 - A pull waits (at most 20 s) for a patrol walking past the target. Patrols were in 8 of the 14
