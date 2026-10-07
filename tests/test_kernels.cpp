@@ -1107,6 +1107,11 @@ namespace
               "door opens after the boss/event -> complete (world-confirmed)");
         Check(DecideInteraction(I(S::WaitingPrerequisite, timeout, true, false), timeout) == S::Failed,
               "never opens -> failed, bounded");
+        // DL-007: a late-arriving key/lever must be acted on in the same round, not left waiting
+        // for the door to open externally or for the whole interaction to time out.
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 30000, true, false, /*canAct*/ true), timeout) ==
+                  S::Interacting,
+              "prerequisite becomes available while waiting -> act now, same deadline/round");
         Check(DecideInteraction(I(S::Resolving, 1000, false, false), timeout) == S::Resolving,
               "target not seen yet -> keep resolving");
         Check(DecideInteraction(I(S::WaitingPrerequisite, 1000, false, false), timeout) == S::Failed,

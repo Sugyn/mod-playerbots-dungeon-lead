@@ -1381,6 +1381,11 @@ namespace DungeonLeadKernel
         switch (f.current)
         {
             case InteractionState::Resolving:
+            // DL-007: a prerequisite observed missing (no key/lever reachable) is not sticky - the
+            // next tick's canAct may already be true (a party member picked up the key, someone
+            // freed the lever), and WaitingPrerequisite must act on that immediately rather than
+            // wait for the door to open externally or the whole interaction to time out.
+            case InteractionState::WaitingPrerequisite:
                 return f.canAct ? InteractionState::Interacting : InteractionState::WaitingPrerequisite;
             case InteractionState::Interacting:
                 return InteractionState::WaitingConfirmation;

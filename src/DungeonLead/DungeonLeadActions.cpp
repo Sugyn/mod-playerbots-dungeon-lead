@@ -2803,12 +2803,19 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
         st.talkNpcX = npc->GetPositionX();
         st.talkNpcY = npc->GetPositionY();
         st.talkNpcStillSince = nowMs;
-        EventWaitExpired(st);  // the event is running - its time counts
+        // DL-005: a moving/restarting NPC resets the stillness grace, but must not reset - or
+        // silently ignore - the interaction's own active-time budget. A legitimately moving event
+        // is honored up to that budget, then fails like any other stuck talk objective.
+        if (EventWaitExpired(st))
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                       DungeonFailureReason::ObjectiveTimeout, "talk_target_moving");
         return true;
     }
     if (getMSTimeDiff(st.talkNpcStillSince, nowMs) < kTalkStillMs)
     {
-        EventWaitExpired(st);
+        if (EventWaitExpired(st))
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                       DungeonFailureReason::ObjectiveTimeout, "talk_target_moving");
         return true;
     }
 

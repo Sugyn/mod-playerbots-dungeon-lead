@@ -35,6 +35,17 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Recheck newly available keys and levers while a door waits for its prerequisite (DL-007).
+  DecideInteraction() only checked canAct in the Resolving state; WaitingPrerequisite fell
+  through to a default case that just held the current state, so a key picked up or a lever
+  freed after waiting began was never acted on until the door opened externally or the whole
+  interaction timed out and a fresh objective round rediscovered it.
+- Honor the talk-step timeout while an NPC keeps moving or restarting its stillness wait (DL-005).
+  WalkTalkStep's two moving/restarting-stillness branches called EventWaitExpired() (which
+  accumulates the interaction's active-time budget) but discarded its return value and always
+  kept waiting - a moving NPC, or one repeatedly failing the stillness requirement, could hold a
+  talk objective forever past the configured EventWaitSeconds budget. Both branches now fail the
+  objective through the same bounded policy the "NPC not found" branch already used.
 - Restrict stranded corpse-return teleports to eligible bots; never move a real player (DL-009).
   RecoverStrandedMembers() looped every live group member with no IsRealPlayer/IsSelfBot guard -
   the only exclusions were a missing object, out-of-world, alive or already on the instance map -
