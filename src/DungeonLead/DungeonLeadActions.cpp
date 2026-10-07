@@ -405,6 +405,42 @@ namespace
                     fv->Load(snap.formation);
     }
 
+    // DL-002: restore every snapshot we actually own, resolved by GUID rather than live
+    // GroupReference traversal. This is what lets a member be restored after it already left the
+    // leader's group (Stop() used to only walk group->GetFirstMember(), so a departed follower's
+    // session-owned strategies/formation were never put back), and lets a hard-disconnected
+    // leader's followers still be restored even though the leader's own PlayerbotAI no longer
+    // exists to drive the restore from (GuardActiveSessions' hard-disconnect branch).
+    void RestoreSessionFollowers(std::vector<DungeonLeadMemberSnapshot> const& snapshots, ObjectGuid excludeGuid)
+    {
+        for (DungeonLeadMemberSnapshot const& snap : snapshots)
+        {
+            if (snap.guid == excludeGuid)
+                continue;
+            Player* member = ObjectAccessor::FindPlayer(snap.guid);
+            if (!member || !member->IsInWorld())
+                continue;
+            // Restoring by GUID instead of live group membership (the whole point of this
+            // function) opens one new hole: this GUID may since have left our group and joined a
+            // DIFFERENT, still-active dungeon-lead session (another tank picked it up as a
+            // follower). Our stale snapshot would stomp that session's own overrides mid-run.
+            // Sessions are keyed by their leader's GUID, so "is there an active session for the
+            // group this member is in RIGHT NOW, led by someone other than us" is exactly the
+            // check: skip if so, it owns this member's AI state now, not us.
+            if (Group* currentGroup = member->GetGroup())
+            {
+                ObjectGuid const currentLeader = currentGroup->GetLeaderGUID();
+                if (currentLeader != excludeGuid && sDungeonRouteMgr.HasState(currentLeader) &&
+                    DungeonLeadKernel::IsActive(sDungeonRouteMgr.State(currentLeader).state))
+                    continue;
+            }
+            PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+            if (!memberAI || !memberAI->GetAiObjectContext())
+                continue;
+            RestoreMember(memberAI, snap);
+        }
+    }
+
     // The actual desired strategy state for an active dungeon-lead session: followers on "leader"
     // formation with +follow/+cc, the leader itself on +dungeon lead/+grind/+cc/+mark rti; nobody loots.
     // Safe to call repeatedly - both at "startdungeon" itself and from the reconciliation loop
@@ -1254,6 +1290,10 @@ void DungeonLead::GuardActiveSessions()
             LOG_INFO("playerbots.dungeonlead",
                      "[DungeonLead] {} hard-disconnected while leading (run={}) - closing out the "
                      "session instead of leaving it silently active", goneSt.tankName, goneSt.runId);
+            // DL-002: the leader's own PlayerbotAI is gone (nothing to RestoreMember() it with),
+            // but its followers are not - restore whichever of them are still resolvable before
+            // the snapshots disappear with ResetState() below.
+            RestoreSessionFollowers(goneSt.memberSnapshots, guid);
             DungeonLead::RecordRunSummary(guid, goneSt.tankName, "hard_disconnect");
             sDungeonRouteMgr.ResetState(guid);
             continue;
@@ -1274,7 +1314,21 @@ void DungeonLead::GuardActiveSessions()
 
         Group* group = bot->GetGroup();
         if (!group)
+        {
+            // DL-002: a groupless active session (disband, or the leader was removed) used to sit
+            // here forever - continue meant no controller below ever ran for it again, but nothing
+            // ever restored its owned followers or released the GetActiveSessionGuids() entry
+            // either. Terminate it the same way every other guarded ending does: record why, then
+            // Stop() - which, since this group is gone, restores the leader's own snapshot and
+            // every follower it can still resolve by GUID (see RestoreSessionFollowers), skips the
+            // group-only mark-clearing/handback work, and releases the session.
+            LOG_INFO("playerbots.dungeonlead",
+                     "[DungeonLead] {} has no group while leading (run={}) - ending the session",
+                     bot->GetName(), sDungeonRouteMgr.State(guid).runId);
+            DungeonLead::RecordRunSummary(botAI, "group_lost");
+            DungeonLead::Stop(botAI, /*giveLeaderBack*/ false);
             continue;
+        }
 
         // The route-walk action does not run while the leader is dead, so death and wipe recovery
         // are driven from here, through DungeonLeadBrain::Update() below (WipeRecovery state,
@@ -1340,6 +1394,25 @@ void DungeonLead::GuardActiveSessions()
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} strategy was missing (external AI reset) - "
                      "reconciliation loop restoring it", bot->GetName());
             DungeonLead::RecordEvent(botAI, "strategy_restored", "external reset detected");
+        }
+
+        // DL-002: snapshot any current member this session does not already own, before the
+        // (possibly first) mutation below - StartSession() only snapshots who was in the group at
+        // "startdungeon"; without this, a bot who joined afterward had its formation/strategies
+        // overwritten by ApplyLeaderFollowerStrategies with nothing recorded to ever restore it to,
+        // and Stop() fell back to a generic "chaos" formation and no strategy restore at all.
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (!member || member == bot)
+                continue;
+            PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
+            if (!memberAI || !memberAI->GetAiObjectContext())
+                continue;
+            bool const owned = std::any_of(st.memberSnapshots.begin(), st.memberSnapshots.end(),
+                [&](DungeonLeadMemberSnapshot const& s) { return s.guid == member->GetGUID(); });
+            if (!owned)
+                st.memberSnapshots.push_back(SnapshotMember(member, memberAI));
         }
 
         // Unconditional, not "only if something looks wrong": ApplyLeaderFollowerStrategies is
@@ -1408,24 +1481,34 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
                    "- dungeon lead did not actually turn off",
                    bot->GetName(), hasLeaderSnap);
 
+    // DL-002: restore every member this session actually touched, resolved by GUID rather than
+    // live GroupReference traversal - this is what restores a member who already left the group
+    // (the old loop below only ever saw bot->GetGroup()'s CURRENT members), and what still runs
+    // when the group itself is gone (GuardActiveSessions' group-loss guard calls Stop() too, see
+    // its own comment - this unconditional call is what makes that safe).
+    RestoreSessionFollowers(snapshots, bot->GetGUID());
+
     if (Group* group = bot->GetGroup())
     {
+        // A current member with no snapshot joined (and was mutated by the reconciliation loop)
+        // before GuardActiveSessions' own snapshot-on-sight pass ever got to it - the only gap
+        // that leaves is the same tick a bot joins and this session is stopped. Fall back to the
+        // old default rather than leaving it stuck on dungeon-lead's own formation.
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
             if (!member || member == bot)
                 continue;
+            bool const hasSnapshot = std::any_of(snapshots.begin(), snapshots.end(),
+                [&](DungeonLeadMemberSnapshot const& s) { return s.guid == member->GetGUID(); });
+            if (hasSnapshot)
+                continue;
             PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
             if (!memberAI || !memberAI->GetAiObjectContext())
                 continue;
-
-            auto snapIt = std::find_if(snapshots.begin(), snapshots.end(),
-                [&](DungeonLeadMemberSnapshot const& s) { return s.guid == member->GetGUID(); });
-            if (snapIt != snapshots.end())
-                RestoreMember(memberAI, *snapIt);
-            else if (FormationValue* fv = dynamic_cast<FormationValue*>(
+            if (FormationValue* fv = dynamic_cast<FormationValue*>(
                     memberAI->GetAiObjectContext()->GetValue<Formation*>("formation")))
-                fv->Load("chaos");  // joined mid-run, no snapshot to restore to - fall back to the old default
+                fv->Load("chaos");
         }
 
         // only clear marks we actually placed - never touch one the player set/changed since

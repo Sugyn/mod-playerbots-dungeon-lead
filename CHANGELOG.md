@@ -35,6 +35,17 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Restore session-owned follower state on leader disconnect, group loss and membership changes
+  (DL-002). Stop() only restored a follower's pre-"startdungeon" formation/strategies if it was
+  still a CURRENT member of the leader's group - a follower who had already left the group kept
+  dungeon-lead's formation/strategy overrides forever, a hard-disconnected leader's followers
+  were never restored at all (nothing calls Stop() for it), and a leader left without a group
+  (disband, kick) stayed registered as an active session indefinitely with nothing to ever clean
+  it up. Follower restoration is now resolved by GUID against the session's own snapshot set
+  rather than live group membership, used uniformly by Stop(), the hard-disconnect path and a new
+  group-loss termination path; a late-joining bot is now snapshotted the first time the
+  reconciliation loop sees it, before its formation/strategies are ever overridden, so it has a
+  baseline to restore to as well.
 - Clearing one trash pack no longer skips other route stops with the same creature entry
   (DL-001). The instance kill cache that remembers an off-step boss kill (`boss_killed`, below)
   was also fed by every cleared step, boss or not - a route commonly routes several spatially
