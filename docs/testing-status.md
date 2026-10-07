@@ -43,6 +43,14 @@ predating the 2026-10-02/03 patch-to-module migration - its own undefined-refere
 still-unported legacy GM commands in `modules/mod-playerbots/src/Script/PlayerbotCommandScript.cpp`,
 unrelated to this module) confirm it is simply stale, not a regression from this work.
 
+Two further passes against the same `build/` tree, same method (checksum-verified copy, compile
+only, no install/restart): DL-008 (`a1f4921`/`4e6fcea` - `DungeonLeadActions.cpp`,
+`DungeonRouteMgr.{h,cpp}`) - clean. DL-003/DL-004 (`06249de`/`842ef50`/`7d10fea` -
+`DungeonPartyState.cpp`, `DungeonRecoveryController.{cpp,h}`, `DungeonLeadKernels.h`,
+`DungeonRouteMgr.h`) - clean. All five hardening findings compiled so far (DL-001/002/003/004/005/
+007/008/009) build cleanly against the real source tree; none has had a live start/stop smoke test
+or in-dungeon run yet - see docs/project-state.md for the current open-gate ledger.
+
 ## Live validation (2026-10-04/05)
 
 Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) and door opening
