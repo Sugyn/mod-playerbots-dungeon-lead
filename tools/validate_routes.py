@@ -9,15 +9,24 @@ Checks (see the architecture roadmap's L1.2):
   - kind is one of the values DungeonRouteStep/IsWalkable() actually understands
   - no duplicate (lfg_id, step) rows
   - step numbers per lfg_id are contiguous from 1 (warning, not an error - not load-bearing)
-  - a "boss" (mandatory - see DungeonRouteStep::IsMandatory()) row always has a resolved position;
-    one without silently becomes invisible to the runtime (IsWalkable() == false, skipped with no
-    outcome signal at all) rather than an obvious failure - this is the single most valuable check
-    here
+  - a mandatory row (kind boss/required/door/use/talk - see DungeonRouteStep::IsMandatory(), which
+    DL-008 made derive from ClassifyRequirement() in DungeonRouteTypes.h) always has a resolved
+    position; one without used to become invisible to the runtime (IsWalkable() == false, skipped
+    with no outcome signal at all - DL-008's finding) rather than an obvious failure. heroic_only is
+    deliberately NOT in this set: ClassifyRequirement() classifies it Optional, and its own
+    unresolved-position gap is already tracked separately below (DL-021) - resolve_routes.py simply
+    doesn't resolve that kind yet, a known limitation, not a silently-bypassed required objective.
+    This is the single most valuable check here.
   - x/y/z parse as finite numbers
   - flags rows whose source is "script" (creature template exists but isn't spawned on that map -
     resolve_routes.py's own ambiguity marker) as a warning, not an error
 
-Exit code is 0 only if there are zero ERRORs (warnings don't fail the run).
+Exit code is 0 only if there are zero ERRORs (warnings don't fail the run). DL-008 hardened the
+mandatory-row position check above from boss-only to boss/required/door/use/talk; this is expected
+to turn some previously-silent (or previously-warned) rows into hard errors against whatever
+data/dungeon_routes.csv currently ships - see CHANGELOG.md. That is the intended, honest effect of
+the check, not a bug in the check: do not loosen this to force a clean exit without fixing the
+underlying route data (and fixing it means supplying a verified in-game/DB position, not a guess).
 """
 import csv
 import math
@@ -29,10 +38,18 @@ DATA = ROOT / "data"
 
 VALID_KINDS = {"boss", "optional", "required", "heroic_only", "event", "door", "use", "talk", "skip"}
 
+# Kinds DungeonRouteStep::IsMandatory() reports true for under the unified, Requirement()-derived
+# definition (DL-008: ClassifyRequirement() in DungeonRouteTypes.h returns Boss for "boss" and
+# Required - "nothing past it is reachable" - for required/door/use/talk). Must stay in sync with
+# ClassifyRequirement(); heroic_only is intentionally excluded (classifies Optional - see DL-021
+# below) and so is any path-anchor row (entry==1), which the C++ side exempts regardless of kind but
+# which never appears with one of these kinds in practice (checked against the current CSV).
+MANDATORY_KINDS = {"boss", "required", "door", "use", "talk"}
 
-def load_lfg_dungeons():
+
+def load_lfg_dungeons(data_dir=DATA):
     lfg = {}
-    with open(DATA / "lfg_dungeons.tsv") as f:
+    with open(data_dir / "lfg_dungeons.tsv") as f:
         next(f)
         for line in f:
             p = line.rstrip("\n").split("\t")
@@ -60,9 +77,14 @@ def parse_coord(s):
         return float("nan"), False
 
 
-def main():
-    lfg = load_lfg_dungeons()
-    rows = list(csv.DictReader(open(DATA / "dungeon_routes.csv")))
+def validate(data_dir=DATA):
+    """Core checks, factored out of main() so tests/test_validate_routes.py can run them against a
+    fixture data dir instead of the real data/dungeon_routes.csv - same logic either way, no
+    duplicated rules. Returns (rows, errors, warnings, steps_by_lfg, lfg); main() below owns
+    printing and the exit code."""
+    lfg = load_lfg_dungeons(data_dir)
+    with open(data_dir / "dungeon_routes.csv") as f:
+        rows = list(csv.DictReader(f))
 
     errors = []
     warnings = []
@@ -115,11 +137,13 @@ def main():
         any_unresolved = x_unresolved or y_unresolved or z_unresolved
         has_position = entry_val != 0 and not (xv == 0 and yv == 0 and zv == 0)
 
-        if kind == "boss" and not has_position:
+        if kind in MANDATORY_KINDS and not has_position:
             errors.append(
-                f"{loc}: mandatory 'boss' step has no resolved position (HasPosition() would be "
-                f"false at runtime) - IsWalkable() will silently skip it with no route-outcome "
-                f"signal at all, not even a visible failure"
+                f"{loc}: mandatory '{kind}' step has no resolved position (HasPosition() would be "
+                f"false at runtime) - DungeonLeadNextAction::Execute will now run it through "
+                f"FailObjective (retry, then stop the run as Partial) instead of silently skipping "
+                f"it or reporting the run Complete without it (DL-008); fix by supplying a verified "
+                f"position, not by removing this check"
             )
 
         for name, v in (("x", xv), ("y", yv), ("z", zv)):
@@ -163,6 +187,12 @@ def main():
                 f"lfg_id {lfg_id} ({lfg.get(lfg_id, {}).get('name', '?')}): step numbers {sorted(steps)} "
                 f"are not contiguous from 1 (not load-bearing, but usually means a gap/typo)"
             )
+
+    return rows, errors, warnings, steps_by_lfg, lfg
+
+
+def main():
+    rows, errors, warnings, steps_by_lfg, _lfg = validate()
 
     print(f"rows: {len(rows)}  lfg entries: {len(steps_by_lfg)}")
     print(f"ERRORS: {len(errors)}")

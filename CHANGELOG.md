@@ -35,6 +35,40 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Reject invalid required route objectives instead of silently bypassing them or reporting full
+  completion (DL-008). Three sources of truth about "what counts as a mandatory route objective"
+  disagreed: `DungeonRouteStep::IsMandatory()` only counted kind Boss/Required, while
+  `Requirement()`/`ClassifyRequirement()` already called Door/Use/Talk "Required" too ("nothing
+  past it is reachable") - so a Door/Use/Talk row never counted toward `HasAnyMandatory()` or the
+  route's Complete-vs-Partial verdict at all. Combined with the step-advance skip loop in
+  `DungeonLeadNextAction::Execute` treating any row missing its resolved position
+  (`!IsWalkable()`) as silently skippable with no call to `FailObjective` and no
+  `mandatorySkipped`, a route with a resolved, killable boss plus an unresolved required door
+  could report `DungeonRunOutcome::Complete` having never attempted (or even recorded as
+  blocked) the broken door. `IsMandatory()` now derives from `Requirement() !=
+  DungeonObjectiveRequirement::Optional`, so the two can no longer disagree; the path-anchor
+  exemption (`kPathAnchorEntry`) and the existing SFK faction-prisoner Talk exemption
+  (`WalkTalkStep`'s `IsHostileTo` branch) are unaffected. A mandatory-by-kind row that is still
+  unwalkable now runs through the same `FailObjective` retry-then-Partial policy as any other
+  unresolved mandatory objective (new `DungeonFailureReason::RouteDataInvalid`), instead of either
+  silently advancing past it or dispatching to a step handler with a bogus (0,0,0) position.
+  `tools/validate_routes.py`'s position check is hardened to match: it used to hard-error only an
+  unresolved `boss` row and silently pass an unresolved required/door/use/talk row with no warning
+  at all; it now hard-errors any unresolved row of kind boss/required/door/use/talk
+  (`heroic_only` stays its own pre-existing warning - a separately tracked, already-acknowledged
+  gap, DL-021 - not this failure mode). Running it against the currently-shipped
+  `data/dungeon_routes.csv` goes from 0 errors/29 warnings to **11 errors/29 warnings** (the
+  warning count is unchanged - these rows were previously silent, not warned): all 11 are
+  unresolved `door` rows with no position data at all - Dire Maul East (Alzzin door), West and
+  North (Crescent Key door x2), Stratholme Main Gate (Scarlet Bastion gate), Blackrock Depths
+  Upper City (Grim Guzzler back door), The Steamvault normal+heroic (Control panels x2), The
+  Mechanar normal+heroic (Elevator x2), and Gundrak normal+heroic (Altar bridge x2). No
+  coordinates were invented or guessed to resolve these - per the implementation plan, correcting
+  real dungeon data requires in-game/DB verification evidence this change does not have; these 11
+  rows are left as the honest, now-visible state of the data, and `validate-routes.yml`'s CI check
+  will fail against the current CSV until they are resolved with verified positions or
+  reclassified with evidence. This is the intended effect of the finding, not a bug introduced by
+  it.
 - Recheck newly available keys and levers while a door waits for its prerequisite (DL-007).
   DecideInteraction() only checked canAct in the Resolving state; WaitingPrerequisite fell
   through to a default case that just held the current state, so a key picked up or a lever
