@@ -9,9 +9,41 @@
 #include "DungeonPartyState.h"
 
 #include "DungeonLeadConfig.h"
+#include "DungeonRouteMgr.h"
+#include "Timer.h"
 #include "Group.h"
 #include "Player.h"
 #include "Playerbots.h"
+
+#include <algorithm>
+
+namespace
+{
+    // In combat and either attacked or attacking - or not for long (DungeonLeadKernel::CombatCounts).
+    // The per-member clock lives in the leader's session state; outside a session the plain flag.
+    bool CombatWithEnemy(Player* leader, Player* member)
+    {
+        bool const inCombat = member->IsInCombat();
+        bool const hasEnemy = !member->getAttackers().empty() || member->GetVictim() != nullptr;
+        if (!sDungeonRouteMgr.HasState(leader->GetGUID()))
+            return inCombat;
+        DungeonLeadState& st = sDungeonRouteMgr.State(leader->GetGUID());
+        auto it = std::find_if(st.staleCombatSince.begin(), st.staleCombatSince.end(),
+                               [&](auto const& p) { return p.first == member->GetGUID(); });
+        if (!inCombat || hasEnemy)
+        {
+            if (it != st.staleCombatSince.end())
+                st.staleCombatSince.erase(it);
+            return inCombat;
+        }
+        if (it == st.staleCombatSince.end())
+        {
+            st.staleCombatSince.emplace_back(member->GetGUID(), getMSTime());
+            return true;
+        }
+        return DungeonLeadKernel::CombatCounts(inCombat, hasEnemy, GetMSTimeDiffToNow(it->second));
+    }
+}
 
 DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
 {
@@ -21,7 +53,7 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
     Group* group = bot->GetGroup();
 
     f.hasGroup = group != nullptr;
-    f.selfInCombat = bot->IsInCombat();
+    f.selfInCombat = CombatWithEnemy(bot, bot);
 
     Player* master = leaderAI->GetMaster();
     if (master && master != bot)
@@ -55,7 +87,7 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
         m.alive = member->IsAlive();  // a ghost is DeathState::Dead too
         m.online = member->IsInWorld() && member->GetSession();
         m.sameMap = member->GetMap() == bot->GetMap();
-        m.inCombat = member->IsInCombat();
+        m.inCombat = CombatWithEnemy(bot, member);
         m.sitting = member->IsSitState();
         m.manaPct = member->GetPowerPct(POWER_MANA);
         m.healthPct = member->GetHealthPct();

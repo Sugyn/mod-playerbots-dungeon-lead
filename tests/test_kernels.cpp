@@ -152,6 +152,11 @@ namespace
 
     void TestReadiness()
     {
+        Check(CombatCounts(true, true, 999999), "fighting an enemy: in combat");
+        Check(CombatCounts(true, false, 5000), "combat flag, no enemy for a moment: still counts");
+        Check(!CombatCounts(true, false, kStaleCombatMs), "combat flag with no enemy for 20 s: stale, the walk resumes");
+        Check(!CombatCounts(false, false, 0), "not in combat");
+
         Check(Walk(Party()) == ReadyStatus::Ready, "healthy party -> Ready");
 
         PartyFacts f = Party();

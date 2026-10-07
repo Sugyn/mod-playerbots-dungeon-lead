@@ -295,6 +295,17 @@ namespace DungeonLeadKernel
         return worst;
     }
 
+    // A combat flag with no enemy behind it - nobody attacking the member, no target of its own -
+    // stops counting after kStaleCombatMs: mobs left far away with the member on their threat list
+    // (RFC: three enforcers 230 yd off after a wipe) kept the whole party "in combat" for 53 minutes
+    // and the route walk never resumed. Whatever is still out there is met on the way.
+    constexpr uint32_t kStaleCombatMs = 20000;
+
+    inline bool CombatCounts(bool inCombat, bool hasEnemy, uint32_t msWithoutEnemy)
+    {
+        return inCombat && (hasEnemy || msWithoutEnemy < kStaleCombatMs);
+    }
+
     inline bool AnyInCombat(PartyFacts const& f)
     {
         if (!f.hasGroup)
