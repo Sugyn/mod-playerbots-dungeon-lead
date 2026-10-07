@@ -104,6 +104,8 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     // can't be pulled or planned from here - keep approaching instead of failing the marking.
     f.inPullRange = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange &&
                     bot->IsWithinLOSInMap(target);
+    f.inRangeNoSight = target && bot->GetDistance(target) <= sDungeonLeadConfig.dungeonLeadPullRange &&
+                       !bot->IsWithinLOSInMap(target);
     DungeonLeadKernel::Readiness const ready = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
     f.partyReady = ready.status == DungeonLeadKernel::ReadyStatus::Ready;
     f.targetMarked = skull && skull->IsAlive() && (skull->GetGUID() == st.targetPrimary || IsPackMember(pack, skull));
@@ -201,7 +203,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                 break;
             // A pull that never got its mark placed is a failed try too (attempts otherwise count
             // only from Initiating) - without this a marking that keeps timing out loops forever.
-            if (previous == PullState::Marking)
+            if (previous == PullState::Marking || previous == PullState::Approaching)
                 ++st.pullAttempts;
             DungeonLead::RecordEvent(botAI, "pull_failed", pack.name + " attempt=" + std::to_string(st.pullAttempts) +
                                                                " from=" + DungeonLeadKernel::ToString(previous));

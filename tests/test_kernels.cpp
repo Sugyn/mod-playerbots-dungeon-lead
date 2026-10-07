@@ -441,6 +441,21 @@ namespace
 
     void TestPull()
     {
+        {
+            PullPolicy pol;
+            PullFacts f;
+            f.current = PullState::Approaching;
+            f.pullablePack = true;
+            f.packAlive = true;
+            f.inRangeNoSight = true;
+            f.msInState = 5000;
+            Check(DecidePull(f, pol) == PullState::Approaching, "target behind a wall: keep trying for a while");
+            f.msInState = pol.approachNoSightTimeoutMs;
+            Check(DecidePull(f, pol) == PullState::Failed, "target behind a wall for 15 s: a failed try, not forever");
+            f.inRangeNoSight = false;
+            Check(DecidePull(f, pol) == PullState::Approaching, "still walking toward a far target: no timeout");
+        }
+
         PullFacts f = Pull(PullState::None);
         f.inPullRange = false;
         Check(DecidePull(f, kPull) == PullState::Approaching, "pack out of range -> Approaching");

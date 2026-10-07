@@ -775,6 +775,7 @@ namespace DungeonLeadKernel
         bool packEngaged = false;   // something of the pack alive and in combat
         bool primaryEngaged = false;  // the target plan's primary (may be trash next to the pack) fighting
         bool inPullRange = false;   // tank within PullRange of the pull target
+        bool inRangeNoSight = false;  // within PullRange but not in line of sight (behind a wall, a fence)
         bool partyReady = false;    // EvaluateReadiness(..., Pull) == Ready
         bool targetMarked = false;  // skull is on a living member of the pack
         bool leaderInCombat = false;
@@ -787,6 +788,9 @@ namespace DungeonLeadKernel
         uint32_t initiateTimeoutMs = 10000;
         uint32_t establishTimeoutMs = 8000;
         uint8_t maxAttempts = 2;
+        // In range of the target but without sight of it this long: a failed try, not a wait
+        // forever (SFK: a fel steed in its stall - the run stood 45 minutes in Approaching).
+        uint32_t approachNoSightTimeoutMs = 15000;
     };
 
     inline PullState DecidePull(PullFacts const& f, PullPolicy const& p)
@@ -822,6 +826,9 @@ namespace DungeonLeadKernel
                 return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Marking;
             default:  // None, Approaching, WaitingParty
                 // a fight that isn't this pack (trash, a CC'd leftover) finishes first
+                if (f.current == PullState::Approaching && f.packAlive && f.inRangeNoSight && !f.leaderInCombat &&
+                    f.msInState >= p.approachNoSightTimeoutMs)
+                    return PullState::Failed;
                 if (!f.packAlive || !f.inPullRange || f.leaderInCombat)
                     return PullState::Approaching;
                 return f.partyReady ? PullState::Marking : PullState::WaitingParty;
