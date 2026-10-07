@@ -1225,6 +1225,11 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
         Player* member = ref->GetSource();
         if (!member || !member->IsInWorld())
             continue;
+        // DL-009: bot-only, same restriction DungeonRecoveryController's living-regroup escalation
+        // already applies (its own IsBotMember()) - a real player's corpse release/re-entry is
+        // their own business, never this module's to clear motion on or teleport.
+        if (IsRealPlayer(member) || IsSelfBot(member))
+            continue;
         // Only the stranded dead. A living member outside the instance is a different problem
         // (never entered, or walked out) and is not this function's business; a dead member still
         // inside can reach its own corpse unaided, which is exactly what we want it to do.

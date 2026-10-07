@@ -35,6 +35,13 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Restrict stranded corpse-return teleports to eligible bots; never move a real player (DL-009).
+  RecoverStrandedMembers() looped every live group member with no IsRealPlayer/IsSelfBot guard -
+  the only exclusions were a missing object, out-of-world, alive or already on the instance map -
+  so a real player who died and released to an outdoor map (Wailing Caverns and other dungeons
+  without an internal graveyard) could have their motion cleared and a teleport requested by the
+  module, contradicting README's "the player is never teleported". Uses the same bot-eligibility
+  restriction DungeonRecoveryController's living-regroup escalation already applies.
 - Restore session-owned follower state on leader disconnect, group loss and membership changes
   (DL-002). Stop() only restored a follower's pre-"startdungeon" formation/strategies if it was
   still a CURRENT member of the leader's group - a follower who had already left the group kept
