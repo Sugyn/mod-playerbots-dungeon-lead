@@ -20,14 +20,23 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 1,Wailing Caverns,43,0,0,-,15,event,Mutanus the Devourer,3654,NULL,NULL,NULL,script,script-spawned by escort
 6,Deadmines,36,0,0,-,1,boss,Rhahk'Zor,644,-192.9,-448.2,54.4,spawn,
 6,Deadmines,36,0,0,-,2,boss,Sneed's Shredder,642,-289.5,-513,49.7,spawn,Sneed pops out after shredder dies (script)
-6,Deadmines,36,0,0,-,3,boss,Gilnid,1763,-177.4,-574.5,19.3,spawn,
-6,Deadmines,36,0,0,-,4,use,Defias Gunpowder,17155,-106.409,-617.284,13.8495,gameobject,powder keg - opening it brings Defias Taskmasters
-6,Deadmines,36,0,0,-,5,use,Defias Cannon,16398,-107.562,-659.674,7.21211,gameobject,loaded with the gunpowder - blows the Iron Clad Door
-6,Deadmines,36,0,0,-,6,door,Iron door to Ironclad Cove,16397,-100.502,-668.771,7.41049,gameobject,Defias Gunpowder on cannon / rogue lockpick
-6,Deadmines,36,0,0,-,7,boss,Mr. Smite,646,-22.8,-797.3,20.4,spawn,stealthed elites first
-6,Deadmines,36,0,0,-,8,boss,Captain Greenskin,647,-59.6,-820.1,41.6,spawn,on ship
-6,Deadmines,36,0,0,-,9,boss,Edwin VanCleef,639,-87.4,-819.9,39.3,spawn,"cabin, adds"
-6,Deadmines,36,0,0,-,10,optional,Cookie,645,-67.6,-853.7,17.1,spawn,after VanCleef
+6,Deadmines,36,0,0,-,3,optional,Goblin Craftsman,1731,-183.2,-564.6,51.2,spawn,goblin foundry: the ramp's goblins are pulled one by one down to Gilnid - they joined him in 7-9 of 11 runs
+6,Deadmines,36,0,0,-,4,optional,Goblin Craftsman,1731,-188.7,-600.5,36.6,spawn,goblin foundry: ramp 2
+6,Deadmines,36,0,0,-,5,optional,Goblin Craftsman,1731,-203.3,-602.7,30.4,spawn,goblin foundry: ramp 3
+6,Deadmines,36,0,0,-,6,optional,Goblin Engineer,622,-209.0,-590.7,21.0,spawn,goblin foundry: bottom of the ramp
+6,Deadmines,36,0,0,-,7,optional,Goblin Craftsman,1731,-209.6,-568.1,21.0,spawn,goblin foundry: floor west
+6,Deadmines,36,0,0,-,8,optional,Goblin Engineer,622,-196.8,-582.3,21.0,spawn,goblin foundry: floor centre
+6,Deadmines,36,0,0,-,9,optional,Goblin Engineer,622,-208.0,-546.8,19.3,spawn,goblin foundry: floor north
+6,Deadmines,36,0,0,-,10,optional,Goblin Craftsman,1731,-186.9,-553.6,19.3,spawn,goblin foundry: by Gilnid north
+6,Deadmines,36,0,0,-,11,optional,Goblin Craftsman,1731,-198.9,-603.8,19.3,spawn,goblin foundry: by Gilnid south
+6,Deadmines,36,0,0,-,12,boss,Gilnid,1763,-177.4,-574.5,19.3,spawn,
+6,Deadmines,36,0,0,-,13,use,Defias Gunpowder,17155,-106.409,-617.284,13.8495,gameobject,powder keg - opening it brings Defias Taskmasters
+6,Deadmines,36,0,0,-,14,use,Defias Cannon,16398,-107.562,-659.674,7.21211,gameobject,loaded with the gunpowder - blows the Iron Clad Door
+6,Deadmines,36,0,0,-,15,door,Iron door to Ironclad Cove,16397,-100.502,-668.771,7.41049,gameobject,Defias Gunpowder on cannon / rogue lockpick
+6,Deadmines,36,0,0,-,16,boss,Mr. Smite,646,-22.8,-797.3,20.4,spawn,stealthed elites first
+6,Deadmines,36,0,0,-,17,boss,Captain Greenskin,647,-59.6,-820.1,41.6,spawn,on ship
+6,Deadmines,36,0,0,-,18,boss,Edwin VanCleef,639,-87.4,-819.9,39.3,spawn,cabin, adds
+6,Deadmines,36,0,0,-,19,optional,Cookie,645,-67.6,-853.7,17.1,spawn,after VanCleef
 8,Shadowfang Keep,33,0,0,-,1,boss,Rethilgore,3914,-252.1,2123.1,81.2,spawn,
 8,Shadowfang Keep,33,0,0,-,2,talk,Deathstalker Adamant,3849,-243.712,2113.72,81.2629,spawn,Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
 8,Shadowfang Keep,33,0,0,-,3,talk,Sorcerer Ashcrombe,3850,-240.904,2122.55,81.2629,spawn,Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore

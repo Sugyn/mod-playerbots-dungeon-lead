@@ -26,14 +26,23 @@
 # Deadmines (src: warcraft.wiki.gg/Deadmines_(Classic))
 6	-	1	boss	Rhahk'Zor
 6	-	2	boss	Sneed's Shredder	Sneed pops out after shredder dies (script)
-6	-	3	boss	Gilnid
-6	-	4	use	Defias Gunpowder	powder keg - opening it brings Defias Taskmasters
-6	-	5	use	Defias Cannon	loaded with the gunpowder - blows the Iron Clad Door
-6	-	6	door	Iron door to Ironclad Cove	Defias Gunpowder on cannon / rogue lockpick
-6	-	7	boss	Mr. Smite	stealthed elites first
-6	-	8	boss	Captain Greenskin	on ship
-6	-	9	boss	Edwin VanCleef	cabin, adds
-6	-	10	optional	Cookie	after VanCleef
+6	-	3	optional	Goblin Craftsman	goblin foundry: the ramp's goblins are pulled one by one down to Gilnid - they joined him in 7-9 of 11 runs
+6	-	4	optional	Goblin Craftsman	goblin foundry: ramp 2
+6	-	5	optional	Goblin Craftsman	goblin foundry: ramp 3
+6	-	6	optional	Goblin Engineer	goblin foundry: bottom of the ramp
+6	-	7	optional	Goblin Craftsman	goblin foundry: floor west
+6	-	8	optional	Goblin Engineer	goblin foundry: floor centre
+6	-	9	optional	Goblin Engineer	goblin foundry: floor north
+6	-	10	optional	Goblin Craftsman	goblin foundry: by Gilnid north
+6	-	11	optional	Goblin Craftsman	goblin foundry: by Gilnid south
+6	-	12	boss	Gilnid
+6	-	13	use	Defias Gunpowder	powder keg - opening it brings Defias Taskmasters
+6	-	14	use	Defias Cannon	loaded with the gunpowder - blows the Iron Clad Door
+6	-	15	door	Iron door to Ironclad Cove	Defias Gunpowder on cannon / rogue lockpick
+6	-	16	boss	Mr. Smite	stealthed elites first
+6	-	17	boss	Captain Greenskin	on ship
+6	-	18	boss	Edwin VanCleef	cabin, adds
+6	-	19	optional	Cookie	after VanCleef
 # Shadowfang Keep (src: warcraft.wiki.gg/Shadowfang_Keep_(Classic))
 8	-	1	boss	Rethilgore
 8	-	2	talk	Deathstalker Adamant	Horde prisoner: 'Please unlock the courtyard door' after Rethilgore

@@ -31,14 +31,23 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. **Rhahk'Zor** — entry 644 @ (-192.9, -448.2, 54.4)
 2. **Sneed's Shredder** — entry 642 @ (-289.5, -513, 49.7) — Sneed pops out after shredder dies (script)
-3. **Gilnid** — entry 1763 @ (-177.4, -574.5, 19.3)
-4. **Defias Gunpowder** `gameobject` — entry 17155 @ (-106.409, -617.284, 13.8495) — powder keg - opening it brings Defias Taskmasters
-5. **Defias Cannon** `gameobject` — entry 16398 @ (-107.562, -659.674, 7.21211) — loaded with the gunpowder - blows the Iron Clad Door
-6. **Iron door to Ironclad Cove** **[door]** `gameobject` — entry 16397 @ (-100.502, -668.771, 7.41049) — Defias Gunpowder on cannon / rogue lockpick
-7. **Mr. Smite** — entry 646 @ (-22.8, -797.3, 20.4) — stealthed elites first
-8. **Captain Greenskin** — entry 647 @ (-59.6, -820.1, 41.6) — on ship
-9. **Edwin VanCleef** — entry 639 @ (-87.4, -819.9, 39.3) — cabin, adds
-10. **Cookie** *(optional)* — entry 645 @ (-67.6, -853.7, 17.1) — after VanCleef
+3. **Goblin Craftsman** *(optional)* — entry 1731 @ (-183.2, -564.6, 51.2) — goblin foundry: the ramp's goblins are pulled one by one down to Gilnid - they joined him in 7-9 of 11 runs
+4. **Goblin Craftsman** *(optional)* — entry 1731 @ (-188.7, -600.5, 36.6) — goblin foundry: ramp 2
+5. **Goblin Craftsman** *(optional)* — entry 1731 @ (-203.3, -602.7, 30.4) — goblin foundry: ramp 3
+6. **Goblin Engineer** *(optional)* — entry 622 @ (-209.0, -590.7, 21.0) — goblin foundry: bottom of the ramp
+7. **Goblin Craftsman** *(optional)* — entry 1731 @ (-209.6, -568.1, 21.0) — goblin foundry: floor west
+8. **Goblin Engineer** *(optional)* — entry 622 @ (-196.8, -582.3, 21.0) — goblin foundry: floor centre
+9. **Goblin Engineer** *(optional)* — entry 622 @ (-208.0, -546.8, 19.3) — goblin foundry: floor north
+10. **Goblin Craftsman** *(optional)* — entry 1731 @ (-186.9, -553.6, 19.3) — goblin foundry: by Gilnid north
+11. **Goblin Craftsman** *(optional)* — entry 1731 @ (-198.9, -603.8, 19.3) — goblin foundry: by Gilnid south
+12. **Gilnid** — entry 1763 @ (-177.4, -574.5, 19.3)
+13. **Defias Gunpowder** `gameobject` — entry 17155 @ (-106.409, -617.284, 13.8495) — powder keg - opening it brings Defias Taskmasters
+14. **Defias Cannon** `gameobject` — entry 16398 @ (-107.562, -659.674, 7.21211) — loaded with the gunpowder - blows the Iron Clad Door
+15. **Iron door to Ironclad Cove** **[door]** `gameobject` — entry 16397 @ (-100.502, -668.771, 7.41049) — Defias Gunpowder on cannon / rogue lockpick
+16. **Mr. Smite** — entry 646 @ (-22.8, -797.3, 20.4) — stealthed elites first
+17. **Captain Greenskin** — entry 647 @ (-59.6, -820.1, 41.6) — on ship
+18. **Edwin VanCleef** — entry 639 @ (-87.4, -819.9, 39.3) — cabin
+19. **Cookie** *(optional)* — entry 645 @ (-67.6, -853.7, 17.1) — after VanCleef
 ### Shadowfang Keep (LFD 8, map 33)
 
 1. **Rethilgore** — entry 3914 @ (-252.1, 2123.1, 81.2)
