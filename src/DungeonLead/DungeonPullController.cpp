@@ -246,12 +246,28 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
             if (changed)
             {
                 ++st.pullAttempts;
-                bool const ordered = botAI->DoSpecificAction("attack rti target", Event(), /*silent*/ true);
+                // Trash: a ranged pull from here - the tank stays at this spot ("pull back") and the
+                // fight comes to it, away from the room's other packs, which a fight inside joins
+                // through creature assistance (10 yd, every 3 s: SFK's dining hall drew 11 mobs and
+                // Silverlaine). The boss itself is fought at its home, so it is attacked.
+                bool const bossTarget = pack.bossPack && target && IsPackMember(pack, target);
+                char const* how = "attack";
+                bool ordered = false;
+                if (sDungeonLeadConfig.dungeonLeadRangedPull && !bossTarget)
+                {
+                    ordered = botAI->DoSpecificAction("pull rti target", Event(), /*silent*/ true);
+                    how = "ranged";
+                }
+                if (!ordered)
+                {
+                    ordered = botAI->DoSpecificAction("attack rti target", Event(), /*silent*/ true);
+                    how = "attack";
+                }
                 st.pullOrderRefused = !ordered;
                 // What the attack order saw - upstream's Attack() refuses silently (line of sight,
                 // friendly, dead, ...), so record the facts it checks next to whether it took.
                 std::string detail = pack.name + " attempt=" + std::to_string(st.pullAttempts) +
-                                     " order=" + (ordered ? "accepted" : "refused");
+                                     " order=" + (ordered ? "accepted" : "refused") + " how=" + how;
                 if (target)
                     detail += " dist=" + std::to_string(int(bot->GetDistance(target))) +
                               " los=" + std::to_string(bot->IsWithinLOSInMap(target)) +

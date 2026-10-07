@@ -134,6 +134,16 @@ AiPlayerbot.DungeonLead.LeadershipMaxAttempts = 3
 
 AiPlayerbot.DungeonLead.PullRange = 30
 
+#    AiPlayerbot.DungeonLead.RangedPull
+#        Description: Trash is pulled with mod-playerbots' ranged pull ("pull rti target": shoot,
+#                      throw, judgement, faerie fire...) and the tank waits at the spot it pulled
+#                      from, so the fight is held away from the other packs (creatures in combat
+#                      call allies within 10 yd every few seconds). Falls back to running in when
+#                      the ranged pull is not possible. Bosses are always pulled by attacking.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.RangedPull = 1
+
 #    AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds
 #        Description: How long after ordering the attack the tank must be in combat before the
 #                      pull counts as failed. Includes running in from PullRange (measured ~4 s

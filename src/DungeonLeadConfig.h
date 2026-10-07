@@ -41,6 +41,7 @@ public:
     float dungeonLeadArriveDistance;
     bool dungeonLeadSkipOptional;
     bool dungeonLeadMarkCc;
+    bool dungeonLeadRangedPull;
     bool dungeonLeadCanaryEnabled;
     uint32 dungeonLeadCanaryMaxConcurrent;
     uint32 dungeonLeadCanaryTimeoutMinutes;
@@ -105,6 +106,7 @@ private:
         dungeonLeadArriveDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DungeonLead.ArriveDistance", 8.0f);
         dungeonLeadSkipOptional = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.SkipOptional", false);
         dungeonLeadMarkCc = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.MarkCc", true);
+        dungeonLeadRangedPull = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.RangedPull", true);
         dungeonLeadDebugDefault = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.DebugDefault", false);
         dungeonLeadCanaryEnabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.CanaryEnabled", false);
         dungeonLeadCanaryMaxConcurrent = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.CanaryMaxConcurrent", 1);
