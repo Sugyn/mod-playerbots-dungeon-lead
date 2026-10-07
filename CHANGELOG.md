@@ -35,6 +35,25 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Keep offline group members - and an offline master - visible to Dungeon Lead readiness checks
+  (DL-004). DungeonPartyState::Evaluate() only ever walked Group::GetFirstMember() - AzerothCore's
+  online-only linked list of live Player* objects - so a fully logged-out member's slot produced
+  no PartyMemberFacts entry at all, not even an "unavailable" one. EvaluateCohesion() already
+  handles `online == false` correctly (Cohesion::LostMember), and EvaluateHealer() already
+  distinguishes a dead/absent healer from no-healer-role (HealerAvailability::Unavailable vs.
+  NoHealerRole) - both just never got the chance, because the entry didn't exist. Evaluate() now
+  walks Group::GetMemberSlots() (the full roster, online and offline) and resolves each slot via
+  ObjectAccessor::FindPlayer(), synthesizing an offline PartyMemberFacts (online/alive/sameMap
+  false, distance 0) for anything unresolved. Healer role can't be read off a Player* that
+  doesn't exist, so the session now keeps a small last-known-value cache
+  (DungeonLeadState::knownHealerRole) updated whenever a member is actually seen online; a guid
+  never seen before defaults to "not a healer" (explicit unknown, not a guess). The real player
+  master has the same problem one level up: PlayerbotAI::GetMaster() goes back to null once
+  mod-playerbots' own RandomPlayerbotMgr::OnPlayerLogout clears it on a full logout, which used
+  to collapse PartyFacts::master.assigned straight back to false - DungeonPartyState now
+  remembers the master's GUID for the lifetime of the session (DungeonLeadState::masterGuid) and
+  reports it as offline instead of letting it disappear (this is what lets DL-003's bounded
+  recovery for MasterUnavailable fire at all for a plain disconnect).
 - Recheck newly available keys and levers while a door waits for its prerequisite (DL-007).
   DecideInteraction() only checked canAct in the Resolving state; WaitingPrerequisite fell
   through to a default case that just held the current state, so a key picked up or a lever

@@ -295,6 +295,18 @@ struct DungeonLeadState
     uint32 escalationDeferSince = 0;
     bool recoveryWalkBack = false;
     std::vector<std::pair<ObjectGuid, uint32>> staleCombatSince;  // members in combat with no enemy, since          // the leader is on a recovery walk back to a straggler        // recovery escalation waiting for the leader to be on the ground
+    // DL-004/DL-003: Group::GetFirstMember() (and PlayerbotAI::GetMaster() once mod-playerbots'
+    // own RandomPlayerbotMgr::OnPlayerLogout clears it on a full logout) only ever resolve a live
+    // Player*; a fully offline member/master produces no object at all, not merely a "not ready"
+    // one. Both facts below are session-owned, last-known-value caches so DungeonPartyState can
+    // still describe someone who just isn't resolvable anymore, instead of silently dropping them.
+    // Cleared by ResetState() like every other session field (states.erase() takes the lot); never
+    // touched outside an active session (see DungeonPartyState::Evaluate()'s HasState() guard).
+    ObjectGuid masterGuid;  // last Player* the real master resolved to - persists past its logout
+    std::vector<std::pair<ObjectGuid, bool>> knownHealerRole;  // guid -> last-seen isHealerRole; a
+                                                                // guid never seen online defaults to
+                                                                // false (unknown = not a healer, not
+                                                                // a guess) - see DungeonPartyState.cpp
     uint32 routeWaypointTs = 0;             // last search for a route stop to walk to (MoveRouteTo)
     uint32 lastPathDecisionTs = 0;          // path_decision throttle (MoveRouteTo)
     char const* lastPathDecisionKind = "";
