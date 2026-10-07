@@ -55,6 +55,20 @@ namespace
                     healerAlive = true;
                     who = party.Member(int(i));
                 }
+        // MasterUnavailable/MasterTooFar carry no offender index (EvaluateReadiness reports -1 -
+        // there is exactly one master, not a list to name an index into); name the master
+        // explicitly instead, for the recovery_start/escalate/failed telemetry. This can resolve
+        // to nullptr too (the master is offline) - every caller of `who` already handles that, and
+        // neither reason is in the Escalate `movable` whitelist below, so a resolved master here
+        // is never at risk of being teleported.
+        if (!who && (r.status == DungeonLeadKernel::ReadyStatus::MasterUnavailable ||
+                    r.status == DungeonLeadKernel::ReadyStatus::MasterTooFar))
+            for (size_t i = 0; i < party.facts.members.size(); ++i)
+                if (party.facts.members[i].isMaster)
+                {
+                    who = party.Member(int(i));
+                    break;
+                }
         if (!who)
             who = party.Member(r.offender);
         return DungeonLeadKernel::RecoveryFor(r.status, healerAlive);
@@ -212,6 +226,11 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                 break;
             }
             st.escalationDeferSince = 0;
+            // DL-003: MasterUnavailable/MasterTooFar/PersistentWait are about the real player (or a
+            // wait on one), never a bot - this enum-OR list must never grow to include them (or any
+            // future human-only reason): it is the only thing standing between "escalate" and
+            // actually teleporting a human player. Keep it an explicit allow-list of the two
+            // bot-regroup reasons, not a deny-list of the human ones.
             bool const movable = who && IsBotMember(who) && who->IsAlive() &&
                                  (observed == RecoveryReason::PartyFragmented || observed == RecoveryReason::MemberLost);
             std::string detail = std::string(DungeonLeadKernel::ToString(observed)) + " member=" +
