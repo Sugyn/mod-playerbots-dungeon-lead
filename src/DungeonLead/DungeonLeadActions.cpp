@@ -2748,7 +2748,10 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             // not where it belongs (Deadmines, Rhahk'Zor's tunnel)
             PathGenerator probe(bot);
             probe.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
-            offMesh = probe.GetPathType() & (PATHFIND_NOPATH | PATHFIND_FARFROMPOLY_START);
+            // FARFROMPOLY_START = the start is off the mesh. NOPATH alone only says the destination
+            // can't be reached from here (Deadmines: from the tunnel floor at z 54 to the gunpowder
+            // 220 yd on) - lifting then put the leader on the ledge above, off the mesh, stuck.
+            offMesh = probe.GetPathType() & PATHFIND_FARFROMPOLY_START;
         }
         if (offMesh)
         {
