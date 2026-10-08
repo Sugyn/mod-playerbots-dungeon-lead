@@ -260,6 +260,35 @@ class SchemaTest(unittest.TestCase):
         finally:
             os.unlink(f.name)
 
+    def test_rejects_duplicate_event_seq(self):
+        # DL-010: a producer bug (or a stale Stop()/Stopping reconstruction restarting the
+        # counter) must be flagged, not silently resorted into a plausible-looking timeline.
+        evs = synthetic()
+        dup = dict(evs[1], event_seq=evs[0]["event_seq"])  # same seq as evs[0], different content
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            for e in [evs[0], dup]:
+                f.write(json.dumps(e) + "\n")
+        try:
+            with self.assertRaises(schema.SchemaError):
+                schema.load_events(f.name, RUN)
+        finally:
+            os.unlink(f.name)
+
+    def test_rejects_run_ms_going_backwards(self):
+        # DL-010: run_ms must never decrease within a run even though event_seq always advances -
+        # a lost sessionStartTs (the same Stopping-reconstruction bug) would otherwise read as a
+        # legitimate clock reset instead of the lineage break it actually is.
+        evs = synthetic()
+        later = dict(evs[1], event_seq=evs[1]["event_seq"] + 1000, run_ms=0)  # evs[1].run_ms == 100
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            for e in [evs[1], later]:
+                f.write(json.dumps(e) + "\n")
+        try:
+            with self.assertRaises(schema.SchemaError):
+                schema.load_events(f.name, RUN)
+        finally:
+            os.unlink(f.name)
+
 
 if __name__ == "__main__":
     unittest.main()

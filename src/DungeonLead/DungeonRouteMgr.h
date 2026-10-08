@@ -355,6 +355,14 @@ struct DungeonLeadState
     uint32 sessionStartTs = 0;  // getMSTime() at StartSession() - used by the canary controller's
                                  // timeout check; also generally useful (duration is otherwise only
                                  // reconstructable from the CSV's own "start" row timestamp)
+    // DL-010: this run's one terminal result has already been written (RecordRunSummary is only
+    // ever supposed to produce one DungeonLeadRuns.csv row per run). Without this, a route that
+    // completed and was deliberately held (manual, non-test origin) wrote a second row with the
+    // same run_id when the player later typed "stopdungeon" - and an early stop before any outcome
+    // was ever assigned wrote a row claiming the run was still Running. Set once inside
+    // RecordRunSummary() itself; never reset except by the normal full ResetState() a new run
+    // starts from.
+    bool runSummaryRecorded = false;
     ObjectGuid ccGuid;      // creature currently moon-marked by us, if any
     // Creatures our CC never landed on during this step (immune, out of reach of the CC class): not
     // marked for CC again - re-marking kept the party off a mob that was beating the healer

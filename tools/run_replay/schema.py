@@ -43,7 +43,31 @@ def load_events(path, run_id=None):
     dropped = [e for e in events if e.get("event_type") == "telemetry_dropped"]
     run_events = [e for e in events if e.get("event_type") != "telemetry_dropped"]
     run_events.sort(key=lambda e: (e["run_id"], e["event_seq"]))
+    _validate_lineage(run_events)
     return run_events, dropped
+
+
+def _validate_lineage(run_events):
+    """DL-010: flag duplicate/out-of-order telemetry lineage rather than silently accepting it - a
+    producer bug (or a corrupted/concatenated file) replaying as a clean timeline would be a worse
+    failure than refusing to replay it at all. Checked per run_id: event_seq must be strictly
+    increasing (no duplicates/repeats) and run_ms must never go backwards within a run - both
+    invariants the producer (DungeonLeadActions.cpp's event envelope) is supposed to guarantee."""
+    last_seq_by_run = {}
+    last_ms_by_run = {}
+    for e in run_events:  # already sorted by (run_id, event_seq)
+        run_id = e["run_id"]
+        seq = e["event_seq"]
+        ms = e.get("run_ms")
+        last_seq = last_seq_by_run.get(run_id)
+        if last_seq is not None and seq == last_seq:
+            raise SchemaError(f"run {run_id}: duplicate event_seq {seq}")
+        last_ms = last_ms_by_run.get(run_id)
+        if last_ms is not None and ms is not None and ms < last_ms:
+            raise SchemaError(f"run {run_id}: run_ms went backwards ({last_ms} -> {ms}) at event_seq {seq}")
+        last_seq_by_run[run_id] = seq
+        if ms is not None:
+            last_ms_by_run[run_id] = ms
 
 
 def run_ids(path):

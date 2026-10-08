@@ -35,6 +35,24 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Preserve run lineage through leadership handback and emit one truthful terminal result per run
+  (DL-010). `Stop()` used to erase the whole session state before entering `Stopping` and rebuild
+  it from only three manually-copied fields (`runId`/`origin`/`tankName`) - losing `eventSeq`
+  (restarted at 0, so a handback event could sort before the run's own start in replay),
+  `sessionStartTs` (`run_ms` read back as 0), campaign/scenario/route identity, and `outcome`/
+  `failureDomain`/`failureReason` (silently reset to `Running`/`None`/`None`, so a completed or
+  partial run's handback events - or a `RecordRunSummary` call from a hard disconnect mid-
+  handback - reported it as still running). `Stopping` is a wait for the original leader to be
+  confirmed back, not the end of the run's life (`ReconcileLeadership()` already calls
+  `ResetState()` exactly once the handback actually concludes) - `Stop()` now mutates the existing
+  session state in place instead of erasing and partially rebuilding it, preserving everything by
+  construction. Separately, `RecordRunSummary()` is now idempotent per run (a deliberately held
+  manual completion that writes its result at route completion no longer writes a second row when
+  the player later types `stopdungeon`) and finalizes an early stop/disconnect/lost-group that
+  never reached any outcome-setting code as `Aborted` rather than leaving/recording the default
+  `Running`. `tools/run_replay/schema.py`'s `load_events()` now flags duplicate `event_seq` or
+  `run_ms` going backwards within a run as a hard `SchemaError` instead of silently resorting a
+  broken timeline into a plausible-looking one; all 6 real v2 golden runs still replay clean.
 - Confirm routed use/talk effects before advancing or recording a safe checkpoint (DL-006).
   `WalkUseStep`/`WalkTalkStep` treated issuing the cast/Use/gossip-select as proof the objective
   succeeded, with no check that anything actually happened - unlike the door controller, which

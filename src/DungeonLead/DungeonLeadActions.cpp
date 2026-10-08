@@ -747,6 +747,30 @@ void DungeonLead::RecordRunSummary(PlayerbotAI* botAI, std::string const& termin
 void DungeonLead::RecordRunSummary(ObjectGuid guid, std::string const& tankName, std::string const& terminalReason)
 {
     DungeonLeadState& st = sDungeonRouteMgr.State(guid);
+
+    // DL-010: one truthful terminal result per run. A deliberately held manual completion already
+    // wrote one at route_end; a later "stopdungeon" must not write a second one for the same
+    // run_id (the "stop" RecordEvent just before this call site already makes the teardown itself
+    // observable). Logged, not silent, so a genuine double-call bug elsewhere is still visible.
+    if (st.runSummaryRecorded)
+    {
+        LOG_ERROR("playerbots.dungeonlead",
+                  "[DungeonLead] {} run={} RecordRunSummary('{}') ignored - terminal result already recorded",
+                  tankName, st.runId, terminalReason);
+        return;
+    }
+    st.runSummaryRecorded = true;
+    // An early manual/test stop, a left instance, a hard disconnect or a lost group can all reach
+    // here before any of the route/recovery/leadership outcome-setting call sites ever ran, with
+    // st.outcome still at its default Running - finalize it honestly as Aborted rather than
+    // writing a "final" CSV row that claims the run is still going.
+    if (st.outcome == DungeonRunOutcome::Running)
+    {
+        st.outcome = DungeonRunOutcome::Aborted;
+        st.failureDomain = DungeonFailureDomain::None;
+        st.failureReason = DungeonFailureReason::None;
+    }
+
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
 
     // st.wipeCount: how many times the leader died this run - a run can recover from a wipe and
@@ -1461,9 +1485,6 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
     std::vector<DungeonLeadMemberSnapshot> const snapshots = st.memberSnapshots;
     DungeonLeadMemberSnapshot const leaderSnap = st.leaderSnapshot;
     bool const hasLeaderSnap = st.hasLeaderSnapshot;
-    uint64 const runId = st.runId;
-    DungeonLeadSessionOrigin const origin = st.origin;
-    std::string const tankName = st.tankName;
     ObjectGuid handbackTo;
 
     // Full Reset() rather than just stripping "-dungeon lead,-grind"/"-mark rti": "startdungeon"
@@ -1537,21 +1558,25 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
         sDungeonRouteMgr.ResetState(bot->GetGUID());
         return;
     }
-    DungeonLeadBrain::TransitionTo(botAI, sDungeonRouteMgr.State(bot->GetGUID()), DungeonLeadKernel::LeadState::Stopping,
-                                   DungeonLeadKernel::TransitionReason::StopRequested);
-    uint32 const stoppingSinceTs = sDungeonRouteMgr.State(bot->GetGUID()).stateSinceTs;
-    sDungeonRouteMgr.ResetState(bot->GetGUID());
 
+    // DL-010: Stopping is a WAIT for the original leader to be confirmed back, not the end of
+    // this run's life - ReconcileLeadership() is what calls ResetState() once the handback
+    // actually concludes (Confirmed, or GiveUp/Abandon). This used to erase the state here and
+    // rebuild it from a handful of manually-copied fields (runId/origin/tankName only) - losing
+    // the run's entire telemetry lineage in the process: eventSeq restarted at 0 (a handback
+    // event could sort before the run's own start in replay), sessionStartTs was gone (run_ms
+    // read back as 0), campaign/scenario/route identity vanished, and outcome/failureDomain/
+    // failureReason silently reset to their Running/None/None defaults - so a RecordRunSummary
+    // call during a hard disconnect mid-handback, or any v2 event emitted while waiting, reported
+    // a completed/partial/failed run as still Running. Mutating the existing state in place keeps
+    // all of that intact by construction - nothing to enumerate, nothing to forget.
+    DungeonLeadState& stopping = sDungeonRouteMgr.State(bot->GetGUID());
+    DungeonLeadBrain::TransitionTo(botAI, stopping, DungeonLeadKernel::LeadState::Stopping,
+                                   DungeonLeadKernel::TransitionReason::StopRequested);
     // Queueing the handback is not the handback (audit AUDIT-003): the session stays registered
     // as Stopping - strategies are already restored above, so nothing else runs for it - until
     // GuardActiveSessions() observes the original owner as leader again, retrying a bounded
     // number of times. A failed enqueue counts as an attempt and is retried the same way.
-    DungeonLeadState& stopping = sDungeonRouteMgr.State(bot->GetGUID());
-    stopping.state = DungeonLeadKernel::LeadState::Stopping;  // carried over, transition logged above
-    stopping.stateSinceTs = stoppingSinceTs;
-    stopping.runId = runId;
-    stopping.origin = origin;
-    stopping.tankName = tankName;
     stopping.leadershipTarget = handbackTo;
     stopping.leadershipFrom = bot->GetGUID();
     RequestLeadership(bot, stopping);
