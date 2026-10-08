@@ -47,9 +47,10 @@ Two further passes against the same `build/` tree, same method (checksum-verifie
 only, no install/restart): DL-008 (`a1f4921`/`4e6fcea` - `DungeonLeadActions.cpp`,
 `DungeonRouteMgr.{h,cpp}`) - clean. DL-003/DL-004 (`06249de`/`842ef50`/`7d10fea` -
 `DungeonPartyState.cpp`, `DungeonRecoveryController.{cpp,h}`, `DungeonLeadKernels.h`,
-`DungeonRouteMgr.h`) - clean. All five hardening findings compiled so far (DL-001/002/003/004/005/
-007/008/009) build cleanly against the real source tree; none has had a live start/stop smoke test
-or in-dungeon run yet - see docs/project-state.md for the current open-gate ledger.
+`DungeonRouteMgr.h`) - clean. DL-006 (`8c497be` - `DungeonLeadActions.cpp`, `DungeonRouteMgr.h`) -
+clean. All ten hardening findings implemented so far (DL-001/002/003/004/005/006/007/008/009, plus
+the Phase 0 baseline) build cleanly against the real source tree; none has had a live start/stop
+smoke test or in-dungeon run yet - see docs/project-state.md for the current open-gate ledger.
 
 ## Live validation (2026-10-04/05)
 
