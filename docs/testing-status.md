@@ -48,9 +48,12 @@ only, no install/restart): DL-008 (`a1f4921`/`4e6fcea` - `DungeonLeadActions.cpp
 `DungeonRouteMgr.{h,cpp}`) - clean. DL-003/DL-004 (`06249de`/`842ef50`/`7d10fea` -
 `DungeonPartyState.cpp`, `DungeonRecoveryController.{cpp,h}`, `DungeonLeadKernels.h`,
 `DungeonRouteMgr.h`) - clean. DL-006 (`8c497be` - `DungeonLeadActions.cpp`, `DungeonRouteMgr.h`) -
-clean. All ten hardening findings implemented so far (DL-001/002/003/004/005/006/007/008/009, plus
-the Phase 0 baseline) build cleanly against the real source tree; none has had a live start/stop
-smoke test or in-dungeon run yet - see docs/project-state.md for the current open-gate ledger.
+clean. DL-010 (`6e96f92` - `DungeonLeadActions.cpp`, `DungeonRouteMgr.h`) - clean. All eleven
+hardening findings (DL-001 through DL-010, plus the Phase 0 CI/baseline work tracked as DL-011)
+are now implemented and build cleanly against the real source tree, five separate compile passes
+deep with zero errors throughout; none has had a live start/stop smoke test or in-dungeon run yet
+- see docs/project-state.md for the current open-gate ledger. Phase 8 (live validation with a real
+human player plus bots) is the only remaining work in DUNGEON_LEAD_IMPLEMENTATION_PLAN_1.md.
 
 ## Live validation (2026-10-04/05)
 
