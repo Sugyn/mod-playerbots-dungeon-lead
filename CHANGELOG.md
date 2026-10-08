@@ -35,6 +35,31 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Confirm routed use/talk effects before advancing or recording a safe checkpoint (DL-006).
+  `WalkUseStep`/`WalkTalkStep` treated issuing the cast/Use/gossip-select as proof the objective
+  succeeded, with no check that anything actually happened - unlike the door controller, which
+  already waits for the world to confirm (`GetGoState() != GO_STATE_READY`) before advancing.
+  Verified each of the 7 currently-shipped use/talk rows against the real world DB/scripts on
+  acore-clean (`gameobject_template`, `event_scripts`, `instance_deadmines.cpp`,
+  `shadowfang_keep.h`, `zulfarrak.cpp`) rather than guessing from the route's note text:
+  - Deadmines "Defias Gunpowder" (chest): confirmed the moment it's actually looted
+    (`GetLootGUID()`, already partially read but not gated on); a refused/out-of-range attempt is
+    now a failed attempt routed through the existing bounded retry policy, not silent success.
+  - Deadmines "Defias Cannon": its real effect is a DIFFERENT object, `GO_IRON_CLAD_DOOR` (16397),
+    which despawns once active (`instance_deadmines.cpp`) - confirmation now watches that door,
+    reusing the door controller's own `GO_STATE_READY` check rather than a second implementation.
+  - ZF "Troll Cage" (itself a Door-type object): confirms its own state the same way.
+  - SFK "Deathstalker Adamant"/"Sorcerer Ashcrombe": both really unlock `GO_COURTYARD_DOOR`
+    (18895, `shadowfang_keep.h`) - confirmation watches that door, not the prisoner.
+  - ZF "Sergeant Bly": his one gossip option turns him hostile to start the fight - confirmed via
+    that faction flip directly.
+  - ZF "Weegli Blastfuse" is left unchanged (confirms on dispatch, same as before this fix):
+    his gossip starts a multi-step scripted escort/cast sequence (`zulfarrak.cpp`) with no single
+    DB/script-observable flag short of waiting out the whole event, and the plan's own guidance is
+    that confirming activation is enough there - an honestly limited case, not a guess.
+  All four cross-object/self-object checks require the watched object to still be resolvable with
+  a changed state to confirm; a momentarily unresolved target is "not confirmed yet" (keeps
+  waiting, bounded by the existing active-time budget), never an automatic success.
 - Reject invalid required route objectives instead of silently bypassing them or reporting full
   completion (DL-008). Three sources of truth about "what counts as a mandatory route objective"
   disagreed: `DungeonRouteStep::IsMandatory()` only counted kind Boss/Required, while

@@ -2110,6 +2110,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.unstuckUsed = false;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     st.talkNpcStillSince = 0;
+    st.interactionIssued = false;
     // the next step's pack and pull (if any) start from scratch
     st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
@@ -2167,6 +2168,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.unstuckUsed = false;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     st.talkNpcStillSince = 0;
+    st.interactionIssued = false;
     st.ccFailed.clear();
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
@@ -2615,6 +2617,75 @@ bool DungeonLeadNextAction::EventWaitExpired(DungeonLeadState& st)
     return st.eventWaitMs >= sDungeonLeadConfig.dungeonLeadEventWaitSeconds * IN_MILLISECONDS;
 }
 
+namespace
+{
+    // DL-006: the minimum real postcondition for a shipped "use" objective, verified against the
+    // actual world DB/scripts on acore-clean (gameobject_template, event_scripts,
+    // instance_deadmines.cpp) - not guessed from the route's note text. Issuing the cast/Use was
+    // never proof it worked; two of the three currently-shipped use rows actually open/despawn a
+    // DIFFERENT game object than the one used (the real "door" the mechanic exists for) - watch
+    // that one, reusing the door controller's own GO_STATE_READY check
+    // (DungeonInteractionController.cpp) rather than a second implementation of it. Any entry with
+    // no DB-verified contract here confirms on dispatch, same as before this fix (the honest floor
+    // - see DL-006's CHANGELOG entry for which rows that still applies to).
+    bool UseEffectConfirmed(Player* bot, uint32 entry, GameObject* usedObject)
+    {
+        switch (entry)
+        {
+            case 16398:  // Deadmines "Defias Cannon" -> blows GO_IRON_CLAD_DOOR (16397).
+                         // instance_deadmines.cpp confirms the door despawns once set
+                         // GO_STATE_ACTIVE, but only verified that check on map/GO (re)load, not
+                         // the live moment the cannon fires - requiring the door to still be
+                         // resolvable with a changed state is the safe reading: a momentarily
+                         // unresolved door is "not confirmed yet" (keeps waiting), not an
+                         // automatic success. The timed script sequence can take a few seconds,
+                         // not instant.
+            {
+                GameObject* door = bot->FindNearestGameObject(16397, kDoorSightRange);
+                return door && door->GetGoState() != GO_STATE_READY;
+            }
+            case 141070:  // ZF "Troll Cage" is itself a Door-type object (gameobject_template
+                          // type=0 DOOR, not Goober/Chest) - confirm its own state. Unlike the
+                          // Cannon case above, there is no DB evidence this one despawns when
+                          // opened - a momentarily unresolved object is "not confirmed yet"
+                          // (keeps waiting, same as the door controller's own targetFound
+                          // semantics), not an automatic success.
+                return usedObject && usedObject->GetGoState() != GO_STATE_READY;
+            default:
+                return true;
+        }
+    }
+
+    // DL-006: same idea for "talk" objectives. Of the currently-shipped talk rows, SFK's two
+    // faction-exclusive prisoners both unlock a door (a DIFFERENT object than the NPC); ZF's
+    // Sergeant Bly turns hostile on his own (no cross-object needed). Weegli Blastfuse's gossip
+    // kicks off a multi-step scripted escort/cast sequence (zulfarrak.cpp) with no single
+    // DB/script-observable flag short of waiting out the whole event - the plan's own guidance is
+    // that confirming activation is enough there, not the entire downstream event; falls through
+    // to the honest dispatch-confirms floor, same as before this fix.
+    bool TalkEffectConfirmed(Player* bot, uint32 entry, Creature* npc)
+    {
+        switch (entry)
+        {
+            case 3849:  // SFK "Deathstalker Adamant" (Horde)
+            case 3850:  // SFK "Sorcerer Ashcrombe" (Alliance) - both unlock GO_COURTYARD_DOOR
+                        // (18895, shadowfang_keep.h) - confirm the door itself; a momentarily
+                        // unresolved door is "not confirmed yet", not an automatic success (same
+                        // reasoning as the Cannon case above)
+            {
+                GameObject* door = bot->FindNearestGameObject(18895, kDoorSightRange);
+                return door && door->GetGoState() != GO_STATE_READY;
+            }
+            case 7604:  // ZF "Sergeant Bly" - selecting his only gossip option
+                        // ("That's it! ... settled on the battlefield!") turns him hostile to
+                        // start the fight (zulfarrak.cpp) - confirm that flip directly
+                return npc && npc->IsHostileTo(bot);
+            default:
+                return true;
+        }
+    }
+}
+
 // "use" step: the leader goes to the object; if its lock takes a key, a party member holding it
 // uses it (that's who could, in the client); otherwise the leader. Done once used.
 bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
@@ -2625,6 +2696,28 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
         if (GameObject* found = bot->FindNearestGameObject(step.entry, kDoorSightRange))
             if (found->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()) < 10.0f)
                 go = found;
+
+    // DL-006: the action was already issued for this step - don't re-resolve a key/user or
+    // re-cast/re-Use every tick (that would be spam, not a retry); just ask the world whether the
+    // real effect has happened yet, re-resolving targets fresh since a despawned object is part of
+    // what some of these confirmations actually watch for.
+    if (st.interactionIssued)
+    {
+        if (UseEffectConfirmed(bot, step.entry, go))
+        {
+            st.interactionIssued = false;
+            DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+            return true;
+        }
+        if (EventWaitExpired(st))
+        {
+            st.interactionIssued = false;
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                       DungeonFailureReason::ObjectiveTimeout, "use_effect_not_confirmed");
+        }
+        return true;
+    }
+
     if (!go && dist > INTERACTION_DISTANCE)
         return MoveRouteTo(st, dest, step);
     if (!go)
@@ -2756,7 +2849,34 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
                                            (go->GetGoType() == GAMEOBJECT_TYPE_CHEST
                                                 ? " loot_slots=" + std::to_string(lootSlots)
                                                 : ""));
-    DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+
+    if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST)
+    {
+        // DL-006: a chest's confirmation is synchronous - the loot window either opened this
+        // same tick or it didn't (lootSlots stays -1). A refusal (out of range, already looted
+        // by someone else, a lock issue despite resolving a key) is a failed ATTEMPT, not an
+        // effect still in progress - retry the whole interaction through the existing bounded
+        // objective-failure policy, same as the "not found"/"no key" cases above, rather than
+        // waiting for a state that will never change on its own.
+        if (lootSlots >= 0)
+            DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+        else
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                       DungeonFailureReason::ObjectiveTimeout, "use_not_looted");
+        return true;
+    }
+
+    // DL-006: everything else's real effect may genuinely take a moment (the Cannon's timed
+    // script sequence is not instant) - confirm now if already observable (UseEffectConfirmed),
+    // otherwise wait across ticks (st.interactionIssued, rechecked by the early branch above) up
+    // to the existing active-time budget before giving up through the same bounded policy.
+    if (UseEffectConfirmed(bot, step.entry, go))
+        DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+    else
+    {
+        st.interactionIssued = true;
+        EventWaitExpired(st);
+    }
     return true;
 }
 
@@ -2793,6 +2913,30 @@ Unit* DungeonLead::FindEventAttacker(PlayerbotAI* botAI, Creature* npc)
 bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
 {
     Creature* npc = bot->FindNearestCreature(step.entry, 250.0f, /*alive*/ true);
+
+    // DL-006: the gossip option was already selected for this step - don't re-resolve the wait/
+    // stillness/retry cycle or re-select it every tick; ask the world whether the real effect has
+    // happened yet. Checked before the !npc/IsHostileTo branches below: a confirmation target may
+    // legitimately not need npc at all (the SFK door cases), and Bly's own confirmation is him
+    // BECOMING hostile, which the existing IsHostileTo branch further down would otherwise read
+    // as "not ours to talk to" and misclassify as skipped.
+    if (st.interactionIssued)
+    {
+        if (TalkEffectConfirmed(bot, step.entry, npc))
+        {
+            st.interactionIssued = false;
+            DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+            return true;
+        }
+        if (EventWaitExpired(st))
+        {
+            st.interactionIssued = false;
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                       DungeonFailureReason::ObjectiveTimeout, "talk_effect_not_confirmed");
+        }
+        return true;
+    }
+
     if (!npc)
     {
         if (EventWaitExpired(st))
@@ -2895,7 +3039,18 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} talked to {} (menu {})", bot->GetName(), npc->GetName(),
              menu.GetMenuId());
     DungeonLead::RecordEvent(botAI, "talk", step.boss + " menu=" + std::to_string(menu.GetMenuId()));
-    DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+
+    // DL-006: confirm now if the effect is already observable, otherwise wait across ticks
+    // (st.interactionIssued, rechecked by the early branch above) up to the existing active-time
+    // budget. An entry with no DB/script-verified contract (TalkEffectConfirmed's default)
+    // confirms right here on dispatch - the honest floor, unchanged from before this fix.
+    if (TalkEffectConfirmed(bot, step.entry, npc))
+        DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+    else
+    {
+        st.interactionIssued = true;
+        EventWaitExpired(st);
+    }
     return true;
 }
 

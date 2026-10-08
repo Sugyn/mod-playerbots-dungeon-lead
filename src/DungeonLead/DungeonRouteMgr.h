@@ -218,6 +218,10 @@ struct DungeonLeadState
     // where the talk step's NPC was last seen and since when it hasn't moved
     float talkNpcX = 0.f, talkNpcY = 0.f;
     uint32 talkNpcStillSince = 0;
+    // DL-006: the use/talk action (cast/Use/gossip select) was issued for the current step and we
+    // are now waiting for its real effect to be observed, not re-issuing it every tick. Cleared by
+    // ResetStepState()/AdvanceStep() like every other per-step field.
+    bool interactionIssued = false;
     // Scripted area triggers already fired for this instance run (DungeonLead::FireAreaTriggers).
     std::unordered_set<uint32> firedAreaTriggers;
     uint32 lastPathLogTs = 0;  // throttle for the "pathing" telemetry line in MoveRouteTo() -
