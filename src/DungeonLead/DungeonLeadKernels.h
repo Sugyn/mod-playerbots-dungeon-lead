@@ -1119,6 +1119,13 @@ namespace DungeonLeadKernel
         uint32_t clearedAt = 0;
     };
 
+    // Whether a problem coming back soon after it cleared continues the old episode. Not for the
+    // ordinary waits (eating, drinking, healing up after every fight): each is timed on its own,
+    // else the clock of the first one runs across the healthy minutes between them and the next
+    // wait "exceeds" the whole window (campaign ffeb999, SFK/RFC/Library: three runs aborted
+    // within 2-3 minutes by short drinks).
+    inline bool RelapseContinuesEpisode(RecoveryReason r) { return r != RecoveryReason::PersistentWait; }
+
     // Feed one observation (only while the controller is eligible to judge - in combat an open
     // recovery is simply kept). Returns true if the reason changed (a new recovery started); a
     // relapse of the recovery that cleared less than kRecoveryRelapseMs ago (same reason, same
@@ -1157,7 +1164,8 @@ namespace DungeonLeadKernel
                 return false;
             }
         }
-        bool const relapse = t.reason == RecoveryReason::None && t.clearedReason == observed &&
+        bool const relapse = RelapseContinuesEpisode(observed) && t.reason == RecoveryReason::None &&
+                             t.clearedReason == observed &&
                              t.clearedSubject == subject && uint32_t(now - t.clearedAt) < kRecoveryRelapseMs;
         if (relapse)
         {

@@ -847,6 +847,17 @@ namespace
         ObserveRecovery(t, RecoveryReason::PartyFragmented, 10000 + kRecoveryRelapseMs, 7);
         Check(!t.relapse && t.reasonSince == 10000 + kRecoveryRelapseMs, "long after it cleared -> fresh recovery");
 
+        // Ordinary waits are timed one by one: drinking again 40 s after the last drink is a fresh
+        // wait, not the old one resumed (it would reach Abort from the first drink's start)
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PersistentWait, 1900);
+        ObserveRecovery(t, RecoveryReason::None, 9900);
+        Check(ObserveRecovery(t, RecoveryReason::PersistentWait, 64000) && !t.relapse && t.reasonSince == 64000 &&
+                  t.episodeSince == 64000,
+              "persistent wait soon after another -> fresh clocks");
+        Check(DecideRecovery(t.reason, 118000 - 64000, 118000 - t.episodeSince, p) == RecoveryStep::Act,
+              "the third minute of a run is not an abort for a 54 s wait");
+
         // H7 (RFC 60-min pass): straggler A escalated, then B falls behind - B gets its own window
         t = RecoveryTimers();
         ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
