@@ -2741,8 +2741,12 @@ namespace
             }
             case 7604:  // ZF "Sergeant Bly" - selecting his only gossip option
                         // ("That's it! ... settled on the battlefield!") turns him hostile to
-                        // start the fight (zulfarrak.cpp) - confirm that flip directly
-                return npc && npc->IsHostileTo(bot);
+                        // start the fight (zulfarrak.cpp) - confirm that flip directly. No live Bly any
+                // more is the event done too: the fight is not walked (the route step is idle in
+                // combat), so the flip is seldom seen and the crew, Bly included, is dead by the
+                // time the step runs again (ZF run 1878582817193991: gossip at 44.7 min, Bly dead
+                // at 45.7, the step waited 10 min for a hostile Bly and aborted the run).
+                return !npc || npc->IsHostileTo(bot);
             default:
                 return true;
         }

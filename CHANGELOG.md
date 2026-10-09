@@ -38,6 +38,9 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Zul'Farrak: the talk with Sergeant Bly counts as done when he is gone (killed in the fight it
+  starts) as well as when he turns hostile. The fight is not walked, nobody saw the flip, and the
+  step waited 10 minutes for a hostile Bly and aborted the run.
 - A bot straggler that stands still for 10 s is brought to the leader at once instead of the leader
   walking back to it: the walk back ended the recovery as soon as the leader was near, the walk on
   made it fall behind again, and the cycle ran for minutes (eight rounds in Shadowfang Keep).
