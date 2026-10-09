@@ -107,7 +107,7 @@ increments, each with its own entry here.
 
 | Semantic event | v2 event_type | Payload |
 |---|---|---|
-| leader path | `position_sample` (v2 only) | `moving`, `in_combat`, `far_followers[]` (followers over 30 yd from the leader: `name`, `role`, `dist`, `los`, `alive`, `moving`, `sitting`, `in_combat`, `motion` = movement generator type) (+ envelope position) |
+| leader path | `position_sample` (v2 only) | `moving`, `in_combat`, `far_followers[]` (followers over 30 yd from the leader: `name`, `role`, `dist`, `x`, `y`, `z`, `los`, `alive`, `moving`, `sitting`, `in_combat`, `motion` = movement generator type) (+ envelope position) |
 | walk decision | `path_decision` (v2 only) | `kind` (direct / path_end / short_detour / route_waypoint / probe / no_path), `objective`, `dest_*`, `move_*`, `path_type`, `path_points`, `path_length`, `path` (<= 16 `[x,y,z]` points; for direct/probe/no_path the path the navmesh gives to the move target, computed for the record) |
 | party | `party_roster` (v2 only, first guard pass) | `members[]`: `name`, `guid`, `role`, `class`, `level`, `leader`, `bot` |
 | fight | `fight_started`, `fight_ended` (v2 only) | `fight_id`; end: `duration_ms`, `units`, `killed`, `leader_alive` |
