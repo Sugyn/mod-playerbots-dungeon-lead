@@ -38,6 +38,11 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A bot straggler that stands still for 10 s is brought to the leader at once instead of the leader
+  walking back to it: the walk back ended the recovery as soon as the leader was near, the walk on
+  made it fall behind again, and the cycle ran for minutes (eight rounds in Shadowfang Keep).
+  `PartyHardRange` default 90 -> 60 yd: with the healer 77-103 yd behind the tank the party
+  wiped in the courtyard.
 - A door is opened with the lever closest to it, not the first one in range. Shadowfang Keep's
   three cell doors each have a lever ~2.5 yd from them, all within lever range of each other; a
   neighbour's lever left the door shut and the run ended after two 2-minute waits.

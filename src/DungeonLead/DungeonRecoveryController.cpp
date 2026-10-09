@@ -155,6 +155,23 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                                                          getMSTimeDiff(st.recovery.episodeSince, now), policy);
     if (step == RecoveryStep::Abort && st.recovery.step != RecoveryStep::Escalate)
         step = RecoveryStep::Escalate;  // the clock ran on through a fight: still try the escalation once
+    // A bot straggler that stands still is stuck: skip the walk back and bring it. The clock runs
+    // across the recovery ending and starting again (the walk back clears it each time).
+    if (observed == RecoveryReason::PartyFragmented && who && IsBotMember(who) && who->IsAlive())
+    {
+        if (who->GetGUID() != st.stragglerGuid || getMSTimeDiff(st.stragglerSeenTs, now) > DungeonLeadKernel::kStragglerClockStaleMs)
+        {
+            st.stragglerGuid = who->GetGUID();
+            st.stragglerStillSince = who->isMoving() ? 0 : now;
+        }
+        else if (who->isMoving())
+            st.stragglerStillSince = 0;
+        else if (!st.stragglerStillSince)
+            st.stragglerStillSince = now;
+        st.stragglerSeenTs = now;
+        uint32 const stillMs = st.stragglerStillSince ? getMSTimeDiff(st.stragglerStillSince, now) : 0;
+        step = DungeonLeadKernel::EscalateStuckStraggler(step, observed, stillMs);
+    }
     bool const newStep = step != st.recovery.step;
     st.recovery.step = step;
 

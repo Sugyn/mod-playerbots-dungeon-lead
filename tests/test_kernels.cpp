@@ -847,6 +847,16 @@ namespace
         ObserveRecovery(t, RecoveryReason::PartyFragmented, 10000 + kRecoveryRelapseMs, 7);
         Check(!t.relapse && t.reasonSince == 10000 + kRecoveryRelapseMs, "long after it cleared -> fresh recovery");
 
+        // A straggler standing still is stuck: no walk back, bring it (after kStuckStragglerMs)
+        Check(EscalateStuckStraggler(RecoveryStep::Act, RecoveryReason::PartyFragmented, kStuckStragglerMs) ==
+                  RecoveryStep::Escalate,
+              "a straggler still for 10 s -> escalate at once");
+        Check(EscalateStuckStraggler(RecoveryStep::Act, RecoveryReason::PartyFragmented, kStuckStragglerMs - 1) ==
+                  RecoveryStep::Act,
+              "a straggler that moved a moment ago -> keep walking back");
+        Check(EscalateStuckStraggler(RecoveryStep::Act, RecoveryReason::PersistentWait, 600000) == RecoveryStep::Act,
+              "only a fragmented party escalates early (never a human-only wait)");
+
         // Ordinary waits are timed one by one: drinking again 40 s after the last drink is a fresh
         // wait, not the old one resumed (it would reach Abort from the first drink's start)
         t = RecoveryTimers();

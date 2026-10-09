@@ -185,9 +185,9 @@ AiPlayerbot.DungeonLead.PartySoftRange = 40
 #        Description: A party member farther than this stops the leader from walking on as well.
 #                      Must be above PartySoftRange. Range 20-300. (The real player is held to
 #                      the tighter Leash instead.)
-#        Default:     90
+#        Default:     60
 
-AiPlayerbot.DungeonLead.PartyHardRange = 90
+AiPlayerbot.DungeonLead.PartyHardRange = 60
 
 #    AiPlayerbot.DungeonLead.PostCombatMinSeconds
 #        Description: Shortest pause after a fight before the leader re-checks the party and moves

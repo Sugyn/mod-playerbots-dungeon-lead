@@ -311,6 +311,9 @@ struct DungeonLeadState
     // that attacked a party member - and which of them were reported dead; party members' last
     // seen alive flag, for member_died / member_revived.
     uint32 escalationDeferSince = 0;
+    ObjectGuid stragglerGuid;          // the straggler whose stillness is timed (recovery, PartyFragmented)
+    uint32 stragglerStillSince = 0;    // since when it has not moved (0 = moving / not timed)
+    uint32 stragglerSeenTs = 0;        // last recovery pass that saw it as the offender
     bool recoveryWalkBack = false;
     std::vector<std::pair<ObjectGuid, uint32>> staleCombatSince;  // members in combat with no enemy, since          // the leader is on a recovery walk back to a straggler        // recovery escalation waiting for the leader to be on the ground
     // DL-004/DL-003: Group::GetFirstMember() (and PlayerbotAI::GetMaster() once mod-playerbots'

@@ -126,7 +126,7 @@ private:
         dungeonLeadPullMaxAttempts = Bounded("AiPlayerbot.DungeonLead.PullMaxAttempts", 2, 1, 5);
         dungeonLeadCombatLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.CombatLeashRadius", 30, 10, 80));
         dungeonLeadPartySoftRange = float(Bounded("AiPlayerbot.DungeonLead.PartySoftRange", 40, 10, 150));
-        dungeonLeadPartyHardRange = float(Bounded("AiPlayerbot.DungeonLead.PartyHardRange", 90, 20, 300));
+        dungeonLeadPartyHardRange = float(Bounded("AiPlayerbot.DungeonLead.PartyHardRange", 60, 20, 300));
         dungeonLeadPostCombatMinSeconds = Bounded("AiPlayerbot.DungeonLead.PostCombatMinSeconds", 3, 0, 30);
         dungeonLeadPostCombatMinHealthPct = Bounded("AiPlayerbot.DungeonLead.PostCombatMinHealthPct", 50, 0, 100);
         dungeonLeadRecoveryTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds", 60, 10, 600);

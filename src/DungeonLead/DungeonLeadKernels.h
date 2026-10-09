@@ -1188,6 +1188,20 @@ namespace DungeonLeadKernel
         return true;
     }
 
+    // A straggler that has not moved for this long is stuck, not slow: walking back to it only
+    // ends the recovery as soon as the leader is near, and the walk on makes it fall behind again
+    // (SFK, run 1878541...: eight rounds of that in a minute for a dps standing in a cell).
+    constexpr uint32_t kStuckStragglerMs = 10000;
+    // A straggler this long out of the recovery's view starts a new still-clock.
+    constexpr uint32_t kStragglerClockStaleMs = 30000;
+
+    inline RecoveryStep EscalateStuckStraggler(RecoveryStep step, RecoveryReason reason, uint32_t msStill)
+    {
+        if (step == RecoveryStep::Act && reason == RecoveryReason::PartyFragmented && msStill >= kStuckStragglerMs)
+            return RecoveryStep::Escalate;
+        return step;
+    }
+
     inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msInReason, uint32_t msInEpisode,
                                        RecoveryPolicy const& p)
     {
