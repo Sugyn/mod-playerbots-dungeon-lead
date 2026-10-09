@@ -266,6 +266,37 @@ namespace
         return "[" + out + "]";
     }
 
+    // The followers that lag behind the leader (beyond kFarFollowerDist) for position samples: who,
+    // how far, in sight, and what they are doing - a tank that pulls with the healer 80 yd back is
+    // a different problem from one pulling with the party at its heels (SFK courtyard, 6404f77).
+    constexpr float kFarFollowerDist = 30.0f;
+    std::string FarFollowers(Player* leader)
+    {
+        Group* group = leader->GetGroup();
+        if (!group)
+            return "[]";
+        std::string out;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || m == leader || m->GetMap() != leader->GetMap() || m->GetDistance(leader) <= kFarFollowerDist)
+                continue;
+            out += (out.empty() ? "" : ",") +
+                   DungeonLeadKernel::JsonLine()
+                       .Str("name", m->GetName())
+                       .Str("role", PlayerbotAI::IsTank(m) ? "tank" : PlayerbotAI::IsHeal(m) ? "healer" : "dps")
+                       .Num("dist", m->GetDistance(leader))
+                       .Bool("los", m->IsWithinLOSInMap(leader))
+                       .Bool("alive", m->IsAlive())
+                       .Bool("moving", m->isMoving())
+                       .Bool("sitting", m->getStandState() != UNIT_STAND_STATE_STAND)
+                       .Bool("in_combat", m->IsInCombat())
+                       .Num("motion", uint32_t(m->GetMotionMaster()->GetCurrentMovementGeneratorType()))
+                       .Done();
+        }
+        return "[" + out + "]";
+    }
+
     // A unit for v2 payloads: identity and where it stands now.
     std::string UnitJson(Unit const* u)
     {
@@ -595,7 +626,11 @@ void DungeonLead::SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st)
     st.sampleState = st.state;
     st.sampleStep = st.stepIndex;
     RecordEventV2(botAI, "position_sample",
-                  DungeonLeadKernel::JsonLine().Bool("moving", bot->isMoving()).Bool("in_combat", bot->IsInCombat()).Done());
+                  DungeonLeadKernel::JsonLine()
+                      .Bool("moving", bot->isMoving())
+                      .Bool("in_combat", bot->IsInCombat())
+                      .Raw("far_followers", FarFollowers(bot))
+                      .Done());
 }
 
 void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st, Group* group)

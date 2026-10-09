@@ -19,6 +19,9 @@ the MAJOR bar above is met.
 ## [Unreleased]
 
 ### Added
+- `position_sample` lists the followers more than 30 yd from the leader (`far_followers`: role,
+  distance, line of sight, moving, sitting, movement generator), to tell a party left behind from
+  one at the tank's heels.
 - Run Dungeon Lead kernel, replay and route validation tests in CI (DL-011). `validate-routes.yml`
   previously ran only `validate_routes.py` on route-data changes; it now also runs
   `tools/run_tests.sh` (the C++17 kernel suite and Python replay suite) on changes to `src/`,
