@@ -13,6 +13,11 @@
 #include "QueryResult.h"  // Field/ResultSet are only forward-declared by DatabaseEnv.h
 
 #include "ObjectMgr.h"
+// Since the playerbots database moved from the core fork into mod-playerbots, DatabaseEnv.h no
+// longer brings in PlayerbotsDatabase; older trees still ship it there.
+#if __has_include("PlayerbotsDatabase.h")
+#include "PlayerbotsDatabase.h"
+#endif
 
 #include <algorithm>
 #include <cmath>

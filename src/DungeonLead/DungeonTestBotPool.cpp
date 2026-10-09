@@ -20,6 +20,11 @@
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "PlayerbotRepository.h"
+// Since the playerbots database moved from the core fork into mod-playerbots, DatabaseEnv.h no
+// longer brings in PlayerbotsDatabase; older trees still ship it there.
+#if __has_include("PlayerbotsDatabase.h")
+#include "PlayerbotsDatabase.h"
+#endif
 #include "Playerbots.h"
 #include "RandomPlayerbotMgr.h"
 #include "Timer.h"
