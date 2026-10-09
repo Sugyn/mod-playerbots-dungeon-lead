@@ -95,6 +95,12 @@ namespace
             return true;
         }
 
+        // The lever closest to the door is its own: Shadowfang Keep's three cell doors each have a
+        // lever ~2.5 yd from them and the other cells' levers are within kLeverRange too - taking
+        // the first one found opened a neighbour's door and the wait for ours ran out (staging run
+        // 1878535314604042: lever 101811 for 18936, whose lever is 18901).
+        GameObject* best = nullptr;
+        float bestDist = 0.f;
         for (ObjectGuid const& guid :
              botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects no los")->Get())
         {
@@ -102,12 +108,19 @@ namespace
             if (!go || go->GetGoType() != GAMEOBJECT_TYPE_BUTTON || go->GetDistance(door) > kLeverRange ||
                 go->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) || !ReachableWithoutDoor(bot, go, door))
                 continue;
-            actor = bot;
-            target = go;
-            how = "lever=" + std::to_string(go->GetEntry());
-            return true;
+            float const d = go->GetDistance(door);
+            if (!best || d < bestDist)
+            {
+                best = go;
+                bestDist = d;
+            }
         }
-        return false;
+        if (!best)
+            return false;
+        actor = bot;
+        target = best;
+        how = "lever=" + std::to_string(best->GetEntry());
+        return true;
     }
 
     void SetInteraction(PlayerbotAI* botAI, DungeonLeadState& st, InteractionState next, std::string const& detail)

@@ -38,6 +38,9 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A door is opened with the lever closest to it, not the first one in range. Shadowfang Keep's
+  three cell doors each have a lever ~2.5 yd from them, all within lever range of each other; a
+  neighbour's lever left the door shut and the run ended after two 2-minute waits.
 - Preserve run lineage through leadership handback and emit one truthful terminal result per run
   (DL-010). `Stop()` used to erase the whole session state before entering `Stopping` and rebuild
   it from only three manually-copied fields (`runId`/`origin`/`tankName`) - losing `eventSeq`
