@@ -38,6 +38,14 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Route validation is green again (11 errors from DL-008: mandatory door rows with no game object).
+  Three doors now name their object, checked in the world DB and `Lock.dbc` against the key item:
+  Blackrock Depths' Bar Door (170571, script-opened), Stratholme's The Bastion Door (175967, The
+  Scarlet Key) and the Dire Maul North door (179549, Crescent Key). The other eight (Dire Maul East
+  and West, Steamvault, Mechanar and Gundrak, normal and heroic) are access panels, an elevator,
+  altars or doors with no verified object; they are marked `skip` instead of a mandatory door that
+  would stop every run there. `sql/updates/2026_10_10_00_unresolved_doors.sql` applies it to an
+  existing install.
 - Zul'Farrak: the talk with Sergeant Bly counts as done when he is gone (killed in the fight it
   starts) as well as when he turns hostile. The fight is not walked, nobody saw the flip, and the
   step waited 10 minutes for a hostile Bly and aborted the run.

@@ -179,7 +179,7 @@
 276	Upper	3	optional	Ribbly Screwspigot	Grim Guzzler
 276	Upper	4	optional	Phalanx	Grim Guzzler
 276	Upper	5	optional	Hurley Blackbreath	Grim Guzzler
-276	Upper	6	door	Grim Guzzler back door	Plugger bar fight / Rocknot event
+276	Upper	6	door	Grim Guzzler back door	Plugger bar fight / Rocknot event; Bar Door; lock 739 = Grim Guzzler Key (11602); opened by the Plugger bar-fight script
 276	Upper	7	boss	Ambassador Flamelash
 276	Upper	8	optional	Panzor the Invincible	rare
 276	Upper	9	event	Doom'rel	Chest of the Seven (7 dwarves sequential)
@@ -213,7 +213,7 @@
 40	Live	1	optional	Timmy the Cruel	script-spawned in Market Row
 40	Live	2	optional	The Unforgiven
 40	Live	3	optional	Postmaster Malown	summon via postboxes
-40	Live	4	door	Scarlet Bastion gate	Scarlet Key / Crusaders' Square
+40	Live	4	door	Scarlet Bastion gate	Scarlet Key / Crusaders' Square; The Bastion Door; lock 299 = The Scarlet Key (7146)
 40	Live	5	boss	Cannon Master Willey
 40	Live	6	optional	Crimson Hammersmith	summon
 40	Live	7	boss	Archivist Galford
@@ -232,16 +232,16 @@
 34	East	2	optional	Lethtendris	with Pimgib
 34	East	3	optional	Hydrospawn
 34	East	4	optional	Zevrim Thornhoof
-34	East	5	door	Alzzin door	Old Ironbark opens after Zevrim
+34	East	5	skip	Alzzin door	Old Ironbark opens after Zevrim; unsupported: Alzzin door; opened by an Old Ironbark gossip event; no verified door object
 34	East	6	boss	Alzzin the Wildshaper
-36	West	1	door	Crescent Key door
+36	West	1	skip	Crescent Key door	unsupported: Crescent Key door - two candidates (177221; 179550) in this wing; which one is step 1 is unverified
 36	West	2	optional	Tendris Warpwood
 36	West	3	optional	Tsu'zee	rare
 36	West	4	optional	Magister Kalendris
 36	West	5	optional	Illyanna Ravenoak	with Ferra
 36	West	6	optional	Immol'thar	5 pylons
 36	West	7	boss	Prince Tortheldrin
-38	North	1	door	Crescent Key door
+38	North	1	door	Crescent Key door	Door 179549; lock 1562 = Crescent Key (18249); the only Crescent Key door within 390 yd of this wing's route
 38	North	2	optional	Guard Mol'dar
 38	North	3	optional	Stomper Kreeg
 38	North	4	optional	Guard Fengus
@@ -275,7 +275,7 @@
 146	-	4	boss	The Black Stalker
 147	-	1	boss	Hydromancer Thespia
 147	-	2	boss	Mekgineer Steamrigger
-147	-	3	door	Control panels	2 panels behind first two bosses
+147	-	3	skip	Control panels	2 panels behind first two bosses; unsupported: 2 access panels (184125; 184126) open the Main Chambers Door by script; not a door the leader can open
 147	-	4	boss	Warlord Kalithresh
 148	-	1	boss	Pandemonius
 148	-	2	boss	Tavarok
@@ -294,7 +294,7 @@
 172	-	2	optional	Nethermancer Sepethrea
 172	-	3	optional	Mechano-Lord Capacitus
 172	-	4	boss	Gatewatcher Iron-Hand
-172	-	5	door	Elevator	after both gatewatchers
+172	-	5	skip	Elevator	after both gatewatchers; unsupported: elevator (Doodad_FactoryElevator01; a transport) - no door object to open
 172	-	6	boss	Pathaleon the Calculator
 173	-	1	optional	Commander Sarannis
 173	-	2	boss	Warp Splinter
@@ -346,7 +346,7 @@
 216	-	1	boss	Slad'ran
 216	-	2	boss	Moorabi
 216	-	3	boss	Drakkari Colossus
-216	-	4	door	Altar bridge	3 altars -> bridge to Gal'darah
+216	-	4	skip	Altar bridge	3 altars -> bridge to Gal'darah; unsupported: 3 altars (192518-192520) must be used to raise the bridge (193188); altars are not walked
 216	-	5	boss	Gal'darah
 216	-	6	heroic_only	Eck the Ferocious
 220	-	1	skip	The Violet Hold	event dungeon: 18 waves, 2 random of Erekem/Moragg/Ichoron/Xevozz/Lavanthor/Zuramat, Cyanigosa

@@ -207,7 +207,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 3. [Upper] **Ribbly Screwspigot** *(optional)* — entry 9543 @ (878.5, -167.7, -49.7) — Grim Guzzler
 4. [Upper] **Phalanx** *(optional)* — entry 9502 @ (869, -225, -43.7) — Grim Guzzler
 5. [Upper] **Hurley Blackbreath** *(optional)* — entry 9537 @ (878.1, -153.1, -49.8) — Grim Guzzler
-6. [Upper] **Grim Guzzler back door** **[door]** — Plugger bar fight / Rocknot event
+6. [Upper] **Grim Guzzler back door** **[door]** `gameobject` — entry 170571 @ (870.693, -228.936, -43.7509) — Plugger bar fight / Rocknot event; Bar Door; lock 739 = Grim Guzzler Key (11602); opened by the Plugger bar-fight script
 7. [Upper] **Ambassador Flamelash** — entry 9156 @ (1009.8, -239, -61.3)
 8. [Upper] **Panzor the Invincible** *(optional)* — entry 8923 @ (1135.5, -163, -74.9) — rare
 9. [Upper] **Doom'rel** **[event]** — entry 9039 @ (1281.1, -282.2, -78.1) — Chest of the Seven (7 dwarves sequential)
@@ -244,7 +244,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 1. [Live] **Timmy the Cruel** *(optional)* — entry 10808 @ (3614.7, -3187.6, 131.4) — script-spawned in Market Row
 2. [Live] **The Unforgiven** *(optional)* — entry 10516 @ (3719.8, -3426.2, 131.8)
 3. [Live] **Postmaster Malown** *(optional)* `script` — entry 11143 (no static spawn) — summon via postboxes
-4. [Live] **Scarlet Bastion gate** **[door]** — Scarlet Key / Crusaders' Square
+4. [Live] **Scarlet Bastion gate** **[door]** `gameobject` — entry 175967 @ (3645.56, -3136.76, 134.76) — Scarlet Key / Crusaders' Square; The Bastion Door; lock 299 = The Scarlet Key (7146)
 5. [Live] **Cannon Master Willey** — entry 10997 @ (3573.6, -2937.3, 125.1)
 6. [Live] **Crimson Hammersmith** *(optional)* `script` — entry 11120 (no static spawn) — summon
 7. [Live] **Archivist Galford** — entry 10811 @ (3456, -3103.4, 136.5)
@@ -265,11 +265,11 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 2. [East] **Lethtendris** *(optional)* — entry 14327 @ (-5.5, -441.1, 16.4) — with Pimgib
 3. [East] **Hydrospawn** *(optional)* — entry 13280 @ (4.6, -438.4, -60)
 4. [East] **Zevrim Thornhoof** *(optional)* — entry 11490 @ (-35, -448, -37.9)
-5. [East] **Alzzin door** **[door]** — Old Ironbark opens after Zevrim
+5. [East] **Alzzin door** **[UNSUPPORTED]** — Old Ironbark opens after Zevrim; unsupported: Alzzin door; opened by an Old Ironbark gossip event; no verified door object
 6. [East] **Alzzin the Wildshaper** — entry 11492 @ (274.8, -427.3, -120)
 ### Dire Maul - West (LFD 36, map 429)
 
-1. [West] **Crescent Key door** **[door]**
+1. [West] **Crescent Key door** **[UNSUPPORTED]** — unsupported: Crescent Key door - two candidates (177221; 179550) in this wing; which one is step 1 is unverified
 2. [West] **Tendris Warpwood** *(optional)* — entry 11489 @ (14.4, 475.8, -23.3)
 3. [West] **Tsu'zee** *(optional)* — entry 11467 @ (128.6, 561.8, -4.3) — rare
 4. [West] **Magister Kalendris** *(optional)* — entry 11487 @ (33.1, 575.6, -4.3)
@@ -278,7 +278,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 7. [West] **Prince Tortheldrin** — entry 11486 @ (132.6, 625.9, -48.4)
 ### Dire Maul - North (LFD 38, map 429)
 
-1. [North] **Crescent Key door** **[door]**
+1. [North] **Crescent Key door** **[door]** `gameobject` — entry 179549 @ (351.568, 88.6734, -36.393) — Door 179549; lock 1562 = Crescent Key (18249); the only Crescent Key door within 390 yd of this wing's route
 2. [North] **Guard Mol'dar** *(optional)* — entry 14326 @ (410.7, -3.2, -24.6)
 3. [North] **Stomper Kreeg** *(optional)* — entry 14322 @ (491.2, 97.4, -2.5)
 4. [North] **Guard Fengus** *(optional)* — entry 14321 @ (356.8, 258.3, 11.7)
@@ -335,7 +335,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 
 1. **Hydromancer Thespia** — entry 17797 @ (88.4, -316.1, -7.8)
 2. **Mekgineer Steamrigger** — entry 17796 @ (-330.1, -121.5, -8)
-3. **Control panels** **[door]** — 2 panels behind first two bosses
+3. **Control panels** **[UNSUPPORTED]** — 2 panels behind first two bosses; unsupported: 2 access panels (184125; 184126) open the Main Chambers Door by script; not a door the leader can open
 4. **Warlord Kalithresh** — entry 17798 @ (-95.4, -552, 8.3)
 ### Mana-Tombs (LFD 148, map 557, heroic LFD 179)
 
@@ -362,7 +362,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 2. **Nethermancer Sepethrea** *(optional)* — entry 19221 @ (326.5, 13.2, 27.9)
 3. **Mechano-Lord Capacitus** *(optional)* — entry 19219 @ (208.2, -13, -2.1)
 4. **Gatewatcher Iron-Hand** — entry 19710 @ (181.9, -77.1, 0)
-5. **Elevator** **[door]** — after both gatewatchers
+5. **Elevator** **[UNSUPPORTED]** — after both gatewatchers; unsupported: elevator (Doodad_FactoryElevator01; a transport) - no door object to open
 6. **Pathaleon the Calculator** — entry 19220 @ (139.5, 149.3, 25.7)
 ### The Botanica (LFD 173, map 553, heroic LFD 191)
 
@@ -444,7 +444,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 1. **Slad'ran** — entry 29304 @ (1775.1, 675, 129.3)
 2. **Moorabi** — entry 29305 @ (1772.5, 809.5, 129.3)
 3. **Drakkari Colossus** — entry 29307 @ (1673, 743.5, 143.3)
-4. **Altar bridge** **[door]** — 3 altars -> bridge to Gal'darah
+4. **Altar bridge** **[UNSUPPORTED]** — 3 altars -> bridge to Gal'darah; unsupported: 3 altars (192518-192520) must be used to raise the bridge (193188); altars are not walked
 5. **Gal'darah** — entry 29306 @ (1914.8, 743.7, 136.6)
 ### Violet Hold (LFD 220, map 608, heroic LFD 221)
 
