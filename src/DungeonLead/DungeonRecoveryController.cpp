@@ -88,6 +88,16 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
     Player* who = nullptr;
     RecoveryReason const observed = eligible ? Observe(botAI, party, who) : RecoveryReason::None;
 
+    // An ordinary wait (eating, drinking, healing up) does not run through a fight: its clock would
+    // be long past the abort mark when the fight ends (Mana-Tombs: a drink open at 33.8 min, a
+    // 2.5 minute fight, recovery_failed 3 s after it). It starts afresh after the fight if still needed.
+    if (!eligible && st.recovery.reason == RecoveryReason::PersistentWait)
+    {
+        DungeonLeadKernel::ObserveRecovery(st.recovery, RecoveryReason::None, getMSTime());
+        st.escalationDeferSince = 0;
+        return true;
+    }
+
     // In combat etc. (not eligible) an open recovery is kept as it is, and its clocks run on. Once
     // the session is walking on again, whatever it was is resolved.
     if (!eligible && observed == RecoveryReason::None && st.state != LeadState::Travelling)

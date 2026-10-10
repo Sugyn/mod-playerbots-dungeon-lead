@@ -42,6 +42,9 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A wait for someone eating, drinking or healing up no longer runs through a fight. Its clock was
+  past the abort mark when the fight ended, and the run was stopped seconds later
+  (`recovery_failed persistent_wait`, Mana-Tombs).
 - After a wipe in a route with path anchors (Slave Pens), the party respawns at the entrance and walks
   the anchors again from the first when the resume step is more than 150 yd away. It used to try
   to path 630 yd to the checkpoint, found no path (the far tiles are not loaded), skipped every
