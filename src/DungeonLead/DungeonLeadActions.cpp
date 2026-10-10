@@ -24,6 +24,7 @@
 #include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
 
+#include "Corpse.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "GossipDef.h"
@@ -56,6 +57,7 @@
 #include "WorldSession.h"
 
 #include <algorithm>
+#include <map>
 #include <atomic>
 #include <cctype>
 #include <cmath>
@@ -1271,6 +1273,40 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
     Group* group = leader->GetGroup();
     if (!group)
         return;
+
+    // Where the dead bots are and what they are doing (every 15 s per bot): a healer dead for two
+    // minutes after a fight - no wipe, no teleport back - needs the evidence of whether it is a
+    // ghost on the instance map, how far from its corpse, or somewhere else altogether.
+    {
+        static std::map<uint64, uint32> lastDeadLog;
+        uint32 const nowMs = getMSTime();
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || !m->IsInWorld() || m->IsAlive() || IsRealPlayer(m) || IsSelfBot(m))
+                continue;
+            uint32& last = lastDeadLog[m->GetGUID().GetRawValue()];
+            if (last && getMSTimeDiff(last, nowMs) < 15000)
+                continue;
+            last = nowMs;
+            Corpse* corpse = m->GetCorpse();
+            RecordEventV2(botAI, "dead_member_state",
+                          DungeonLeadKernel::JsonLine()
+                              .Str("name", m->GetName())
+                              .Str("role", PlayerbotAI::IsTank(m) ? "tank" : PlayerbotAI::IsHeal(m) ? "healer" : "dps")
+                              .Num("map", m->GetMapId())
+                              .Bool("ghost", m->HasAuraType(SPELL_AURA_GHOST))
+                              .Num("x", m->GetPositionX())
+                              .Num("y", m->GetPositionY())
+                              .Num("z", m->GetPositionZ())
+                              .Bool("moving", m->isMoving())
+                              .Bool("has_corpse", corpse != nullptr)
+                              .Num("corpse_map", corpse ? corpse->GetMapId() : 0u)
+                              .Num("corpse_dist", corpse && corpse->GetMapId() == m->GetMapId() ? m->GetDistance(corpse) : -1.0f)
+                              .Num("leader_dist", m->GetMapId() == leader->GetMapId() ? m->GetDistance(leader) : -1.0f)
+                              .Done());
+        }
+    }
 
     if (st.recoveryTs && GetMSTimeDiffToNow(st.recoveryTs) < kRecoveryRetrySeconds * IN_MILLISECONDS)
         return;
