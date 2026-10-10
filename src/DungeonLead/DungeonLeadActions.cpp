@@ -837,6 +837,25 @@ void DungeonLead::FlushTelemetry(bool force)
         return;
     lastFlushTs = getMSTime();
 
+    // Once a minute a heartbeat in the campaign file: the world tick is running, how many
+    // sessions are active and how much telemetry waits. A campaign that goes quiet is then either
+    // a stalled tick (no heartbeat) or sessions that produce nothing (heartbeat, no events) -
+    // run 1878649765625857 went silent after 35 minutes with the server up and no way to tell.
+    static uint32 lastHeartbeatTs = 0;
+    if (!force && (!lastHeartbeatTs || GetMSTimeDiffToNow(lastHeartbeatTs) >= 60000))
+    {
+        lastHeartbeatTs = getMSTime();
+        g_telemetry.Push(DungeonLeadKernel::TelemetryFile::Campaigns,
+                         DungeonLeadKernel::JsonLine()
+                                 .Num("schema_version", 2u)
+                                 .Str("record", "heartbeat")
+                                 .Str("time", FormatLogTimestamp())
+                                 .Num("active_sessions", uint32(sDungeonRouteMgr.GetActiveSessionGuids().size()))
+                                 .Num("queued_lines", uint32(g_telemetry.Size()))
+                                 .Done() +
+                             "\n");
+    }
+
     uint64 dropped = 0;
     std::vector<DungeonLeadKernel::TelemetryLine> const lines = g_telemetry.Drain(dropped);
     if (lines.empty() && !dropped)
