@@ -2382,6 +2382,32 @@ void DungeonLead::RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st)
         st.stepIndex = to;
     }
 
+    // A route with path anchors is walked anchor by anchor: its mesh is too long for one path query
+    // and the tiles load as the party gets there. After a wipe the party stands at the entrance and
+    // the resume step can be hundreds of yards away with no path to it (Slave Pens: 630 yd, every
+    // later anchor "stuck" and skipped, the boss objective failed). Walk the anchors again from the
+    // first; what was cleared or passed over is still visited and skipped.
+    if (route && st.stepIndex > 0 && st.stepIndex < route->steps.size())
+    {
+        bool anchors = false;
+        for (DungeonRouteStep const& r : route->steps)
+            anchors = anchors || r.IsPathAnchor();
+        DungeonRouteStep const& resume = route->steps[st.stepIndex];
+        Player* leader = botAI->GetBot();
+        if (anchors && resume.HasPosition() &&
+            leader->GetExactDist(resume.x, resume.y, resume.z) > DungeonLeadKernel::kWalkBackFromEntranceYd)
+        {
+            for (uint32 i = 0; i < st.stepIndex && i < route->steps.size(); ++i)
+                if (route->steps[i].IsPathAnchor() && i < st.visited.size())
+                    st.visited[i] = 0;
+            DungeonLead::RecordEvent(botAI, "checkpoint_walk_back",
+                                     "step " + std::to_string(st.stepIndex) + " -> 0, resume " +
+                                         std::to_string(int(leader->GetExactDist(resume.x, resume.y, resume.z))) +
+                                         " yd away");
+            st.stepIndex = 0;
+        }
+    }
+
     // Whatever the current step is, look at it afresh: packs reset when the party wipes.
     ResetStepState(st);
     st.objectiveFailures = 0;

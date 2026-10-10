@@ -1278,6 +1278,10 @@ namespace DungeonLeadKernel
     // reached - never a skip. After a wipe the route resumes right after it, so nothing that was
     // only passed over (skipped, given up on) before the wipe stays skipped because of it.
 
+    // After a wipe, a route with path anchors is walked again from its first anchor when the resume
+    // step is farther than this from where the party respawns.
+    constexpr float kWalkBackFromEntranceYd = 150.0f;
+
     // Step index to resume from after a wipe: the step after the checkpoint (-1 = none yet),
     // never ahead of where the route already is.
     inline uint32_t ResumeStepAfterWipe(int32_t checkpointStep, uint32_t currentStep)

@@ -42,6 +42,10 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- After a wipe in a route with path anchors (Slave Pens), the party respawns at the entrance and walks
+  the anchors again from the first when the resume step is more than 150 yd away. It used to try
+  to path 630 yd to the checkpoint, found no path (the far tiles are not loaded), skipped every
+  anchor as stuck and failed the boss objective.
 - A recovery that escalated (a straggler was brought to the leader) and cleared is over: the same
   problem again gets fresh windows instead of the old clocks, which were already past the abort
   mark and ended the run seconds after a successful regroup (Ragefire Chasm). One bot is brought
