@@ -239,9 +239,53 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 138,Shattered Halls,540,0,1,-,2,event,Gauntlet of Flame,,,,,unknown,archers gauntlet
 138,Shattered Halls,540,0,1,-,4,boss,Warbringer O'mrogg,16809,375.1,57.6,-7.2,spawn,
 138,Shattered Halls,540,0,1,-,5,boss,Warchief Kargath Bladefist,16808,231.2,-83.6,5,spawn,
-140,Slave Pens,547,0,1,-,1,boss,Mennu the Betrayer,17941,49.5,-380.2,3,spawn,
-140,Slave Pens,547,0,1,-,2,boss,Rokmar the Crackler,17991,18.3,-448.4,3.1,spawn,
-140,Slave Pens,547,0,1,-,3,boss,Quagmirran,17942,-281.1,-667.1,9.4,spawn,
+140,Slave Pens,547,0,1,-,1,optional,Slave Pens path start to Mennu 1,1,92.1,-104.0,-2.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,2,optional,Slave Pens path start to Mennu 2,1,43.1,-94.4,-2.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,3,optional,Slave Pens path start to Mennu 3,1,11.6,-62.8,-2.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,4,optional,Slave Pens path start to Mennu 4,1,-29.4,-41.2,-2.1,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,5,optional,Slave Pens path start to Mennu 5,1,-71.9,-12.0,-4.2,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,6,optional,Slave Pens path start to Mennu 6,1,-106.6,-21.5,-5.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,7,optional,Slave Pens path start to Mennu 7,1,-99.5,-53.5,-1.2,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,8,optional,Slave Pens path start to Mennu 8,1,-92.9,-113.7,-3.1,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,9,optional,Slave Pens path start to Mennu 9,1,-62.5,-136.1,-0.9,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,10,optional,Slave Pens path start to Mennu 10,1,-45.5,-178.0,-2.9,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,11,optional,Slave Pens path start to Mennu 11,1,-24.3,-217.3,-2.3,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,12,optional,Slave Pens path start to Mennu 12,1,-9.5,-258.2,-0.6,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,13,optional,Slave Pens path start to Mennu 13,1,-7.8,-297.1,2.8,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,14,optional,Slave Pens path start to Mennu 14,1,32.0,-323.5,3.3,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,15,optional,Slave Pens path start to Mennu 15,1,79.5,-334.2,3.3,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,16,optional,Slave Pens path start to Mennu 16,1,64.5,-372.9,4.2,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,17,boss,Mennu the Betrayer,17941,49.5,-380.2,3,spawn,
+140,Slave Pens,547,0,1,-,18,optional,Slave Pens path Mennu to Rokmar 1,1,79.5,-334.2,3.3,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,19,optional,Slave Pens path Mennu to Rokmar 2,1,32.0,-323.5,3.3,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,20,optional,Slave Pens path Mennu to Rokmar 3,1,-10.3,-306.7,2.6,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,21,optional,Slave Pens path Mennu to Rokmar 4,1,-10.7,-330.7,-13.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,22,optional,Slave Pens path Mennu to Rokmar 5,1,-15.1,-373.3,-13.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,23,optional,Slave Pens path Mennu to Rokmar 6,1,-8.6,-425.8,-13.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,24,optional,Slave Pens path Mennu to Rokmar 7,1,-41.5,-452.0,-12.8,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,25,optional,Slave Pens path Mennu to Rokmar 8,1,-74.7,-472.0,-13.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,26,optional,Slave Pens path Mennu to Rokmar 9,1,-126.6,-481.3,-10.4,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,27,optional,Slave Pens path Mennu to Rokmar 10,1,-101.0,-516.9,-9.5,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,28,optional,Slave Pens path Mennu to Rokmar 11,1,-96.4,-519.8,-2.0,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,29,optional,Slave Pens path Mennu to Rokmar 12,1,-74.1,-488.5,0.1,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,30,optional,Slave Pens path Mennu to Rokmar 13,1,-45.7,-478.5,7.2,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,31,optional,Slave Pens path Mennu to Rokmar 14,1,-11.0,-457.1,2.6,spawn,path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140,Slave Pens,547,0,1,-,32,boss,Rokmar the Crackler,17991,18.3,-448.4,3.1,spawn,
+140,Slave Pens,547,0,1,-,33,optional,Slave Pens path Rokmar to Quagmirran 1,1,-33.0,-473.3,-1.0,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,34,optional,Slave Pens path Rokmar to Quagmirran 2,1,-75.3,-481.7,-1.4,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,35,optional,Slave Pens path Rokmar to Quagmirran 3,1,-96.4,-519.8,-2.0,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,36,optional,Slave Pens path Rokmar to Quagmirran 4,1,-88.6,-565.4,-1.0,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,37,optional,Slave Pens path Rokmar to Quagmirran 5,1,-94.0,-607.8,10.8,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,38,optional,Slave Pens path Rokmar to Quagmirran 6,1,-94.0,-655.6,23.9,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,39,optional,Slave Pens path Rokmar to Quagmirran 7,1,-75.6,-692.8,41.5,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,40,optional,Slave Pens path Rokmar to Quagmirran 8,1,-74.7,-735.9,40.4,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,41,optional,Slave Pens path Rokmar to Quagmirran 9,1,-110.3,-752.5,37.4,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,42,optional,Slave Pens path Rokmar to Quagmirran 10,1,-152.0,-756.9,37.6,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,43,optional,Slave Pens path Rokmar to Quagmirran 11,1,-182.5,-732.2,37.4,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,44,optional,Slave Pens path Rokmar to Quagmirran 12,1,-211.9,-704.9,34.2,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,45,optional,Slave Pens path Rokmar to Quagmirran 13,1,-246.8,-688.5,16.2,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,46,optional,Slave Pens path Rokmar to Quagmirran 14,1,-289.6,-667.3,10.0,spawn,path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140,Slave Pens,547,0,1,-,47,boss,Quagmirran,17942,-281.1,-667.1,9.4,spawn,
 146,Underbog,546,0,1,-,1,boss,Hungarfen,17770,-121.3,-388.6,36.9,spawn,
 146,Underbog,546,0,1,-,2,boss,Ghaz'an,18105,193.7,-425,43.5,spawn,
 146,Underbog,546,0,1,-,3,boss,Swamplord Musel'ek,17826,288.6,-121.8,29.7,spawn,with Claw
@@ -250,9 +294,13 @@ lfg_id,lfg_name,map,difficulty,expansion,wing,step,kind,boss,entry,x,y,z,source,
 147,The Steamvault,545,0,1,-,2,boss,Mekgineer Steamrigger,17796,-330.1,-121.5,-8,spawn,
 147,The Steamvault,545,0,1,-,3,skip,Control panels,,,,,-,2 panels behind first two bosses; unsupported: 2 access panels (184125; 184126) open the Main Chambers Door by script; not a door the leader can open
 147,The Steamvault,545,0,1,-,4,boss,Warlord Kalithresh,17798,-95.4,-552,8.3,spawn,
-148,Mana-Tombs,557,0,1,-,1,boss,Pandemonius,18341,-68,-118.9,-1.2,spawn,
-148,Mana-Tombs,557,0,1,-,2,boss,Tavarok,18343,-321.7,-222.2,-0.8,spawn,
-148,Mana-Tombs,557,0,1,-,4,boss,Nexus-Prince Shaffar,18344,-184.4,9.3,16.8,spawn,
+148,Mana-Tombs,557,0,1,-,1,optional,Ethereal Scavenger,18309,-68.0,-31.7,-1.0,spawn,pack at the start; met on the way in 1/2 runs
+148,Mana-Tombs,557,0,1,-,2,optional,Ethereal Scavenger,18309,-97.9,-59.9,-0.8,spawn,pack that joined Pandemonius as adds in 2/2 runs
+148,Mana-Tombs,557,0,1,-,3,optional,Ethereal Sorcerer,18313,-67.7,-67.3,-0.8,spawn,pack that joined Pandemonius as adds in 2/2 runs
+148,Mana-Tombs,557,0,1,-,4,optional,Ethereal Sorcerer,18313,-46.7,-97.8,-0.9,spawn,pack of 7 next to Pandemonius; joined as adds in 2/2 runs
+148,Mana-Tombs,557,0,1,-,5,boss,Pandemonius,18341,-68,-118.9,-1.2,spawn,
+148,Mana-Tombs,557,0,1,-,6,boss,Tavarok,18343,-321.7,-222.2,-0.8,spawn,
+148,Mana-Tombs,557,0,1,-,8,boss,Nexus-Prince Shaffar,18344,-184.4,9.3,16.8,spawn,
 149,Auchenai Crypts,558,0,1,-,1,boss,Shirrak the Dead Watcher,18371,-50.9,-163.1,26.4,spawn,
 149,Auchenai Crypts,558,0,1,-,2,boss,Exarch Maladaar,18373,68.1,-387.8,26.6,spawn,
 150,Sethekk Halls,556,0,1,-,1,boss,Darkweaver Syth,18472,-144.8,173.6,1.8,spawn,

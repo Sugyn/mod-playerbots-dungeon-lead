@@ -266,9 +266,53 @@
 138	-	3	heroic_only	Blood Guard Porung
 138	-	4	boss	Warbringer O'mrogg
 138	-	5	boss	Warchief Kargath Bladefist
-140	-	1	boss	Mennu the Betrayer
-140	-	2	boss	Rokmar the Crackler
-140	-	3	boss	Quagmirran
+140	-	1	optional	Slave Pens path start to Mennu 1	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	2	optional	Slave Pens path start to Mennu 2	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	3	optional	Slave Pens path start to Mennu 3	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	4	optional	Slave Pens path start to Mennu 4	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	5	optional	Slave Pens path start to Mennu 5	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	6	optional	Slave Pens path start to Mennu 6	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	7	optional	Slave Pens path start to Mennu 7	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	8	optional	Slave Pens path start to Mennu 8	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	9	optional	Slave Pens path start to Mennu 9	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	10	optional	Slave Pens path start to Mennu 10	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	11	optional	Slave Pens path start to Mennu 11	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	12	optional	Slave Pens path start to Mennu 12	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	13	optional	Slave Pens path start to Mennu 13	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	14	optional	Slave Pens path start to Mennu 14	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	15	optional	Slave Pens path start to Mennu 15	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	16	optional	Slave Pens path start to Mennu 16	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	17	boss	Mennu the Betrayer
+140	-	18	optional	Slave Pens path Mennu to Rokmar 1	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	19	optional	Slave Pens path Mennu to Rokmar 2	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	20	optional	Slave Pens path Mennu to Rokmar 3	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	21	optional	Slave Pens path Mennu to Rokmar 4	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	22	optional	Slave Pens path Mennu to Rokmar 5	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	23	optional	Slave Pens path Mennu to Rokmar 6	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	24	optional	Slave Pens path Mennu to Rokmar 7	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	25	optional	Slave Pens path Mennu to Rokmar 8	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	26	optional	Slave Pens path Mennu to Rokmar 9	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	27	optional	Slave Pens path Mennu to Rokmar 10	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	28	optional	Slave Pens path Mennu to Rokmar 11	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	29	optional	Slave Pens path Mennu to Rokmar 12	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	30	optional	Slave Pens path Mennu to Rokmar 13	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	31	optional	Slave Pens path Mennu to Rokmar 14	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	32	boss	Rokmar the Crackler
+140	-	33	optional	Slave Pens path Rokmar to Quagmirran 1	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	34	optional	Slave Pens path Rokmar to Quagmirran 2	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	35	optional	Slave Pens path Rokmar to Quagmirran 3	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	36	optional	Slave Pens path Rokmar to Quagmirran 4	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	37	optional	Slave Pens path Rokmar to Quagmirran 5	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	38	optional	Slave Pens path Rokmar to Quagmirran 6	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	39	optional	Slave Pens path Rokmar to Quagmirran 7	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	40	optional	Slave Pens path Rokmar to Quagmirran 8	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	41	optional	Slave Pens path Rokmar to Quagmirran 9	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	42	optional	Slave Pens path Rokmar to Quagmirran 10	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	43	optional	Slave Pens path Rokmar to Quagmirran 11	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	44	optional	Slave Pens path Rokmar to Quagmirran 12	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	45	optional	Slave Pens path Rokmar to Quagmirran 13	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	46	optional	Slave Pens path Rokmar to Quagmirran 14	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	47	boss	Quagmirran
 146	-	1	boss	Hungarfen
 146	-	2	boss	Ghaz'an
 146	-	3	boss	Swamplord Musel'ek	with Claw
@@ -277,10 +321,13 @@
 147	-	2	boss	Mekgineer Steamrigger
 147	-	3	skip	Control panels	2 panels behind first two bosses; unsupported: 2 access panels (184125; 184126) open the Main Chambers Door by script; not a door the leader can open
 147	-	4	boss	Warlord Kalithresh
-148	-	1	boss	Pandemonius
-148	-	2	boss	Tavarok
-148	-	3	heroic_only	Yor	summon, quest
-148	-	4	boss	Nexus-Prince Shaffar
+148	-	1	optional	Ethereal Scavenger	pack at the start; met on the way in 1/2 runs
+148	-	2	optional	Ethereal Scavenger	pack that joined Pandemonius as adds in 2/2 runs
+148	-	3	optional	Ethereal Sorcerer	pack that joined Pandemonius as adds in 2/2 runs
+148	-	4	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joined as adds in 2/2 runs
+148	-	5	boss	Pandemonius
+148	-	6	boss	Tavarok
+148	-	8	boss	Nexus-Prince Shaffar
 149	-	1	boss	Shirrak the Dead Watcher
 149	-	2	boss	Exarch Maladaar
 150	-	1	boss	Darkweaver Syth
