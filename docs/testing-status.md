@@ -74,16 +74,16 @@ runs on the same commit and validation profile, health not unhealthy.
 
 | Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
 |---|---|---|---|---|
-| Deadmines | **Verified** | `bc537b9` | `bc537b9` | full route; full route (warning) PACK_IDENTITY, PULL |
-| Ragefire Chasm | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
-| Razorfen Downs | **Verified** | `5f3d706` | `bc537b9` | full route; partial (unhealthy) PULL |
-| Scarlet Monastery - Armory | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
-| Scarlet Monastery - Cathedral | **Verified** | `bc537b9` | `bc537b9` | full route; full route (warning) PACK_IDENTITY |
-| Scarlet Monastery - Library | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
-| Shadowfang Keep | **Verified** | `5f3d706` | `bc537b9` | full route (warning) PULL; partial (warning) PACK_IDENTITY, WIPE |
-| Zul'Farrak | **Verified** | `bc537b9` | `bc537b9` | full route; full route |
+| Deadmines | **Verified** | `4d82468` | `4d82468` | full route; full route |
+| Ragefire Chasm | **Verified** | `4d82468` | `4d82468` | full route; full route |
+| Razorfen Downs | **Verified** | `4d82468` | `4d82468` | full route; full route |
+| Scarlet Monastery - Armory | **Verified** | `4d82468` | `4d82468` | full route; full route (warning) PULL |
+| Scarlet Monastery - Cathedral | **Verified** | `4d82468` | `4d82468` | full route (warning) ROUTE; full route |
+| Scarlet Monastery - Library | **Verified** | `4d82468` | `4d82468` | full route; full route (warning) PACK_IDENTITY |
+| Shadowfang Keep | **Verified** | `4d82468` | `4d82468` | full route (warning) PACK_IDENTITY; full route (warning) PACK_IDENTITY |
+| Zul'Farrak | **Verified** | `4d82468` | `4d82468` | full route; full route |
 
-From 100 runs in 9 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261007-0327-bc537b9).
+From 178 runs in 15 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261009-1734-4d82468).
 
 <!-- END GENERATED -->
 
