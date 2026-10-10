@@ -321,13 +321,24 @@
 147	-	2	boss	Mekgineer Steamrigger
 147	-	3	skip	Control panels	2 panels behind first two bosses; unsupported: 2 access panels (184125; 184126) open the Main Chambers Door by script; not a door the leader can open
 147	-	4	boss	Warlord Kalithresh
-148	-	1	optional	Ethereal Scavenger	pack at the start; met on the way in 1/2 runs
+148	-	1	optional	Ethereal Scavenger	pack that joined Pandemonius as adds in 2/2 runs
 148	-	2	optional	Ethereal Scavenger	pack that joined Pandemonius as adds in 2/2 runs
-148	-	3	optional	Ethereal Sorcerer	pack that joined Pandemonius as adds in 2/2 runs
+148	-	3	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joined as adds in 2/2 runs
 148	-	4	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joined as adds in 2/2 runs
 148	-	5	boss	Pandemonius
-148	-	6	boss	Tavarok
-148	-	8	boss	Nexus-Prince Shaffar
+148	-	6	optional	Mana Leech	pack met on the way to Tavarok in 3 of 5 runs
+148	-	7	optional	Ethereal Priest	pack met on the way to Tavarok in 3 of 5 runs
+148	-	8	optional	Ethereal Priest	pack met on the way to Tavarok in 3 of 5 runs
+148	-	9	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joined as adds in 2/2 runs
+148	-	10	optional	Nexus Terror	pack met on the way to Tavarok in 3 of 5 runs
+148	-	11	optional	Ethereal Darkcaster	pack met on the way to Tavarok in 3 of 5 runs
+148	-	12	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joined as adds in 2/2 runs
+148	-	13	boss	Tavarok
+148	-	15	optional	Ethereal Spellbinder	pack met on the way to Shaffar in 3 of 5 runs
+148	-	16	optional	Nexus Stalker	pack met on the way to Shaffar in 3 of 5 runs
+148	-	17	optional	Ethereal Spellbinder	pack met on the way to Shaffar in 3 of 5 runs
+148	-	18	optional	Ethereal Spellbinder	pack met on the way to Shaffar in 3 of 5 runs
+148	-	19	boss	Nexus-Prince Shaffar
 149	-	1	boss	Shirrak the Dead Watcher
 149	-	2	boss	Exarch Maladaar
 150	-	1	boss	Darkweaver Syth
