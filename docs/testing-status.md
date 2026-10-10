@@ -74,16 +74,16 @@ runs on the same commit and validation profile, health not unhealthy.
 
 | Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
 |---|---|---|---|---|
-| Deadmines | **Verified** | `4d82468` | `4d82468` | full route; full route |
-| Ragefire Chasm | **Verified** | `4d82468` | `4d82468` | full route; full route |
-| Razorfen Downs | **Verified** | `4d82468` | `4d82468` | full route; full route |
-| Scarlet Monastery - Armory | **Verified** | `4d82468` | `4d82468` | full route; full route (warning) PULL |
-| Scarlet Monastery - Cathedral | **Verified** | `4d82468` | `4d82468` | full route (warning) ROUTE; full route |
-| Scarlet Monastery - Library | **Verified** | `4d82468` | `4d82468` | full route; full route (warning) PACK_IDENTITY |
-| Shadowfang Keep | **Verified** | `4d82468` | `4d82468` | full route (warning) PACK_IDENTITY; full route (warning) PACK_IDENTITY |
-| Zul'Farrak | **Verified** | `4d82468` | `4d82468` | full route; full route |
+| Deadmines | **Verified** | `fcdda84` | `fcdda84` | full route (warning) OBSERVABILITY; full route (warning) PACK_IDENTITY |
+| Ragefire Chasm | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
+| Razorfen Downs | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
+| Scarlet Monastery - Armory | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
+| Scarlet Monastery - Cathedral | **Verified** | `fcdda84` | `fcdda84` | full route (warning) ROUTE; full route (warning) PULL, ROUTE |
+| Scarlet Monastery - Library | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
+| Shadowfang Keep | **Verified** | `fcdda84` | `fcdda84` | full route (warning) OBSERVABILITY; full route (warning) PACK_IDENTITY |
+| Zul'Farrak | **Verified** | `fcdda84` | `fcdda84` | full route; full route (warning) OBSERVABILITY |
 
-From 178 runs in 15 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261009-1734-4d82468).
+From 210 runs in 17 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261010-0359-fcdda84).
 
 <!-- END GENERATED -->
 

@@ -32,6 +32,10 @@ the MAJOR bar above is met.
 - `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
 
 ### Changed
+- Builds and runs against the current upstream: the mod-playerbots core fork `Playerbot` at f19a18799
+  and mod-playerbots `master` at 037c0141 (headless bot sessions, module-owned databases). The only
+  source change needed was an explicit `PlayerbotsDatabase.h` include, guarded with `__has_include`
+  so older trees still build. All eight dungeons ran 16/16 full routes on it.
 - Trash is pulled with mod-playerbots' ranged pull and the tank waits at the spot it pulled from
   (`AiPlayerbot.DungeonLead.RangedPull`, on by default). A fight inside a room drew the room in:
   creatures in combat call allies within 10 yd every few seconds - 11 mobs and Baron Silverlaine
