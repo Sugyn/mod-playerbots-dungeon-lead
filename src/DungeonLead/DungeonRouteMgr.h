@@ -16,6 +16,7 @@
 
 #include <mutex>
 #include <string>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -311,6 +312,7 @@ struct DungeonLeadState
     // that attacked a party member - and which of them were reported dead; party members' last
     // seen alive flag, for member_died / member_revived.
     uint32 escalationDeferSince = 0;
+    std::map<uint64, uint8> stragglerBrought;  // times each bot was brought to the leader (recovery escalation)
     ObjectGuid stragglerGuid;          // the straggler whose stillness is timed (recovery, PartyFragmented)
     uint32 stragglerStillSince = 0;    // since when it has not moved (0 = moving / not timed)
     uint32 stragglerSeenTs = 0;        // last recovery pass that saw it as the offender

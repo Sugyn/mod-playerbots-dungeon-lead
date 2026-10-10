@@ -38,6 +38,10 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A recovery that escalated (a straggler was brought to the leader) and cleared is over: the same
+  problem again gets fresh windows instead of the old clocks, which were already past the abort
+  mark and ended the run seconds after a successful regroup (Ragefire Chasm). One bot is brought
+  at most 3 times before the run gives up on the party.
 - Route validation is green again (11 errors from DL-008: mandatory door rows with no game object).
   Three doors now name their object, checked in the world DB and `Lock.dbc` against the key item:
   Blackrock Depths' Bar Door (170571, script-opened), Stratholme's The Bastion Door (175967, The

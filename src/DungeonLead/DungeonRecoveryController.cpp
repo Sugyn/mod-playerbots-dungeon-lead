@@ -172,6 +172,14 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
         uint32 const stillMs = st.stragglerStillSince ? getMSTimeDiff(st.stragglerStillSince, now) : 0;
         step = DungeonLeadKernel::EscalateStuckStraggler(step, observed, stillMs);
     }
+    // The same bot brought to the leader again and again is not going to stay: give up instead of
+    // looping (the run's own timeout is the only other bound).
+    if (step == RecoveryStep::Escalate && observed == RecoveryReason::PartyFragmented && who && IsBotMember(who))
+    {
+        auto const it = st.stragglerBrought.find(who->GetGUID().GetRawValue());
+        if (it != st.stragglerBrought.end() && it->second >= DungeonLeadKernel::kMaxStragglerBrought)
+            step = RecoveryStep::Abort;
+    }
     bool const newStep = step != st.recovery.step;
     st.recovery.step = step;
 
@@ -255,6 +263,8 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
             if (movable)
             {
                 detail += " action=brought_to_leader";
+                if (observed == RecoveryReason::PartyFragmented)
+                    ++st.stragglerBrought[who->GetGUID().GetRawValue()];
                 who->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
                                 bot->GetOrientation());
                 // Every other bot straggler too: bringing only the farthest left the next one behind

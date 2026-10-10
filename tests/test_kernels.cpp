@@ -847,6 +847,23 @@ namespace
         ObserveRecovery(t, RecoveryReason::PartyFragmented, 10000 + kRecoveryRelapseMs, 7);
         Check(!t.relapse && t.reasonSince == 10000 + kRecoveryRelapseMs, "long after it cleared -> fresh recovery");
 
+        // A straggler brought to the leader (escalated) and stuck again soon after is a new problem
+        // with fresh windows - not the old clocks run on into Abort
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        t.step = RecoveryStep::Escalate;
+        ObserveRecovery(t, RecoveryReason::None, 62000);
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 100000, 7) && !t.relapse && t.reasonSince == 100000 &&
+                  t.step == RecoveryStep::None,
+              "stuck again after an escalation -> fresh recovery");
+        Check(DecideRecovery(t.reason, 0, 100000 - t.episodeSince, p) == RecoveryStep::Act,
+              "...which starts at act, not at abort");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);  // still at Act when it cleared
+        ObserveRecovery(t, RecoveryReason::None, 20000);
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 40000, 7) && t.relapse,
+              "a relapse of a recovery that never escalated still resumes (the walk-back loop)");
+
         // A straggler standing still is stuck: no walk back, bring it (after kStuckStragglerMs)
         Check(EscalateStuckStraggler(RecoveryStep::Act, RecoveryReason::PartyFragmented, kStuckStragglerMs) ==
                   RecoveryStep::Escalate,

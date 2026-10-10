@@ -1164,8 +1164,12 @@ namespace DungeonLeadKernel
                 return false;
             }
         }
+        // A recovery that got as far as the escalation and cleared did its job (the straggler was
+        // brought); the same problem again is a new one with fresh windows, not the old clocks run
+        // on - they were long past the abort mark (RFC: a bot stuck again 55 s after it was brought
+        // ended the run on the spot). Repeats are bounded by kMaxStragglerBrought instead.
         bool const relapse = RelapseContinuesEpisode(observed) && t.reason == RecoveryReason::None &&
-                             t.clearedReason == observed &&
+                             t.clearedReason == observed && t.clearedStep != RecoveryStep::Escalate &&
                              t.clearedSubject == subject && uint32_t(now - t.clearedAt) < kRecoveryRelapseMs;
         if (relapse)
         {
@@ -1187,6 +1191,9 @@ namespace DungeonLeadKernel
         t.relapse = false;
         return true;
     }
+
+    // How often one bot is brought to the leader before the run gives up on keeping the party together.
+    constexpr uint8_t kMaxStragglerBrought = 3;
 
     // A straggler that has not moved for this long is stuck, not slow: walking back to it only
     // ends the recovery as soon as the leader is near, and the walk on makes it fall behind again
