@@ -82,6 +82,21 @@ Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below)
 bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
 mixed human+bot runs have not been made on any build.
 
+## Campaign `verify-20261023-0740-41f4375` (TBC normals, DLN-003/DLN-023 build)
+
+Same profile, build `41f4375`, Slave Pens (140) and Mana-Tombs (148) twice each:
+
+| Run | Dungeon | Verdict | Health | Notes |
+|---|---|---|---|---|
+| 1879825240293376 | Slave Pens | FULL_ROUTE | warning | no wipe |
+| 1879825240293377 | Mana-Tombs | FULL_ROUTE | warning | 2 wipes, checkpoint restores 5->4 and 11->11 |
+| 1879825240293378 | Slave Pens | FULL_ROUTE | warning | no wipe |
+| 1879825240293379 | Mana-Tombs | PARTIAL | warning | 4 wipes, `wipe_giveup` (MaxWipesPerRun 3) |
+
+72 `persistent_wait` recoveries (eating/drinking), none failed - no stale-clock abort after a
+fight. No Slave Pens wipe, so the anchor walk-back (`checkpoint_walk_back`) was not exercised.
+Heartbeat `lost_lines` 0 for the whole campaign.
+
 ## Campaign `verify-20261023-0553-b0993ee` (Phase 1 + leader-not-in-world close-out)
 
 Same profile and stack as below, build `b0993ee`. All six runs FULL_ROUTE (`tools/run_replay`):
