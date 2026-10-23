@@ -34,7 +34,6 @@ struct DungeonRouteStep
     // Lets a door that is gone be told apart from bad data (DLN-006, WalkDoorStep).
     uint32 doorSpawnId = 0;
 
-
     bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
     bool IsWalkable() const
     {
@@ -275,6 +274,7 @@ struct DungeonLeadState
     DungeonLeadKernel::InteractionState interactionState = DungeonLeadKernel::InteractionState::None;
     ObjectGuid interactionTarget;
     bool interactionActed = false;   // the one attempt to open it ourselves was made
+    bool interactionAskedPlayer = false;  // a key only a player holds was asked for (DLN-004)
     uint32 interactionActiveMs = 0;  // time actually spent holding at it (AdvanceInteractionClock)
     uint32 interactionLastTs = 0;
     uint32 lastLeashLogTs = 0;

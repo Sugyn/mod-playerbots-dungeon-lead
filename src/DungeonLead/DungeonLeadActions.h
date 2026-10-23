@@ -35,6 +35,9 @@ namespace DungeonLead
     // Readiness (healer, deaths, resting, mana, leash, spread) lives in DungeonPartyState; this
     // is the one piece of it other code (the canary's "don't take over mid-pull") needs directly.
     bool GroupInCombat(PlayerbotAI* botAI);
+    // DLN-004: a group member the module may act through (cast, Use, loot, move) - a bot, not a
+    // real player and not a player's self-bot. The one policy for every autonomous side effect.
+    bool IsBotActor(Player* p);
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
 
     // Route progress, shared by the route walk and the pull controller.

@@ -42,6 +42,14 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A key held only by a real player is no longer used through that player's character (DLN-004).
+  The use step and the door controller picked any living party member on the map with the key and
+  cast the key spell, used the object or looted the chest as that member. Both now pick a bot
+  holder only (`DungeonLead::IsBotActor`: not a real player, not a self-bot; selection in
+  `ChooseKeyUser`). When only a player has the key, the leader asks once (`use_needs_player`,
+  `door_needs_player`) and watches the world: a door is waited for as before, a use step is done
+  when its verified effect is seen (Defias Cannon, Troll Cage), otherwise it fails through the
+  objective policy after `EventWaitSeconds` (`use_needs_player`, `PlayerMissing`).
 - `AiPlayerbot.DungeonLead.SkipOptional=1` skips optional trash only (DLN-005). It used to skip
   every pull step, including `required` trash (Zul'Farrak's Sergeant Bly), without recording a
   skipped mandatory objective, so the run could still end Complete. One predicate,

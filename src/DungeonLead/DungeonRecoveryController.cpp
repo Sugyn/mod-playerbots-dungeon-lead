@@ -34,7 +34,7 @@ namespace
 
     bool IsBotMember(Player* p)
     {
-        return p && !IsRealPlayer(p) && !IsSelfBot(p);
+        return DungeonLead::IsBotActor(p);
     }
 
     // What needs recovering right now, and who it is about.

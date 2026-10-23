@@ -1479,6 +1479,43 @@ namespace DungeonLeadKernel
         return waitExpired ? MissingDoorStep::Fail : MissingDoorStep::Wait;
     }
 
+    // DLN-004: who uses a key on a route object or door. Only a bot the module may act through
+    // (not a real player, not a player's self-bot) is ever made to cast, Use or loot; a key held only
+    // by a player is asked for, and the world is watched for the player using it.
+    struct KeyCandidate
+    {
+        bool hasKey = false;
+        bool alive = false;
+        bool sameMap = false;
+        bool botActor = false;  // !IsRealPlayer && !IsSelfBot
+    };
+
+    enum class KeyUse : uint8_t
+    {
+        BotUses,         // `index` names the bot that uses it
+        PlayerMustUse,   // only a player has it: ask, watch the world, never act through them
+        NobodyHasKey,
+    };
+
+    inline KeyUse ChooseKeyUser(std::vector<KeyCandidate> const& members, int& index)
+    {
+        index = -1;
+        bool playerHasIt = false;
+        for (size_t i = 0; i < members.size(); ++i)
+        {
+            KeyCandidate const& m = members[i];
+            if (!m.hasKey || !m.alive || !m.sameMap)
+                continue;
+            if (m.botActor)
+            {
+                index = int(i);
+                return KeyUse::BotUses;
+            }
+            playerHasIt = true;
+        }
+        return playerHasIt ? KeyUse::PlayerMustUse : KeyUse::NobodyHasKey;
+    }
+
     // 2D distance from point P to the segment A-B. Used to tell a door in the way (near the line
     // from the leader to where it is going) from a side-room door that just happens to be close.
     inline float DistanceToSegment2D(float px, float py, float ax, float ay, float bx, float by)

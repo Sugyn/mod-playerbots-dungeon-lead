@@ -33,7 +33,7 @@ pack_id. Grouped by what they prove, with what a replay is missing:
 | Combat | `boss_prep`, `boss_combat`, `leash_hold`, `waiting` (group in combat) | boss anchor, leash refusals | boss engaged/killed times, mob deaths, party deaths, add joins |
 | Readiness | `waiting`, `post_combat_decision` | why the leader waited | party spread / healer distance as numbers |
 | Recovery | `recovery_start/complete/failed`, `recovery_escalate(_deferred)`, `wipe_detected`, `wipe_recovered`, `wipe_recovery_teleport`, `wipe_giveup`, `checkpoint_restore` | recovery episodes, wipes, checkpoint | who died, when, where, order; positions before/after |
-| Interaction | `interaction_state`, `door_open`, `door_opened_by_us`, `door_not_found`, `use`, `use_waiting`, `use_failed`, `key_looted`, `talk`, `talk_waiting`, `talk_not_ours`, `event_assist`, `area_trigger` | what was opened/used/talked to and how | object position as numbers |
+| Interaction | `interaction_state`, `door_open`, `door_opened_by_us`, `door_not_found`, `door_needs_player`, `use`, `use_waiting`, `use_needs_player`, `use_failed`, `key_looted`, `talk`, `talk_waiting`, `talk_not_ours`, `event_assist`, `area_trigger` | what was opened/used/talked to and how | object position as numbers |
 | Integrity | `unexpected_teleport`, `instance_validity_restored`, `strategy_restored`, `telemetry_dropped` | integrity events | - |
 | Objectives | `objective_retry`, `objective_failed`, `objective_skipped`, `route_complete` | objective outcome with requirement and reason | - |
 

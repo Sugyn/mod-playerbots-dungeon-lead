@@ -62,13 +62,17 @@ namespace
     }
 
     // How a player would open this door: who acts, on what. A lock that opens by hand (no skill) ->
-    // the leader on the door; a key lock -> the party member with the key, on the door; otherwise a
-    // lever next to the door on the leader's side. Event doors (no lock, no lever) -> nobody.
-    bool FindOpener(PlayerbotAI* botAI, GameObject* door, Player*& actor, GameObject*& target, std::string& how)
+    // the leader on the door; a key lock -> a bot in the party with the key, on the door (DLN-004:
+    // never a real player - `playerKey` names the key when only a player holds it, and the door is
+    // then only waited for); otherwise a lever next to the door on the leader's side. Event doors
+    // (no lock, no lever) -> nobody.
+    bool FindOpener(PlayerbotAI* botAI, GameObject* door, Player*& actor, GameObject*& target, std::string& how,
+                    uint32& playerKey)
     {
         Player* bot = botAI->GetBot();
         actor = nullptr;
         target = nullptr;
+        playerKey = 0;
         if (LockEntry const* lock = sLockStore.LookupEntry(door->GetGOInfo()->GetLockId()))
             for (uint8 i = 0; i < MAX_LOCK_CASE && !actor; ++i)
             {
@@ -81,13 +85,34 @@ namespace
                 }
                 else if (lock->Type[i] == LOCK_KEY_ITEM && lock->Index[i])
                     if (Group* group = bot->GetGroup())
-                        for (GroupReference* ref = group->GetFirstMember(); ref && !actor; ref = ref->next())
+                    {
+                        std::vector<Player*> players;
+                        std::vector<DungeonLeadKernel::KeyCandidate> candidates;
+                        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
                             if (Player* m = ref->GetSource())
-                                if (m->IsAlive() && m->GetMap() == bot->GetMap() && m->HasItemCount(lock->Index[i], 1))
-                                {
-                                    actor = m;
-                                    how = "key=" + std::to_string(lock->Index[i]);
-                                }
+                            {
+                                DungeonLeadKernel::KeyCandidate c;
+                                c.hasKey = m->HasItemCount(lock->Index[i], 1);
+                                c.alive = m->IsAlive();
+                                c.sameMap = m->GetMap() == bot->GetMap();
+                                c.botActor = DungeonLead::IsBotActor(m);
+                                players.push_back(m);
+                                candidates.push_back(c);
+                            }
+                        int index = -1;
+                        switch (DungeonLeadKernel::ChooseKeyUser(candidates, index))
+                        {
+                            case DungeonLeadKernel::KeyUse::BotUses:
+                                actor = players[index];
+                                how = "key=" + std::to_string(lock->Index[i]);
+                                break;
+                            case DungeonLeadKernel::KeyUse::PlayerMustUse:
+                                playerKey = lock->Index[i];
+                                break;
+                            case DungeonLeadKernel::KeyUse::NobodyHasKey:
+                                break;
+                        }
+                    }
             }
         if (actor)
         {
@@ -186,6 +211,7 @@ void DungeonInteractionController::StartForDoor(PlayerbotAI* botAI, DungeonLeadS
     st.interactionState = InteractionState::None;
     st.interactionTarget = door->GetGUID();
     st.interactionActed = false;
+    st.interactionAskedPlayer = false;
     st.interactionActiveMs = 0;
     st.interactionLastTs = getMSTime();
     SetInteraction(botAI, st, InteractionState::Resolving,
@@ -218,7 +244,15 @@ bool DungeonInteractionController::Update(PlayerbotAI* botAI)
     Player* actor = nullptr;
     GameObject* opener = nullptr;
     std::string how;
-    f.canAct = go && !st.interactionActed && FindOpener(botAI, go, actor, opener, how);
+    uint32 playerKey = 0;
+    f.canAct = go && !st.interactionActed && FindOpener(botAI, go, actor, opener, how, playerKey);
+    if (!f.canAct && playerKey && !st.interactionAskedPlayer)
+    {
+        st.interactionAskedPlayer = true;
+        DungeonLead::RecordEvent(botAI, "door_needs_player", go->GetName() + " key=" + std::to_string(playerKey));
+        botAI->TellMasterNoFacing("Dungeon lead: " + go->GetName() + " needs a key only a player has - " +
+                                  "waiting for it to be opened");
+    }
     InteractionState const next =
         DungeonLeadKernel::DecideInteraction(f, sDungeonLeadConfig.dungeonLeadDoorWaitSeconds * IN_MILLISECONDS);
     if (next == InteractionState::Interacting && actor && opener)

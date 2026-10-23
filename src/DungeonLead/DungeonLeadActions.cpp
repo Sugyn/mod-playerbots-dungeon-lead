@@ -988,6 +988,11 @@ bool DungeonLead::HasSession(PlayerbotAI* botAI)
     return botAI && sDungeonRouteMgr.HasState(botAI->GetBot()->GetGUID());
 }
 
+bool DungeonLead::IsBotActor(Player* p)
+{
+    return p && !IsRealPlayer(p) && !IsSelfBot(p);
+}
+
 bool DungeonLead::GroupInCombat(PlayerbotAI* botAI)
 {
     return DungeonLeadKernel::AnyInCombat(DungeonPartyState::Evaluate(botAI).facts);
@@ -2230,6 +2235,7 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     st.talkNpcStillSince = 0;
     st.interactionIssued = false;
+    st.interactionAskedPlayer = false;
     // the next step's pack and pull (if any) start from scratch
     st.packId = 0;
     st.packState = DungeonLeadKernel::PackState::Unknown;
@@ -2288,6 +2294,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     st.talkNpcStillSince = 0;
     st.interactionIssued = false;
+    st.interactionAskedPlayer = false;
     st.ccFailed.clear();
     st.interactionType = DungeonLeadKernel::InteractionType::None;
     st.interactionState = DungeonLeadKernel::InteractionState::None;
@@ -2831,6 +2838,13 @@ namespace
         }
     }
 
+    // DLN-004: UseEffectConfirmed has a world check for this entry (not the dispatch floor) - the
+    // only way to see a player use the object themselves.
+    bool UseEffectObservable(uint32 entry)
+    {
+        return entry == 16398 || entry == 141070;
+    }
+
     // DL-006: same idea for "talk" objectives. Of the currently-shipped talk rows, SFK's two
     // faction-exclusive prisoners both unlock a door (a DIFFERENT object than the NPC); ZF's
     // Sergeant Bly turns hostile on his own (no cross-object needed). Weegli Blastfuse's gossip
@@ -2925,12 +2939,51 @@ bool DungeonLeadNextAction::WalkUseStep(DungeonLeadState& st, WorldPosition cons
         }
     if (keyItem)
     {
+        // DLN-004: the key is used by a bot that has it; a key only a player holds is asked for and
+        // the world watched for the player using it - the module never casts, uses or loots
+        // through a player's character.
         user = nullptr;
+        std::vector<Player*> players;
+        std::vector<DungeonLeadKernel::KeyCandidate> candidates;
         if (Group* group = bot->GetGroup())
-            for (GroupReference* ref = group->GetFirstMember(); ref && !user; ref = ref->next())
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
                 if (Player* m = ref->GetSource())
-                    if (m->IsAlive() && m->GetMap() == bot->GetMap() && m->HasItemCount(keyItem, 1))
-                        user = m;
+                {
+                    DungeonLeadKernel::KeyCandidate c;
+                    c.hasKey = m->HasItemCount(keyItem, 1);
+                    c.alive = m->IsAlive();
+                    c.sameMap = m->GetMap() == bot->GetMap();
+                    c.botActor = DungeonLead::IsBotActor(m);
+                    players.push_back(m);
+                    candidates.push_back(c);
+                }
+        int index = -1;
+        DungeonLeadKernel::KeyUse const keyUse = DungeonLeadKernel::ChooseKeyUser(candidates, index);
+        if (keyUse == DungeonLeadKernel::KeyUse::BotUses)
+            user = players[index];
+        else if (keyUse == DungeonLeadKernel::KeyUse::PlayerMustUse)
+        {
+            if (UseEffectObservable(step.entry) && UseEffectConfirmed(bot, step.entry, go))
+            {
+                DungeonLead::RecordEvent(botAI, "use", step.boss + " entry=" + std::to_string(step.entry) +
+                                                       " by=player key=" + std::to_string(keyItem));
+                DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+                return true;
+            }
+            if (!st.interactionAskedPlayer)
+            {
+                st.interactionAskedPlayer = true;
+                DungeonLead::RecordEvent(botAI, "use_needs_player",
+                                         step.boss + " key=" + std::to_string(keyItem) +
+                                             " observable=" + (UseEffectObservable(step.entry) ? "1" : "0"));
+                botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " needs a key only a player has - " +
+                                          "please use it");
+            }
+            if (EventWaitExpired(st))
+                DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
+                                           DungeonFailureReason::PlayerMissing, "use_needs_player");
+            return true;
+        }
         if (!user)
         {
             if (EventWaitExpired(st))

@@ -1327,6 +1327,32 @@ namespace
               "a failed missing door is retried, then aborts the run - never skipped");
     }
 
+    // DLN-004: a key is only ever used through a bot. A real player or a player's self-bot holding
+    // the only key is asked, never acted through; dead/other-map holders don't count.
+    void TestKeyUser()
+    {
+        auto C = [](bool key, bool alive, bool sameMap, bool bot) {
+            KeyCandidate c;
+            c.hasKey = key;
+            c.alive = alive;
+            c.sameMap = sameMap;
+            c.botActor = bot;
+            return c;
+        };
+        int i = -2;
+        Check(ChooseKeyUser({C(false, true, true, true), C(true, true, true, true)}, i) == KeyUse::BotUses && i == 1,
+              "bot holder -> that bot uses it");
+        Check(ChooseKeyUser({C(true, true, true, false)}, i) == KeyUse::PlayerMustUse && i == -1,
+              "only a player (or self-bot) holds it -> player must use it, no actor");
+        Check(ChooseKeyUser({C(true, true, true, false), C(true, true, true, true)}, i) == KeyUse::BotUses && i == 1,
+              "player and bot hold it -> the bot, never the player");
+        Check(ChooseKeyUser({C(true, false, true, true), C(true, true, false, true)}, i) == KeyUse::NobodyHasKey,
+              "dead or other-map bot holders don't count");
+        Check(ChooseKeyUser({C(true, false, true, false)}, i) == KeyUse::NobodyHasKey,
+              "a dead player holder is not asked");
+        Check(ChooseKeyUser({}, i) == KeyUse::NobodyHasKey && i == -1, "empty group -> nobody");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1429,6 +1455,7 @@ int main()
     TestPackIdentity();
     TestInteraction();
     TestMissingDoor();
+    TestKeyUser();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
