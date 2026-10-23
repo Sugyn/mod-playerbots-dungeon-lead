@@ -1306,6 +1306,27 @@ namespace
         return f;
     }
 
+    // DLN-006: a door missing from its spot advances only with the instance's saved open state
+    // (Deadmines' Iron Clad Door despawns on map load when saved GO_STATE_ACTIVE); bad data or a
+    // late load waits, then fails into the objective policy - never silent progress.
+    void TestMissingDoor()
+    {
+        using M = MissingDoorStep;
+        Check(DecideMissingDoor(true, 0, false) == M::Satisfied, "saved ACTIVE (opened, despawned) -> satisfied");
+        Check(DecideMissingDoor(true, 2, false) == M::Satisfied, "saved ACTIVE_ALTERNATIVE (cannon) -> satisfied");
+        Check(DecideMissingDoor(true, 0, true) == M::Satisfied, "saved open wins over an expired wait");
+        Check(DecideMissingDoor(true, 1, false) == M::Wait, "saved closed (READY) -> wait, not progress");
+        Check(DecideMissingDoor(true, 3, false) == M::Wait, "no saved state -> wait (late load)");
+        Check(DecideMissingDoor(false, 0, false) == M::Wait, "no resolved spawn -> stored state is not consulted");
+        Check(DecideMissingDoor(true, 3, true) == M::Fail, "no saved state, budget spent -> fail");
+        Check(DecideMissingDoor(false, 3, true) == M::Fail, "bad data (no spawn), budget spent -> fail");
+        Check(DecideObjectiveFailure(ClassifyRequirement(DungeonRouteKind::Door, 16397), 1, 2) ==
+                  ObjectiveFailureAction::Retry &&
+                  DecideObjectiveFailure(ClassifyRequirement(DungeonRouteKind::Door, 16397), 2, 2) ==
+                      ObjectiveFailureAction::Abort,
+              "a failed missing door is retried, then aborts the run - never skipped");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1407,6 +1428,7 @@ int main()
     TestRequiredRouteContract();
     TestPackIdentity();
     TestInteraction();
+    TestMissingDoor();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

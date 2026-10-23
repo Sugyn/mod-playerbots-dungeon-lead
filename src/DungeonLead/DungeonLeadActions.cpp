@@ -32,6 +32,7 @@
 #include "Event.h"
 #include "Formations.h"
 #include "Group.h"
+#include "InstanceScript.h"
 #include "LFGMgr.h"
 #include "LootMgr.h"
 #include "LastMovementValue.h"
@@ -2714,7 +2715,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
 // A door step with its game object in the route data: done once the world shows that door open
 // (seen from wherever the leader is); a closed one is waited for at the door by the interaction
 // controller (DoorWaitSeconds, then the objective policy - a door is Required); no such object at
-// the spot means nothing is in the way.
+// the spot is progress only if the instance saved that spawn open (see below).
 bool DungeonLeadNextAction::WalkDoorStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
 {
     float const dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
@@ -2734,12 +2735,41 @@ bool DungeonLeadNextAction::WalkDoorStep(DungeonLeadState& st, WorldPosition con
     if (dist > std::max(sDungeonLeadConfig.dungeonLeadArriveDistance, kDoorWaitDistance))
         return MoveRouteTo(st, dest, step);
 
+    // DLN-006: no door at the spot is progress only if the instance saved that spawn open (a door
+    // that despawns once opened); otherwise it is looked for again within EventWaitSeconds, then
+    // the objective failure policy decides (a door is Required - retried, then the run is partial).
     if (!door)
     {
-        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}': no door here, moving on", bot->GetName(),
-                 step.step, step.boss);
-        DungeonLead::RecordEvent(botAI, "door_not_found", step.boss + " entry=" + std::to_string(step.entry));
-        DungeonLead::AdvanceStep(st, /*confirmed*/ false);
+        InstanceScript* instance = bot->GetInstanceScript();
+        bool const haveSpawn = step.doorSpawnId && instance;
+        uint8 const stored = haveSpawn ? instance->GetStoredGameObjectState(step.doorSpawnId) : 3;
+        bool const firstLook = st.eventWaitLastTs == 0;
+        DungeonLeadKernel::MissingDoorStep const decision =
+            DungeonLeadKernel::DecideMissingDoor(haveSpawn, stored, EventWaitExpired(st));
+        std::string const detail = step.boss + " entry=" + std::to_string(step.entry) +
+                                   " spawn=" + std::to_string(step.doorSpawnId) +
+                                   " stored_state=" + std::to_string(stored);
+        switch (decision)
+        {
+            case DungeonLeadKernel::MissingDoorStep::Satisfied:
+                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}': gone, saved open - moving on",
+                         bot->GetName(), step.step, step.boss);
+                DungeonLead::RecordEvent(botAI, "door_open", detail + " reason=saved_open_despawned");
+                DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+                break;
+            case DungeonLeadKernel::MissingDoorStep::Wait:
+                if (firstLook)
+                {
+                    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}': no door here, waiting for it",
+                             bot->GetName(), step.step, step.boss);
+                    DungeonLead::RecordEvent(botAI, "door_not_found", detail);
+                }
+                break;
+            case DungeonLeadKernel::MissingDoorStep::Fail:
+                DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Navigation,
+                                           DungeonFailureReason::ObjectiveTimeout, "door_not_found");
+                break;
+        }
         return true;
     }
     DungeonInteractionController::StartForDoor(botAI, st, door, "route");

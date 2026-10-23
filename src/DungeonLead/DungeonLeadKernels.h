@@ -1459,6 +1459,26 @@ namespace DungeonLeadKernel
         }
     }
 
+    // DLN-006: a route door that is not at its spot. Absence alone is not "nothing in the way" - bad
+    // route data, an unloaded object and a door that despawned after opening all look the same.
+    // Only the instance's saved state for that spawn (InstanceScript::GetStoredGameObjectState)
+    // proves the last case: 0 = GO_STATE_ACTIVE, 2 = GO_STATE_ACTIVE_ALTERNATIVE (opened);
+    // 1 = closed; anything above 2 = no saved state. Deadmines' Iron Clad Door despawns on map load
+    // when saved ACTIVE (instance_deadmines.cpp). Otherwise the door is waited for, then failed.
+    enum class MissingDoorStep : uint8_t
+    {
+        Satisfied,  // the instance saved it open: nothing is in the way
+        Wait,       // look again (late load), within the step's wait budget
+        Fail,       // budget spent: the objective failure policy decides
+    };
+
+    inline MissingDoorStep DecideMissingDoor(bool haveSpawn, uint8_t storedState, bool waitExpired)
+    {
+        if (haveSpawn && (storedState == 0 || storedState == 2))
+            return MissingDoorStep::Satisfied;
+        return waitExpired ? MissingDoorStep::Fail : MissingDoorStep::Wait;
+    }
+
     // 2D distance from point P to the segment A-B. Used to tell a door in the way (near the line
     // from the leader to where it is going) from a side-room door that just happens to be close.
     inline float DistanceToSegment2D(float px, float py, float ax, float ay, float bx, float by)

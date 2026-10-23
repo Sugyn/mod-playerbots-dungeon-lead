@@ -72,8 +72,46 @@ void DungeonRouteMgr::Load()
         } while (result->NextRow());
     }
 
-    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind)", count,
-             routes.size(), unknownKinds);
+    // DLN-006: each door row's world spawn (same entry and map, nearest within 10 yd of the row),
+    // so a door that is not there can be checked against the instance's saved state for it. One
+    // pass over the loaded gameobject spawns, at load time only.
+    std::unordered_map<uint32, std::vector<DungeonRouteStep*>> doorsByEntry;
+    std::unordered_map<DungeonRouteStep*, uint32> doorMap;
+    for (auto& kv : routes)
+        for (DungeonRouteStep& s : kv.second.steps)
+            if (s.IsDoorObject() && s.HasPosition())
+            {
+                doorsByEntry[s.entry].push_back(&s);
+                doorMap[&s] = kv.second.mapId;
+            }
+    uint32 doorsResolved = 0;
+    if (!doorsByEntry.empty())
+    {
+        std::unordered_map<DungeonRouteStep*, float> bestDist2;
+        for (auto const& kv : sObjectMgr->GetAllGOData())
+        {
+            auto it = doorsByEntry.find(kv.second.id);
+            if (it == doorsByEntry.end())
+                continue;
+            for (DungeonRouteStep* s : it->second)
+            {
+                if (kv.second.mapid != doorMap[s])
+                    continue;
+                float const dx = kv.second.posX - s->x, dy = kv.second.posY - s->y, dz = kv.second.posZ - s->z;
+                float const d2 = dx * dx + dy * dy + dz * dz;
+                auto best = bestDist2.find(s);
+                if (d2 < 100.0f && (best == bestDist2.end() || d2 < best->second))
+                {
+                    bestDist2[s] = d2;
+                    s->doorSpawnId = kv.first;
+                }
+            }
+        }
+        doorsResolved = uint32(bestDist2.size());
+    }
+
+    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind, {}/{} door spawns)",
+             count, routes.size(), unknownKinds, doorsResolved, uint32(doorMap.size()));
 }
 
 void DungeonRouteMgr::EnsureLoaded()

@@ -46,6 +46,15 @@ the MAJOR bar above is met.
   every pull step, including `required` trash (Zul'Farrak's Sergeant Bly), without recording a
   skipped mandatory objective, so the run could still end Complete. One predicate,
   `SkipOptionalEligible` (`DungeonRouteTypes.h`), now decides it. Default (`0`) is unchanged.
+- A required door that is not at its route spot no longer counts as passed (DLN-006). The route
+  walk used to move on (`door_not_found`) without a mandatory failure, so bad data or an unloaded
+  object could still end Complete. The door's world spawn is now resolved once at route load; the
+  step is done without the object only when the instance saved that spawn open
+  (`InstanceScript::GetStoredGameObjectState` = active / active-alternative - Deadmines' Iron
+  Clad Door despawns on map load when saved active). Otherwise it is looked for again for
+  `EventWaitSeconds`, then the objective failure policy retries it and stops the run as partial.
+  `door_not_found` carries `spawn=` and `stored_state=`; a saved-open pass is `door_open
+  reason=saved_open_despawned`.
 - A wait for someone eating, drinking or healing up no longer runs through a fight. Its clock was
   past the abort mark when the fight ended, and the run was stopped seconds later
   (`recovery_failed persistent_wait`, Mana-Tombs).

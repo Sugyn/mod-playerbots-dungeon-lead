@@ -30,6 +30,10 @@ struct DungeonRouteStep
     uint32 entry = 0;
     float x = 0.f, y = 0.f, z = 0.f;
     std::string note;
+    // Door rows: the world gameobject spawn at (x, y, z), resolved once at load; 0 = none found.
+    // Lets a door that is gone be told apart from bad data (DLN-006, WalkDoorStep).
+    uint32 doorSpawnId = 0;
+
 
     bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
     bool IsWalkable() const
