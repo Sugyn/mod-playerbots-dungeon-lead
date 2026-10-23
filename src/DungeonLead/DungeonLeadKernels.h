@@ -1432,6 +1432,13 @@ namespace DungeonLeadKernel
         return holdingAtIt ? activeMs + deltaMs : activeMs;
     }
 
+    // DLN-007: whether the controller may act on the object now (Use a lever, a bot's key). The
+    // world is observed regardless; acting waits while paused or fighting, and happens once.
+    inline bool InteractionMayAct(bool alreadyActed, bool paused, bool inCombat)
+    {
+        return !alreadyActed && !paused && !inCombat;
+    }
+
     inline InteractionState DecideInteraction(InteractionFacts const& f, uint32_t timeoutMs)
     {
         if (!InteractionActive(f.current))

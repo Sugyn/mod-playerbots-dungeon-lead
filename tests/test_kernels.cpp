@@ -1353,6 +1353,24 @@ namespace
         Check(ChooseKeyUser({}, i) == KeyUse::NobodyHasKey && i == -1, "empty group -> nobody");
     }
 
+    // DLN-007: pause holds route side effects - no new door/lever action while paused or
+    // fighting, the interaction's clock stands outside Travelling, and the brain holds the
+    // session in WaitingReady (combat still tracked).
+    void TestPauseGates()
+    {
+        Check(InteractionMayAct(false, false, false), "idle, not acted -> may act");
+        Check(!InteractionMayAct(false, true, false), "paused -> no Use");
+        Check(!InteractionMayAct(false, false, true), "in combat -> no Use");
+        Check(!InteractionMayAct(true, false, false), "acted once -> not again");
+        Check(AdvanceInteractionClock(5000, 2000, /*holdingAtIt*/ false) == 5000,
+              "paused (not Travelling) -> door wait clock stands still");
+        InteractionFacts f = I(InteractionState::WaitingPrerequisite, 30000, true, false);
+        f.canAct = InteractionMayAct(false, /*paused*/ true, false);
+        Check(DecideInteraction(f, 120000) == InteractionState::WaitingPrerequisite, "paused door: still waiting");
+        f.satisfied = true;
+        Check(DecideInteraction(f, 120000) == InteractionState::Complete, "door opened while paused -> observed");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1456,6 +1474,7 @@ int main()
     TestInteraction();
     TestMissingDoor();
     TestKeyUser();
+    TestPauseGates();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

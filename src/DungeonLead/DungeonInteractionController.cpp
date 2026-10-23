@@ -245,7 +245,10 @@ bool DungeonInteractionController::Update(PlayerbotAI* botAI)
     GameObject* opener = nullptr;
     std::string how;
     uint32 playerKey = 0;
-    f.canAct = go && !st.interactionActed && FindOpener(botAI, go, actor, opener, how, playerKey);
+    // DLN-007: the world is still watched while paused or fighting (the door may open on its
+    // own), but nothing is used then.
+    f.canAct = go && DungeonLeadKernel::InteractionMayAct(st.interactionActed, st.paused, bot->IsInCombat()) &&
+               FindOpener(botAI, go, actor, opener, how, playerKey);
     if (!f.canAct && playerKey && !st.interactionAskedPlayer)
     {
         st.interactionAskedPlayer = true;

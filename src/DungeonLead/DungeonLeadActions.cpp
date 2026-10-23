@@ -1956,7 +1956,12 @@ bool DungeonLeadNextAction::isUseful()
         return false;
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
     if (st.paused)
-        return false;  // "startdungeon pause": stand still until "startdungeon continue"
+    {
+        // "startdungeon pause": stand still until "startdungeon continue" (out of combat here)
+        if (bot->isMoving())
+            bot->StopMoving();
+        return false;
+    }
     if (st.state == DungeonLeadKernel::LeadState::Travelling && DungeonPullController::StopForPull(botAI, st))
     {
         if (bot->isMoving())
@@ -3701,12 +3706,18 @@ bool StartDungChatShortcutAction::Execute(Event event)
         }
         if (sub == "pause")
         {
+            // DLN-007: stop the route walk where it is - a point move already under way kept going
+            // to its end. Not in combat: the fight's own movement (chase, positioning) is upstream's.
             st.paused = true;
+            if (!bot->IsInCombat() && bot->isMoving())
+                bot->StopMoving();
+            DungeonLead::RecordEvent(botAI, "pause", DungeonLeadKernel::ToString(st.state));
             botAI->TellMaster("Dungeon lead: PAUSED - staying put until 'startdungeon continue'");
         }
         else if (sub == "continue")
         {
             st.paused = false;
+            DungeonLead::RecordEvent(botAI, "continue", DungeonLeadKernel::ToString(st.state));
             botAI->TellMaster("Dungeon lead: resuming");
         }
         else if (sub == "reset")

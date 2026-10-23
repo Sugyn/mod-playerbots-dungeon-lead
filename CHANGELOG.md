@@ -42,6 +42,12 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- `startdungeon pause` stops the leader where it is (DLN-007). It only set a flag: a route move
+  already under way ran to its end, and the door controller could still use a lever or a bot's
+  key while paused or in combat. Pause now stops the leader's movement out of combat, the route
+  walk keeps it stopped, and the door controller only observes the door while paused or fighting
+  (`InteractionMayAct`). Combat movement, healing and defence are untouched. `pause` and
+  `continue` are recorded with the leader state.
 - A key held only by a real player is no longer used through that player's character (DLN-004).
   The use step and the door controller picked any living party member on the map with the key and
   cast the key spell, used the object or looted the chest as that member. Both now pick a bot
