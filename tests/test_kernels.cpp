@@ -728,6 +728,18 @@ namespace
         Check(p.primary == 3, "boss is primary");
         Check(p.secondary == 2, "elite caster is secondary");
         Check(p.cc == 1, "remaining elite is the CC target");
+        // DLN-014: no bot in the party can CC it -> no moon; the plan is otherwise the same
+        {
+            std::vector<TargetCandidate> noCaster = pack;
+            noCaster[0].ccCastable = false;
+            TargetPlan q = PickTargetPlan(noCaster, TargetPlan(), true);
+            Check(q.cc == 0 && q.primary == 3 && q.secondary == 2, "no usable CC caster -> no moon");
+            TargetPlan keep;
+            keep.cc = 1;
+            Check(PickTargetPlan(noCaster, keep, true).cc == 0, "a kept, uncontrolled moon without a caster is released");
+            noCaster[0].controlled = true;
+            Check(PickTargetPlan(noCaster, keep, true).cc == 1, "a mob already controlled keeps its moon");
+        }
 
         std::vector<TargetCandidate> trash{T(10, false, false, false, 9), T(11, false, true, false, 12),
                                            T(12, false, false, true, 4)};

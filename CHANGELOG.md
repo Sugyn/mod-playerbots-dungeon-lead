@@ -82,6 +82,15 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- The moon (CC mark) goes only to a mob a party bot can crowd-control (DLN-014). The target plan
+  picked an elite non-boss for CC without asking whether anyone could do it; with no capable caster
+  the mob sat excluded from damage until the CC timeout. A CC candidate now needs a living bot in
+  the party with the combat "cc" strategy for which `PlayerbotAI::CanCastSpell` accepts one of
+  mod-playerbots' CC spells on it (polymorph, banish, fear, hibernate, entangling roots, cyclone,
+  freezing trap, scare beast - creature type, immunity, cooldown and sight as the spell check sees
+  them; range not required). Re-evaluated every plan; a kept moon on an uncontrolled mob without a
+  caster is released, a mob already controlled keeps it. Players' own CC is not planned for; the
+  cast itself stays mod-playerbots'. Exclusive caster reservation is not implemented.
 - Slave Pens: path anchor "Mennu to Rokmar 13" moved from (-45.7, -478.5, 7.2), 9 yd above the
   walkable floor and unreachable (`skip_stuck` on every run since it was added), to
   (-42.0, -473.8, -1.6), where the leader arrives from anchor 12 and walks on to anchor 14 in the

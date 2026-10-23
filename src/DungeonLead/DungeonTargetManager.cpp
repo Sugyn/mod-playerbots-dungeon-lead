@@ -41,6 +41,29 @@ namespace
     constexpr float kPackRadius = 20.0f;
     constexpr float kFightRadius = 40.0f;
 
+    // DLN-014: the crowd control spells mod-playerbots' class strategies cast on a "cc" target
+    // (CastCrowdControlSpellAction and the hunter's "on cc" actions). Only a party bot with the
+    // combat "cc" strategy uses them; a player's own CC is not planned for.
+    char const* const kCcSpells[] = {"polymorph", "banish",        "fear",          "hibernate",
+                                     "entangling roots", "cyclone", "freezing trap", "scare beast"};
+
+    bool PartyCanCc(Group* group, Creature* target)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || !m->IsAlive() || m->GetMap() != target->GetMap() || !DungeonLead::IsBotActor(m))
+                continue;
+            PlayerbotAI* ai = GET_PLAYERBOT_AI(m);
+            if (!ai || !ai->HasStrategy("cc", BOT_STATE_COMBAT))
+                continue;
+            for (char const* spell : kCcSpells)
+                if (ai->CanCastSpell(spell, target))
+                    return true;
+        }
+        return false;
+    }
+
     bool IsElite(Creature const* c)
     {
         CreatureTemplate const* ct = c->GetCreatureTemplate();
@@ -167,6 +190,9 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
             t.controlled = c->HasBreakableByDamageCrowdControlAura();
             t.ccRefused = std::find(st.ccFailed.begin(), st.ccFailed.end(), guid) != st.ccFailed.end();
             t.fleeing = fleeing;
+            // DLN-014: only for a mob that could get the moon at all (the spell checks are not free)
+            if (sDungeonLeadConfig.dungeonLeadMarkCc && t.elite && !t.boss && !t.totem)
+                t.ccCastable = PartyCanCc(group, c);
             candidates.push_back(t);
             guids.push_back(guid);
         }

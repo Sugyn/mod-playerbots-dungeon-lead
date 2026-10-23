@@ -963,6 +963,10 @@ namespace DungeonLeadKernel
         bool controlled = false;  // under breakable crowd control right now (a sheep, a sap, ...)
         bool ccRefused = false;   // our CC never landed on it this step - don't mark it again
         bool fleeing = false;     // running for help (flee for assistance) or fleeing: it brings a pack
+        // DLN-014: a bot of the party could crowd-control it with its class CC right now as far as
+        // the spell check goes (PlayerbotAI::CanCastSpell; range is not required). Re-evaluated on
+        // every plan - a cooldown or a sight line is temporary.
+        bool ccCastable = true;
     };
 
     // A new CC target must be (nearly) untouched: crowd-controlling a mob the party has already
@@ -1052,7 +1056,8 @@ namespace DungeonLeadKernel
         // CC first among the kept slots: a kept CC target must not be promoted to a kill target -
         // until it is the only enemy left; then it is released and becomes the kill target.
         TargetCandidate const* keptCc = wantCc && previous.cc ? find(previous.cc) : nullptr;
-        if (keptCc && keptCc->elite && !keptCc->boss && !keptCc->ccRefused && candidates.size() > 1)
+        if (keptCc && keptCc->elite && !keptCc->boss && !keptCc->ccRefused && candidates.size() > 1 &&
+            (keptCc->ccCastable || keptCc->controlled))
             plan.cc = keptCc->id;
         // A mob already crowd controlled (an earlier moon, a class AI's own sheep) keeps the moon
         // rather than a second mob being controlled and the first one broken.
@@ -1080,7 +1085,7 @@ namespace DungeonLeadKernel
             // Only worth it with more than two enemies: CC the best remaining elite that is
             // neither kill target.
             uint64_t const cc = best([&](TargetCandidate const& c)
-                { return c.elite && !c.boss && !c.ccRefused && c.healthPct >= kCcMinHealthPct &&
+                { return c.elite && !c.boss && !c.ccRefused && c.ccCastable && c.healthPct >= kCcMinHealthPct &&
                          c.id != plan.primary && c.id != plan.secondary; });
             if (cc && candidates.size() > 2)
                 plan.cc = cc;
