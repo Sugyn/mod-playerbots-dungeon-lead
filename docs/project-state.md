@@ -21,7 +21,8 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 | DLN-008 finished run not reopened | 1 | P1 | IMPLEMENTED | `5f21c83`, build clean; owner checkpoint H2 taken as the plan's minimal option (refuse reset); open: held-complete reset/stop live |
 | DLN-009 stale queued leadership | 1 | P1 | IMPLEMENTED | `d84caea`, kernel tests, build clean; open: delayed-queue/cancel/group-change scenarios |
 | DLN-010 unknown-dungeon override scoped | 1 | P2 | IMPLEMENTED | `285b6f8`, build clean; open: no-session grinding bot control |
-| DLN-011 .. DLN-026 | 2-7 | - | TODO | |
+| DLN-023 telemetry sink failures | 7 | P2 | IMPLEMENTED | `TelemetrySinkHealth` + kernel tests, heartbeat `lost_lines`, build clean; open: unwritable/full log destination on staging |
+| DLN-011 .. DLN-022, DLN-024 .. DLN-026 | 2-7 | - | TODO | |
 
 Validation:
 - Fast suite (`bash tools/run_tests.sh`) after DLN-010: 394 kernel checks, 30 Python tests, all passing.

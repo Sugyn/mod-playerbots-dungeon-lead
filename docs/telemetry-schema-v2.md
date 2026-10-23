@@ -96,6 +96,12 @@ and `campaign_id`:
   still active - a campaign failure, not a dungeon one), `minutes`.
 - `run_requeued`: `lfg_id`, `reason`.
 - `campaign_finished`: `finished_at`, `runs`.
+- `heartbeat` (no `campaign_id`; once a minute while the world tick runs): `time` (server local
+  time), `active_sessions`, `queued_lines`, `lost_lines` (cumulative lines that left the buffer
+  but did not reach their file - open, write or flush failed - since process start; 0 = no known
+  loss). A heartbeat proves the flush path ran, not that a session advanced. Losses are also
+  logged to the core log (`playerbots.dungeonlead`) on the first loss per file, every 60 s while
+  failing, and on recovery.
 
 A run joins its campaign through `campaign_id` + `scenario_id` + tank name.
 

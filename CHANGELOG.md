@@ -45,6 +45,13 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Telemetry lines lost after leaving the buffer are counted and reported (DLN-023). The flush
+  drained the queue and then silently skipped a file that could not be opened, and ignored
+  `fputs`/`fflush` errors; only buffer overflow was reported. Every line that does not reach its
+  file is now counted per file (`TelemetrySinkHealth`), reported to the core log (first loss,
+  every 60 s while failing, recovery), and the cumulative count is in the campaign heartbeat
+  (`lost_lines`). A failed file is closed and opened again on the next flush; no retry loop, the
+  lost lines are not re-queued.
 - A session whose leader stays out of the world is closed out instead of skipped forever. The
   world guard skipped such a leader (normal for a second or two mid-teleport) on every pass with
   no record; Zul'Farrak run 1879810038038528 produced no event from minute 19 until the campaign

@@ -1055,6 +1055,23 @@ namespace
 
 namespace
 {
+    // DLN-023: lines lost after the drain (open/write/flush failure) are counted per file, a file
+    // turns failing on its first loss and ok again on its next successful write; the total never
+    // decreases, so a run that lost evidence stays marked.
+    void TestSinkHealth()
+    {
+        TelemetrySinkHealth h;
+        Check(!h.Record(TelemetryFile::EventsV2, 10, 0) && !h.AnyFailing(), "healthy write: no change");
+        Check(h.Record(TelemetryFile::EventsV2, 0, 4) && h.failing[size_t(TelemetryFile::EventsV2)],
+              "open/write failure -> failing, reported once");
+        Check(!h.Record(TelemetryFile::EventsV2, 0, 3), "still failing: no second transition");
+        Check(h.lost[size_t(TelemetryFile::EventsV2)] == 7 && h.TotalLost() == 7, "losses accumulate");
+        Check(!h.Record(TelemetryFile::Sessions, 5, 0) && h.AnyFailing(), "another file healthy, events still failing");
+        Check(h.Record(TelemetryFile::EventsV2, 2, 0) && !h.AnyFailing(), "writing again -> recovered");
+        Check(h.TotalLost() == 7, "recovery does not erase the loss count");
+        Check(!h.Record(TelemetryFile::Runs, 0, 0), "nothing to write: no change");
+    }
+
     void TestTelemetryBuffer()
     {
         TelemetryBuffer buf(3);
@@ -1541,6 +1558,7 @@ int main()
     TestCheckpoint();
     TestAssembly();
     TestTelemetryBuffer();
+    TestSinkHealth();
     TestTelemetryV2();
     TestObjectivePolicy();
     TestRequiredRouteContract();

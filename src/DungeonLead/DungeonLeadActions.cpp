@@ -193,6 +193,7 @@ namespace
     FILE* g_debugLogFile = nullptr;
     FILE* g_eventsV2File = nullptr;
     FILE* g_campaignsFile = nullptr;
+    DungeonLeadKernel::TelemetrySinkHealth g_sinkHealth;  // world thread only (FlushTelemetry)
 
     // Writes the header into a fresh (empty) file the first time it is opened.
     void EnsureHeader(FILE* f, bool& done, char const* header)
@@ -855,6 +856,7 @@ void DungeonLead::FlushTelemetry(bool force)
                                  .Str("time", FormatLogTimestamp())
                                  .Num("active_sessions", uint32(sDungeonRouteMgr.GetActiveSessionGuids().size()))
                                  .Num("queued_lines", uint32(g_telemetry.Size()))
+                                 .Num("lost_lines", uint64(g_sinkHealth.TotalLost()))
                                  .Done() +
                              "\n");
     }
@@ -867,9 +869,9 @@ void DungeonLead::FlushTelemetry(bool force)
     static bool sessionsHeader = false, runsHeader = false;
     FILE* sessions = OpenPersistent("DungeonLeadSessions.csv", g_sessionsLogFile);
     FILE* runs = OpenPersistent("DungeonLeadRuns.csv", g_runsLogFile);
-    FILE* debug = OpenPersistent("DungeonLeadDebug.log", g_debugLogFile);
+    OpenPersistent("DungeonLeadDebug.log", g_debugLogFile);
     FILE* eventsV2 = OpenPersistent("DungeonLeadEvents.v2.jsonl", g_eventsV2File);
-    FILE* campaigns = OpenPersistent("DungeonLeadCampaigns.jsonl", g_campaignsFile);
+    OpenPersistent("DungeonLeadCampaigns.jsonl", g_campaignsFile);
     if (sessions)
         EnsureHeader(sessions, sessionsHeader,
                      "timestamp,run_id,player,lfg_id,dungeon,tank,group_members,event,detail,outcome,"
@@ -879,15 +881,31 @@ void DungeonLead::FlushTelemetry(bool force)
                      "ended_at,run_id,tank,lfg_id,dungeon,origin,outcome,failure_domain,failure_reason,"
                      "skipped_steps,wipes,duration_ms,terminal_reason\n");
 
+    // DLN-023: every line that does not reach its file is counted (g_sinkHealth) and reported to
+    // the core log, which does not depend on these files. A file that failed is closed and opened
+    // again on the next flush - one attempt per flush, no retry loop, lines are not re-queued.
+    using DungeonLeadKernel::TelemetryFile;
+    constexpr size_t kFiles = DungeonLeadKernel::TelemetrySinkHealth::kFiles;
+    FILE** const handles[kFiles] = {&g_sessionsLogFile, &g_runsLogFile, &g_debugLogFile, &g_eventsV2File,
+                                     &g_campaignsFile};  // TelemetryFile order
+    char const* const names[kFiles] = {"DungeonLeadSessions.csv", "DungeonLeadRuns.csv", "DungeonLeadDebug.log",
+                                       "DungeonLeadEvents.v2.jsonl", "DungeonLeadCampaigns.jsonl"};
+    uint64 written[kFiles] = {};
+    uint64 lost[kFiles] = {};
+    bool failed[kFiles] = {};
     for (DungeonLeadKernel::TelemetryLine const& l : lines)
     {
-        FILE* f = l.file == DungeonLeadKernel::TelemetryFile::Sessions  ? sessions
-                : l.file == DungeonLeadKernel::TelemetryFile::Runs      ? runs
-                : l.file == DungeonLeadKernel::TelemetryFile::EventsV2  ? eventsV2
-                : l.file == DungeonLeadKernel::TelemetryFile::Campaigns ? campaigns
-                                                                        : debug;
-        if (f)
-            fputs(l.text.c_str(), f);
+        size_t const i = size_t(l.file);
+        FILE* f = i < kFiles ? *handles[i] : nullptr;
+        if (!f)
+            ++lost[i < kFiles ? i : size_t(TelemetryFile::Debug)];
+        else if (fputs(l.text.c_str(), f) == EOF)
+        {
+            ++lost[i];
+            failed[i] = true;
+        }
+        else
+            ++written[i];
     }
     if (dropped)
     {
@@ -902,9 +920,36 @@ void DungeonLead::FlushTelemetry(bool force)
                     DungeonLeadKernel::kTelemetrySchemaVersion, WallTimeIso().c_str(),
                     static_cast<unsigned long long>(dropped));
     }
-    for (FILE* f : {sessions, runs, debug, eventsV2, campaigns})
-        if (f)
-            fflush(f);
+    for (size_t i = 0; i < kFiles; ++i)
+    {
+        FILE*& f = *handles[i];
+        if (f && (fflush(f) != 0 || ferror(f)))
+            failed[i] = true;
+        if (failed[i])
+        {
+            lost[i] += written[i];  // not confirmed on disk
+            written[i] = 0;
+            if (f)
+                fclose(f);
+            f = nullptr;
+        }
+        if (g_sinkHealth.Record(TelemetryFile(i), written[i], lost[i]))
+        {
+            if (g_sinkHealth.failing[i])
+                LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] telemetry file {} failing - {} line(s) lost ({} in total)",
+                          names[i], lost[i], g_sinkHealth.lost[i]);
+            else
+                LOG_INFO("playerbots.dungeonlead", "[DungeonLead] telemetry file {} writing again ({} line(s) lost in total)",
+                         names[i], g_sinkHealth.lost[i]);
+        }
+    }
+    static uint32 lastLossReportTs = 0;
+    if (g_sinkHealth.AnyFailing() && (!lastLossReportTs || GetMSTimeDiffToNow(lastLossReportTs) >= 60000))
+    {
+        lastLossReportTs = getMSTime();
+        LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] telemetry still failing - {} line(s) lost in total",
+                  g_sinkHealth.TotalLost());
+    }
 }
 
 bool DungeonLead::AllowTeleport(Player* player, uint32 mapId, float x, float y, float z, uint32 options)

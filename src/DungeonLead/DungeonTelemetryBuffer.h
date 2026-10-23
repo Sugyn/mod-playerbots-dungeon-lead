@@ -42,6 +42,53 @@ namespace DungeonLeadKernel
         std::string text;  // complete line, newline included
     };
 
+    // DLN-023: lines that left the buffer but did not reach their file (open failed, write or
+    // flush failed), per file and cumulative. The buffer's own overflow count is separate. A file
+    // is "failing" from its first lost line until a later flush writes to it again.
+    struct TelemetrySinkHealth
+    {
+        static constexpr size_t kFiles = 5;  // TelemetryFile values
+        uint64_t lost[kFiles] = {};
+        bool failing[kFiles] = {};
+
+        // One flush's result for one file. True when the file switched between ok and failing.
+        bool Record(TelemetryFile file, uint64_t written, uint64_t lostNow)
+        {
+            size_t const i = size_t(file);
+            if (i >= kFiles)
+                return false;
+            if (lostNow)
+            {
+                lost[i] += lostNow;
+                bool const changed = !failing[i];
+                failing[i] = true;
+                return changed;
+            }
+            if (written && failing[i])
+            {
+                failing[i] = false;
+                return true;
+            }
+            return false;
+        }
+
+        uint64_t TotalLost() const
+        {
+            uint64_t n = 0;
+            for (uint64_t v : lost)
+                n += v;
+            return n;
+        }
+
+        bool AnyFailing() const
+        {
+            for (bool f : failing)
+                if (f)
+                    return true;
+            return false;
+        }
+    };
+
     class TelemetryBuffer
     {
     public:
