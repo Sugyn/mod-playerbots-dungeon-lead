@@ -74,6 +74,8 @@
 namespace
 {
     constexpr float kPathFinderDis = 70.0f;     // below this, hand the destination straight to mmaps
+    constexpr uint32 kNotInWorldWarnMs = 60 * IN_MILLISECONDS;       // a session leader out of the world: logged
+    constexpr uint32 kNotInWorldLimitMs = 5 * MINUTE * IN_MILLISECONDS;  // ... and closed out
     constexpr float kDoorSightRange = 60.0f;    // a route door's state is read from this far
     constexpr float kDoorWaitDistance = 8.0f;   // wait at a closed route door from this close
     constexpr uint32 kTalkStillMs = 20000;      // a talk step's NPC stands still this long first
@@ -1426,11 +1428,42 @@ void DungeonLead::GuardActiveSessions()
             sDungeonRouteMgr.ResetState(guid);
             continue;
         }
-        if (!bot->IsInWorld())
+        // A leader out of the world (mid-teleport) is skipped - routinely for a second or two. It is
+        // not skipped forever: ZF run 1879810038038528 (campaign 0338-02fc932) stopped producing
+        // any event after 19 min with the session still active, until the campaign timeout at
+        // 110 min. Past kNotInWorldLimitMs the session is closed out like a hard disconnect.
+        if (!bot->IsInWorld() || !GET_PLAYERBOT_AI(bot))
+        {
+            DungeonLeadState& absentSt = sDungeonRouteMgr.State(guid);
+            uint32 const absentNow = getMSTime();
+            if (!absentSt.notInWorldSince)
+                absentSt.notInWorldSince = absentNow;
+            uint32 const absentMs = getMSTimeDiff(absentSt.notInWorldSince, absentNow);
+            if (absentMs >= kNotInWorldWarnMs && !absentSt.notInWorldLogged)
+            {
+                absentSt.notInWorldLogged = true;
+                LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} not in world for {} ms while leading (run={}, "
+                          "in_world={}, map={}, pos=({:.1f},{:.1f},{:.1f}))", bot->GetName(), absentMs, absentSt.runId,
+                          bot->IsInWorld(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+            }
+            if (absentMs < kNotInWorldLimitMs)
+                continue;
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} still not in world after {} ms - closing out the "
+                      "session (run={})", bot->GetName(), absentMs, absentSt.runId);
+            if (absentSt.state != DungeonLeadKernel::LeadState::Stopping)
+            {
+                RestoreSessionFollowers(absentSt.memberSnapshots, guid);
+                DungeonLead::RecordRunSummary(guid, absentSt.tankName, "leader_not_in_world");
+            }
+            sDungeonRouteMgr.ResetState(guid);
             continue;
+        }
         PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-        if (!botAI)
-            continue;
+        {
+            DungeonLeadState& present = sDungeonRouteMgr.State(guid);
+            present.notInWorldSince = 0;
+            present.notInWorldLogged = false;
+        }
 
         // Starting/Stopping sessions only wait for a leadership change - none of the strategy
         // reassertion or wipe handling below applies until (or after) the tank actually leads.

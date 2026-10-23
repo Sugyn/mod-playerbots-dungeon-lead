@@ -357,6 +357,9 @@ struct DungeonLeadState
     // and each handback (Stop), kept across retries; a queued request of another generation, or of
     // a session that is gone, is rejected when the world thread runs it.
     uint32 leadershipGeneration = 0;
+    // Leader out of the world (GuardActiveSessions): since when, and whether that was logged.
+    uint32 notInWorldSince = 0;
+    bool notInWorldLogged = false;
     ObjectGuid leadershipGroup;      // the group the transfer was requested in
     DungeonLeadSessionOrigin origin = DungeonLeadSessionOrigin::Manual;
     // 2026-09-15 (independent architecture review DL-006 - the one remaining silent exit path: a

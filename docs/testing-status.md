@@ -82,6 +82,25 @@ Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below)
 bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
 mixed human+bot runs have not been made on any build.
 
+## Campaign `verify-20261023-0338-02fc932` (Phase 1 fixes DLN-004..010)
+
+Bot-only, profile `bot5-wtank-phealer-wmr-dps-lfg-target-level`, 4 in parallel, build `02fc932`
+(module), core f19a18799 / mod-playerbots 037c0141, route table equal to the CSV. Verdicts from
+`tools/run_replay` (`campaign`):
+
+| Run | Dungeon | Verdict | Health | Notes |
+|---|---|---|---|---|
+| 1879810038038528 | Zul'Farrak | FAILED | clean | no event after 19.2 min (leader climbing at (1684,1117) on an incomplete path, z 9 -> 36), session active until the 110 min timeout - led to the leader-not-in-world close-out fix |
+| 1879810038038529 | Deadmines | FULL_ROUTE | warning | 3 wipes; Gunpowder and Defias Cannon used by the leader bot (key 5397), Iron Clad Door seen open |
+| 1879810038038530 | Shadowfang Keep | FULL_ROUTE | warning | 2 wipes; cell door by lever, Ashcrombe talk, Courtyard door seen open |
+| 1879810038038531 | Zul'Farrak | FULL_ROUTE | clean | Executioner's Key looted by the leader, Troll Cage opened with it by the leader, Weegli and Bly talks, required Bly step confirmed dead, End Door seen open; Velratha (optional) not found |
+| 1879810038038532 | Deadmines | PARTIAL | unhealthy | cannon and door as run 529; Captain Greenskin objective failed twice on path (`skip_stuck`, 140 yd short, ship deck) |
+| 1879810038038533 | Shadowfang Keep | FULL_ROUTE | warning | 3 wipes; Fel Steed packs (optional) not found x3 |
+
+Not exercised by this campaign: leader acquisition/handback (test-pool parties form with the tank
+as leader and canary sessions have no master to hand back to), SkipOptional=1, a missing door,
+pause, reset, any human player.
+
 ## Live validation (2026-10-04/05)
 
 Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) and door opening

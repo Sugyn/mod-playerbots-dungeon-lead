@@ -45,6 +45,11 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A session whose leader stays out of the world is closed out instead of skipped forever. The
+  world guard skipped such a leader (normal for a second or two mid-teleport) on every pass with
+  no record; Zul'Farrak run 1879810038038528 produced no event from minute 19 until the campaign
+  timeout at 110 min. After 60 s it is now logged (map, position); after 5 min the session ends
+  like a hard disconnect (followers restored, run summary `leader_not_in_world`).
 - A finished run is not reopened (DLN-008). A manual run held after its route ended has its
   terminal summary written; `startdungeon reset` cleared its outcome back to Running and walked the
   route again under the same run id, whose result was already final (a second summary was
