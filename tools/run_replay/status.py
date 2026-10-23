@@ -1,6 +1,12 @@
 """Generated part of docs/testing-status.md: per dungeon, the latest campaign evidence and whether the
-dungeon is Verified (two FULL_ROUTE runs on the same commit and validation profile, health not
-unhealthy) - from campaign artifacts (campaign.py), never by hand.
+dungeon is Verified - from campaign artifacts (campaign.py), never by hand.
+
+Verified (DLN-024): two distinct runs (by run id - one run listed in several campaigns counts once)
+with FULL_ROUTE, health not unhealthy and a complete record, on the same run context (context_id:
+module, core, mod-playerbots, route table, config, mmaps) and validation profile, the context
+complete (nothing unknown, module not dirty). Runs recorded before the run context existed (no
+context_id) can only reach "Verified (pre-context)": the earlier contract, two such runs on the same
+module commit and profile.
 
   python3 -m tools.run_replay.status <validation_runs dir> [--write docs/testing-status.md]
 
@@ -27,19 +33,34 @@ def load(vr):
     return runs
 
 
+def _qualifying(r):
+    return r["result"] == "FULL_ROUTE" and r["health"] != "unhealthy" and r.get("complete_record", True) is not False
+
+
 def verified(runs):
-    """(commit, [run ids]) of the newest commit with two qualifying runs, else None."""
+    """(build, [run ids], contract) for the newest qualifying pair, else None. contract is "context"
+    (same complete run context) or "pre-context" (runs without a context, same commit)."""
     by = {}
     for r in runs:
-        if r["result"] == "FULL_ROUTE" and r["health"] != "unhealthy":
-            by.setdefault((r["build"], r["profile"]), []).append(r)
+        if not _qualifying(r):
+            continue
+        if r.get("context_id"):
+            if r.get("context_incomplete"):
+                continue  # unknown part or dirty module: evidence, not a qualification
+            key = ("context", r["context_id"], r["profile"])
+        else:
+            key = ("pre-context", r["build"], r["profile"])
+        by.setdefault(key, {})[r["run_id"]] = r  # distinct runs only
     best = None
-    for (build, _), rs in by.items():
-        if len(rs) >= 2:
-            newest = max(x["started_at"] or "" for x in rs)
-            if not best or newest > best[0]:
-                best = (newest, build, [x["run_id"] for x in rs])
-    return (best[1], best[2]) if best else None
+    for (contract, _, _), rs in by.items():
+        if len(rs) < 2:
+            continue
+        newest = max(x["started_at"] or "" for x in rs.values())
+        rank = (contract == "context", newest)
+        if not best or rank > best[0]:
+            build = max(rs.values(), key=lambda x: x["started_at"] or "")["build"]
+            best = (rank, build, sorted(rs), contract)
+    return (best[1], best[2], best[3]) if best else None
 
 
 def section(vr):
@@ -60,7 +81,7 @@ def section(vr):
             (f" {', '.join(sorted(set(r['findings'])))}" if r["findings"] else "")
             for r in latest)
         if v:
-            level = "**Verified**"
+            level = "**Verified**" if v[2] == "context" else "Verified (pre-context)"
         elif any(r["result"] == "FULL_ROUTE" for r in rs):
             level = "Full route"
         elif any(r["result"] == "PARTIAL" for r in rs):

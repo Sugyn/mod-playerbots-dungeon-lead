@@ -168,23 +168,32 @@ Chasm, SM Library, SM Armory, SM Cathedral, Razorfen Downs, Zul'Farrak (see belo
 ## Current status (generated from campaign artifacts)
 
 Regenerate: `python3 -m tools.run_replay.status <validation_runs> --write docs/testing-status.md`
-(the campaign artifacts come from `tools/run_replay/cli.py campaign`). Verified = two FULL_ROUTE
-runs on the same commit and validation profile, health not unhealthy.
+(the campaign artifacts come from `tools/run_replay/cli.py campaign`). Verified (since DLN-024) =
+two distinct FULL_ROUTE runs, health not unhealthy, complete records, on the same complete run
+context (module, core, mod-playerbots, route table, config, mmaps - `build.context_id`) and
+validation profile. Runs recorded before the run context existed (before `dbea4d4`) can only be
+"Verified (pre-context)": two such runs on the same module commit and profile, the earlier contract.
+All levels are bot-only; no mixed human+bot run exists.
 
 <!-- GENERATED: tools/run_replay/status.py - do not edit by hand -->
 
 | Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
 |---|---|---|---|---|
-| Deadmines | **Verified** | `fcdda84` | `fcdda84` | full route (warning) OBSERVABILITY; full route (warning) PACK_IDENTITY |
-| Ragefire Chasm | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
-| Razorfen Downs | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
-| Scarlet Monastery - Armory | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
-| Scarlet Monastery - Cathedral | **Verified** | `fcdda84` | `fcdda84` | full route (warning) ROUTE; full route (warning) PULL, ROUTE |
-| Scarlet Monastery - Library | **Verified** | `fcdda84` | `fcdda84` | full route; full route |
-| Shadowfang Keep | **Verified** | `fcdda84` | `fcdda84` | full route (warning) OBSERVABILITY; full route (warning) PACK_IDENTITY |
-| Zul'Farrak | **Verified** | `fcdda84` | `fcdda84` | full route; full route (warning) OBSERVABILITY |
+| Blood Furnace | Verified (pre-context) | `fcdda84` | `fcdda84` | full route (warning) PULL; full route |
+| Deadmines | Verified (pre-context) | `3e3d6d2` | `3e3d6d2` | full route (warning) PACK_IDENTITY; full route (warning) PACK_IDENTITY |
+| Hellfire Ramparts | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route (warning) ROUTE |
+| Mana-Tombs | Full route | - | `41f4375` | partial (warning) PACK_IDENTITY, PULL, WIPE; full route (warning) PACK_IDENTITY |
+| Ragefire Chasm | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
+| Razorfen Downs | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
+| Scarlet Monastery - Armory | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
+| Scarlet Monastery - Cathedral | Verified (pre-context) | `fcdda84` | `fcdda84` | full route (warning) ROUTE; full route (warning) PULL, ROUTE |
+| Scarlet Monastery - Library | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
+| Shadowfang Keep | Verified (pre-context) | `3e3d6d2` | `3e3d6d2` | full route (warning) PACK_IDENTITY; full route |
+| Slave Pens | Verified (pre-context) | `3e3d6d2` | `3e3d6d2` | full route (warning) WIPE; full route (warning) OBSERVABILITY |
+| Underbog | Full route | - | `fcdda84` | failed (warning) PULL, WIPE; full route (warning) PULL |
+| Zul'Farrak | Verified (pre-context) | `b0993ee` | `3e3d6d2` | partial (unhealthy) UNKNOWN; full route |
 
-From 210 runs in 17 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261010-0359-fcdda84).
+From 283 runs in 32 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261023-1421-3e3d6d2).
 
 <!-- END GENERATED -->
 

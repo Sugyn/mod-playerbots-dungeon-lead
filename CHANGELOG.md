@@ -42,6 +42,14 @@ the MAJOR bar above is met.
 - `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
 
 ### Changed
+- Verified needs two distinct runs on one complete run context (DLN-024). `status.py` grouped
+  qualifying runs by module commit and profile, counted one run listed in two campaigns twice and
+  accepted unknown builds. It now counts distinct run ids, requires a complete record and groups by
+  `context_id` (complete context only - nothing unknown, module not dirty); runs without a context
+  can only reach "Verified (pre-context)", the earlier contract, shown as such. `compare_runs`
+  marks a core, mod-playerbots, route, config or mmap difference as not directly comparable (a
+  module difference stays an intended A/B) and notes a missing context. Campaign index version 2
+  carries `context_id`, `context_incomplete` and `complete_record` per run; comparison version 2.
 - Builds and runs against the current upstream: the mod-playerbots core fork `Playerbot` at f19a18799
   and mod-playerbots `master` at 037c0141 (headless bot sessions, module-owned databases). The only
   source change needed was an explicit `PlayerbotsDatabase.h` include, guarded with `__has_include`

@@ -3,7 +3,7 @@
 Runs from different contexts are compared but flagged NOT DIRECTLY COMPARABLE with the reasons
 (commit, route data, profile, dungeon) - never silently.
 """
-COMPARISON_VERSION = 1
+COMPARISON_VERSION = 2  # 2: run context parts compared (DLN-024)
 
 _ROWS = [
     ("result", lambda m, v: v["result"] if v else m["result"]["outcome"]),
@@ -35,6 +35,16 @@ def comparable(old, new):
         reasons.append(f"scenario {o.get('scenario_id') or '-'} vs {n.get('scenario_id') or '-'}")
     if not (o.get("complete_record") and n.get("complete_record")):
         reasons.append("a record starts mid-run")
+    # DLN-024: the rest of the stack. A module change is the point of an A/B comparison; any other
+    # part that differs makes the numbers not directly comparable.
+    oc, nc = o.get("context"), n.get("context")
+    if oc and nc:
+        for part in ("core_sha", "playerbots_sha", "route_digest", "config_digest", "mmap_digest"):
+            if oc.get(part) != nc.get(part):
+                reasons.append(f"context {part} {oc.get(part)} vs {nc.get(part)}")
+    else:
+        reasons.append("run context unknown for " + " and ".join(
+            name for name, c in (("old", oc), ("new", nc)) if not c))
     return reasons
 
 
@@ -43,7 +53,7 @@ def compare(old, new, old_verdict=None, new_verdict=None):
     reasons = comparable(old, new)
     # a different commit is the point of most comparisons - it is reported, but only a different
     # dungeon / scenario / partial record makes the numbers not comparable
-    blocking = [r for r in reasons if not r.startswith("commit")]
+    blocking = [r for r in reasons if not r.startswith("commit") and not r.startswith("run context unknown")]
     return {"comparison_version": COMPARISON_VERSION,
             "old_run": old["metadata"]["run_id"], "new_run": new["metadata"]["run_id"],
             "directly_comparable": not blocking, "differences": reasons, "rows": rows}

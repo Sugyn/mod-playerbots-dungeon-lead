@@ -15,7 +15,7 @@ import os
 
 from . import analyze_run, model, report, schema
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2  # 2: run context_id / context_incomplete / complete_record per run (DLN-024)
 
 
 def _write(path, text):
@@ -100,6 +100,9 @@ def build(events_path, campaigns_path, campaign_id, out_root):
         entries.append({
             "run_id": run_id, "dungeon": d.get("name"), "lfg_id": d.get("lfg_id"),
             "scenario_id": m["metadata"].get("scenario_id"), "leader": m["metadata"].get("leader"),
+            "context_id": (m["metadata"].get("context") or {}).get("context_id"),
+            "context_incomplete": (m["metadata"].get("context") or {}).get("incomplete"),
+            "complete_record": m["metadata"].get("complete_record"),
             "started_at": m["metadata"].get("started_at"), "duration_ms": m["metadata"]["duration_ms"],
             "result": v["result"], "health": v["health"], "metrics": m["metrics"],
             "findings": [f["classification"] for f in fl["findings"]],

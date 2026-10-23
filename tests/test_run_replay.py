@@ -232,7 +232,7 @@ class StatusTest(unittest.TestCase):
         self.assertIsNone(status.verified([r("1", "a"), r("2", "b")]), "two commits are not a pair")
         self.assertIsNone(status.verified([r("1", "a"), r("2", "a", health="unhealthy")]), "unhealthy does not count")
         self.assertIsNone(status.verified([r("1", "a"), r("2", "a", result="PARTIAL")]))
-        self.assertEqual(status.verified([r("1", "a"), r("2", "a", health="warning")]), ("a", ["1", "2"]))
+        self.assertEqual(status.verified([r("1", "a"), r("2", "a", health="warning")]), ("a", ["1", "2"], "pre-context"))
         newer = status.verified([r("1", "a"), r("2", "a"), r("3", "b", t="2026-10-07"), r("4", "b", t="2026-10-07")])
         self.assertEqual(newer[0], "b", "the newest verified commit wins")
 
@@ -366,6 +366,56 @@ class ContextTest(unittest.TestCase):
 
     def test_no_context_before_it_existed(self):
         self.assertIsNone(model.reconstruct(synthetic())["metadata"]["context"])
+
+
+class EligibilityTest(unittest.TestCase):
+    """DLN-024: Verified needs two distinct complete runs on one complete run context."""
+
+    @staticmethod
+    def r(rid, ctx="c1", build="m1", incomplete=False, result="FULL_ROUTE", health="clean",
+          t="2026-10-23T10", complete=True):
+        return {"run_id": rid, "build": build, "profile": "p", "result": result, "health": health,
+                "started_at": t, "context_id": ctx, "context_incomplete": incomplete, "complete_record": complete}
+
+    def test_one_run_in_two_campaigns_is_one_run(self):
+        from tools.run_replay import status
+        self.assertIsNone(status.verified([self.r("1"), dict(self.r("1"), campaign="other")]))
+
+    def test_two_distinct_runs_same_context(self):
+        from tools.run_replay import status
+        self.assertEqual(status.verified([self.r("1"), self.r("2")]), ("m1", ["1", "2"], "context"))
+
+    def test_incomplete_or_mixed_context_does_not_qualify(self):
+        from tools.run_replay import status
+        self.assertIsNone(status.verified([self.r("1", incomplete=True), self.r("2", incomplete=True)]),
+                          "unknown part / dirty module")
+        self.assertIsNone(status.verified([self.r("1", ctx="c1"), self.r("2", ctx="c2")]),
+                          "same module, different route/config/stack")
+        self.assertIsNone(status.verified([self.r("1"), self.r("2", complete=False)]), "a record starting mid-run")
+
+    def test_context_pair_wins_over_pre_context(self):
+        from tools.run_replay import status
+        old = [dict(self.r("1", t="2026-10-24"), context_id=None), dict(self.r("2", t="2026-10-24"), context_id=None)]
+        new = [self.r("3", t="2026-10-23"), self.r("4", t="2026-10-23")]
+        self.assertEqual(status.verified(old + new)[2], "context")
+        self.assertEqual(status.verified(old)[2], "pre-context")
+
+    def test_compare_flags_context_parts(self):
+        from tools.run_replay import compare_runs
+        a = model.reconstruct(synthetic())
+        b = model.reconstruct(synthetic())
+        ctx = {"core_sha": "c", "playerbots_sha": "p", "route_digest": "r1", "config_digest": "k", "mmap_digest": "m"}
+        a["metadata"]["context"] = dict(ctx)
+        b["metadata"]["context"] = dict(ctx)
+        self.assertTrue(compare_runs.compare(a, b)["directly_comparable"])
+        b["metadata"]["context"]["route_digest"] = "r2"
+        c = compare_runs.compare(a, b)
+        self.assertFalse(c["directly_comparable"])
+        self.assertTrue(any("route_digest" in d for d in c["differences"]))
+        b["metadata"]["context"] = None
+        c = compare_runs.compare(a, b)
+        self.assertTrue(c["directly_comparable"], "missing context is reported, not blocking")
+        self.assertTrue(any("run context unknown for new" in d for d in c["differences"]))
 
 if __name__ == "__main__":
     unittest.main()
