@@ -397,6 +397,39 @@ namespace
         Check(std::string(ToString(DungeonRouteNodeType::TankPosition)) == "tank_position", "node type names");
     }
 
+    // DLN-005: SkipOptional=1 skips optional trash only. ZF's Sergeant Bly (kind=required, a Pull
+    // node like optional trash) must still be fought, and nothing mandatory or navigational may
+    // fall under the option.
+    void TestSkipOptionalEligibility()
+    {
+        Check(SkipOptionalEligible(DungeonRouteKind::Optional, 3654), "optional trash -> skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Required, 7604), "required trash (Sergeant Bly) -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Boss, 3653), "boss -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::HeroicOnly, 500), "heroic-only boss -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Door, 42), "door -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Use, 42) && !SkipOptionalEligible(DungeonRouteKind::Talk, 42) &&
+                  !SkipOptionalEligible(DungeonRouteKind::Event, 42),
+              "use/talk/event -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Optional, kPathAnchorEntry) &&
+                  !SkipOptionalEligible(DungeonRouteKind::Required, kPathAnchorEntry),
+              "path anchors (entry=1) -> not skippable");
+
+        // Optional trash, then required Bly, then a boss: the option leaves exactly the mandatory
+        // rows standing, so a route cannot reach Complete through this skip.
+        struct Row { DungeonRouteKind kind; uint32_t entry; };
+        Row const seq[] = {{DungeonRouteKind::Optional, 7789}, {DungeonRouteKind::Required, 7604},
+                           {DungeonRouteKind::Optional, kPathAnchorEntry}, {DungeonRouteKind::Boss, 7267}};
+        int kept = 0, keptMandatory = 0;
+        for (Row const& r : seq)
+            if (!SkipOptionalEligible(r.kind, r.entry))
+            {
+                ++kept;
+                if (ClassifyRequirement(r.kind, r.entry) != DungeonObjectiveRequirement::Optional)
+                    ++keptMandatory;
+            }
+        Check(kept == 3 && keptMandatory == 2, "mixed sequence keeps Bly, the anchor and the boss");
+    }
+
     // DL-001: an instance kill cache keyed only by creature entry must stay boss-only. A route
     // commonly routes several spatially distinct trash packs through the same entry (Deadmines'
     // six Craftsman stops, entry 1731; SFK's repeated Worg/Moonwalker stops) - if those fed the
@@ -1359,6 +1392,7 @@ int main()
     TestReadiness();
     TestBrain();
     TestRouteTypes();
+    TestSkipOptionalEligibility();
     TestRepeatedEntryObjectives();
     TestPack();
     TestPull();

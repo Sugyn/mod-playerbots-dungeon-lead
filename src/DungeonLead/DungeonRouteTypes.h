@@ -157,4 +157,13 @@ inline DungeonObjectiveRequirement ClassifyRequirement(DungeonRouteKind kind, ui
     }
 }
 
+// What AiPlayerbot.DungeonLead.SkipOptional may skip: optional fights only - a Pull node whose
+// requirement is Optional. `required` trash is also a Pull node (ZF Sergeant Bly) and must still
+// be fought; bosses, doors, use/talk rows and path anchors (Travel) are never skipped by it.
+inline bool SkipOptionalEligible(DungeonRouteKind kind, uint32_t entry)
+{
+    return ClassifyRouteStep(kind, entry) == DungeonRouteNodeType::Pull &&
+           ClassifyRequirement(kind, entry) == DungeonObjectiveRequirement::Optional;
+}
+
 #endif

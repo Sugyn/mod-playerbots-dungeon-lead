@@ -42,6 +42,10 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- `AiPlayerbot.DungeonLead.SkipOptional=1` skips optional trash only (DLN-005). It used to skip
+  every pull step, including `required` trash (Zul'Farrak's Sergeant Bly), without recording a
+  skipped mandatory objective, so the run could still end Complete. One predicate,
+  `SkipOptionalEligible` (`DungeonRouteTypes.h`), now decides it. Default (`0`) is unchanged.
 - A wait for someone eating, drinking or healing up no longer runs through a fight. Its clock was
   past the abort mark when the fight ended, and the run was stopped seconds later
   (`recovery_failed persistent_wait`, Mana-Tombs).

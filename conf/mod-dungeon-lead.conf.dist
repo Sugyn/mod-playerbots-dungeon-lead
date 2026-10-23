@@ -55,7 +55,9 @@ AiPlayerbot.DungeonLead.WipeRecoverySeconds = 300
 AiPlayerbot.DungeonLead.MaxWipesPerRun = 3
 
 #    AiPlayerbot.DungeonLead.SkipOptional
-#        Description: Skip optional route steps entirely instead of attempting them.
+#        Description: Skip optional trash pulls (kind=optional) instead of attempting them.
+#                     Required trash, bosses, doors, use/talk steps and path anchors are
+#                     never skipped by this option.
 #        Default:     0
 
 AiPlayerbot.DungeonLead.SkipOptional = 0

@@ -2454,8 +2454,9 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     while (st.stepIndex < route->steps.size())
     {
         DungeonRouteStep const& s = route->steps[st.stepIndex];
-        // SkipOptional skips optional fights (Pull nodes) only - a path anchor on an optional row
-        // is a Travel node and must stay, or routes that need it stop being walkable (DL-011).
+        // SkipOptional skips optional fights only (SkipOptionalEligible) - a path anchor on an
+        // optional row is a Travel node and must stay, or routes that need it stop being walkable
+        // (DL-011); `required` trash is a Pull node too but is mandatory (DLN-005).
         // DL-001: entry-wide kill memory only ever applies to boss steps (see
         // EntryKillMemoryEligible) - a trash step with the same entry as an earlier cleared pack
         // must still be reached and observed on its own.
@@ -2468,7 +2469,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // mandatory objective that can't be completed, instead of the route silently reporting
         // Complete having never attempted it.
         bool skip = st.visited[st.stepIndex] || (!s.IsWalkable() && !s.IsMandatory()) ||
-                    (s.NodeType() == DungeonRouteNodeType::Pull && sDungeonLeadConfig.dungeonLeadSkipOptional) ||
+                    (sDungeonLeadConfig.dungeonLeadSkipOptional && SkipOptionalEligible(s.kind, s.entry)) ||
                     (s.entry && EntryKillMemoryEligible(s.NodeType()) && sDungeonRouteMgr.IsStepKilled(st.instanceId, s.entry));
         if (!skip)
             break;
