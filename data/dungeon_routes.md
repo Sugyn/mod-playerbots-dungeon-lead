@@ -322,9 +322,53 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 5. **Warchief Kargath Bladefist** — entry 16808 @ (231.2, -83.6, 5)
 ### Slave Pens (LFD 140, map 547, heroic LFD 184)
 
-1. **Mennu the Betrayer** — entry 17941 @ (49.5, -380.2, 3)
-2. **Rokmar the Crackler** — entry 17991 @ (18.3, -448.4, 3.1)
-3. **Quagmirran** — entry 17942 @ (-281.1, -667.1, 9.4)
+1. **Slave Pens path start to Mennu 1** *(optional)* — entry 1 @ (92.1, -104.0, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+2. **Slave Pens path start to Mennu 2** *(optional)* — entry 1 @ (43.1, -94.4, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+3. **Slave Pens path start to Mennu 3** *(optional)* — entry 1 @ (11.6, -62.8, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+4. **Slave Pens path start to Mennu 4** *(optional)* — entry 1 @ (-29.4, -41.2, -2.1) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+5. **Slave Pens path start to Mennu 5** *(optional)* — entry 1 @ (-71.9, -12.0, -4.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+6. **Slave Pens path start to Mennu 6** *(optional)* — entry 1 @ (-106.6, -21.5, -5.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+7. **Slave Pens path start to Mennu 7** *(optional)* — entry 1 @ (-99.5, -53.5, -1.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+8. **Slave Pens path start to Mennu 8** *(optional)* — entry 1 @ (-92.9, -113.7, -3.1) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+9. **Slave Pens path start to Mennu 9** *(optional)* — entry 1 @ (-62.5, -136.1, -0.9) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+10. **Slave Pens path start to Mennu 10** *(optional)* — entry 1 @ (-45.5, -178.0, -2.9) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+11. **Slave Pens path start to Mennu 11** *(optional)* — entry 1 @ (-24.3, -217.3, -2.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+12. **Slave Pens path start to Mennu 12** *(optional)* — entry 1 @ (-9.5, -258.2, -0.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+13. **Slave Pens path start to Mennu 13** *(optional)* — entry 1 @ (-7.8, -297.1, 2.8) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+14. **Slave Pens path start to Mennu 14** *(optional)* — entry 1 @ (32.0, -323.5, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+15. **Slave Pens path start to Mennu 15** *(optional)* — entry 1 @ (79.5, -334.2, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+16. **Slave Pens path start to Mennu 16** *(optional)* — entry 1 @ (64.5, -372.9, 4.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+17. **Mennu the Betrayer** — entry 17941 @ (49.5, -380.2, 3)
+18. **Slave Pens path Mennu to Rokmar 1** *(optional)* — entry 1 @ (79.5, -334.2, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+19. **Slave Pens path Mennu to Rokmar 2** *(optional)* — entry 1 @ (32.0, -323.5, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+20. **Slave Pens path Mennu to Rokmar 3** *(optional)* — entry 1 @ (-10.3, -306.7, 2.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+21. **Slave Pens path Mennu to Rokmar 4** *(optional)* — entry 1 @ (-10.7, -330.7, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+22. **Slave Pens path Mennu to Rokmar 5** *(optional)* — entry 1 @ (-15.1, -373.3, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+23. **Slave Pens path Mennu to Rokmar 6** *(optional)* — entry 1 @ (-8.6, -425.8, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+24. **Slave Pens path Mennu to Rokmar 7** *(optional)* — entry 1 @ (-41.5, -452.0, -12.8) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+25. **Slave Pens path Mennu to Rokmar 8** *(optional)* — entry 1 @ (-74.7, -472.0, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+26. **Slave Pens path Mennu to Rokmar 9** *(optional)* — entry 1 @ (-126.6, -481.3, -10.4) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+27. **Slave Pens path Mennu to Rokmar 10** *(optional)* — entry 1 @ (-101.0, -516.9, -9.5) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+28. **Slave Pens path Mennu to Rokmar 11** *(optional)* — entry 1 @ (-96.4, -519.8, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+29. **Slave Pens path Mennu to Rokmar 12** *(optional)* — entry 1 @ (-74.1, -488.5, 0.1) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+30. **Slave Pens path Mennu to Rokmar 13** *(optional)* — entry 1 @ (-45.7, -478.5, 7.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+31. **Slave Pens path Mennu to Rokmar 14** *(optional)* — entry 1 @ (-11.0, -457.1, 2.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+32. **Rokmar the Crackler** — entry 17991 @ (18.3, -448.4, 3.1)
+33. **Slave Pens path Rokmar to Quagmirran 1** *(optional)* — entry 1 @ (-33.0, -473.3, -1.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+34. **Slave Pens path Rokmar to Quagmirran 2** *(optional)* — entry 1 @ (-75.3, -481.7, -1.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+35. **Slave Pens path Rokmar to Quagmirran 3** *(optional)* — entry 1 @ (-96.4, -519.8, -2.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+36. **Slave Pens path Rokmar to Quagmirran 4** *(optional)* — entry 1 @ (-88.6, -565.4, -1.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+37. **Slave Pens path Rokmar to Quagmirran 5** *(optional)* — entry 1 @ (-94.0, -607.8, 10.8) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+38. **Slave Pens path Rokmar to Quagmirran 6** *(optional)* — entry 1 @ (-94.0, -655.6, 23.9) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+39. **Slave Pens path Rokmar to Quagmirran 7** *(optional)* — entry 1 @ (-75.6, -692.8, 41.5) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+40. **Slave Pens path Rokmar to Quagmirran 8** *(optional)* — entry 1 @ (-74.7, -735.9, 40.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+41. **Slave Pens path Rokmar to Quagmirran 9** *(optional)* — entry 1 @ (-110.3, -752.5, 37.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+42. **Slave Pens path Rokmar to Quagmirran 10** *(optional)* — entry 1 @ (-152.0, -756.9, 37.6) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+43. **Slave Pens path Rokmar to Quagmirran 11** *(optional)* — entry 1 @ (-182.5, -732.2, 37.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+44. **Slave Pens path Rokmar to Quagmirran 12** *(optional)* — entry 1 @ (-211.9, -704.9, 34.2) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+45. **Slave Pens path Rokmar to Quagmirran 13** *(optional)* — entry 1 @ (-246.8, -688.5, 16.2) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+46. **Slave Pens path Rokmar to Quagmirran 14** *(optional)* — entry 1 @ (-289.6, -667.3, 10.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+47. **Quagmirran** — entry 17942 @ (-281.1, -667.1, 9.4)
 ### Underbog (LFD 146, map 546, heroic LFD 186)
 
 1. **Hungarfen** — entry 17770 @ (-121.3, -388.6, 36.9)
@@ -339,9 +383,24 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 4. **Warlord Kalithresh** — entry 17798 @ (-95.4, -552, 8.3)
 ### Mana-Tombs (LFD 148, map 557, heroic LFD 179)
 
-1. **Pandemonius** — entry 18341 @ (-68, -118.9, -1.2)
-2. **Tavarok** — entry 18343 @ (-321.7, -222.2, -0.8)
-4. **Nexus-Prince Shaffar** — entry 18344 @ (-184.4, 9.3, 16.8)
+1. **Ethereal Scavenger** *(optional)* — entry 18309 @ (-68.0, -31.7, -1.0) — pack at the start; met on the way in 1/2 runs
+2. **Ethereal Scavenger** *(optional)* — entry 18309 @ (-97.9, -59.9, -0.8) — pack that joined Pandemonius as adds in 2/2 runs
+3. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-67.7, -67.3, -0.8) — pack that joined Pandemonius as adds in 2/2 runs
+4. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-46.7, -97.8, -0.9) — pack of 7 next to Pandemonius; joined as adds in 2/2 runs
+5. **Pandemonius** — entry 18341 @ (-68, -118.9, -1.2)
+6. **Mana Leech** *(optional)* — entry 19306 @ (-8.8, -227.2, 1.9) — pack met on the way to Tavarok in 3 of 5 runs
+7. **Ethereal Priest** *(optional)* — entry 18317 @ (-32.8, -223.6, -0.2) — pack met on the way to Tavarok in 3 of 5 runs
+8. **Ethereal Priest** *(optional)* — entry 18317 @ (-111.2, -219.3, -0.2) — pack met on the way to Tavarok in 3 of 5 runs
+9. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-115.3, -199.5, -1.3) — pack met on the way to Tavarok in 3 of 5 runs
+10. **Nexus Terror** *(optional)* — entry 19307 @ (-207.6, -258.5, -1.0) — pack met on the way to Tavarok in 3 of 5 runs
+11. **Ethereal Darkcaster** *(optional)* — entry 18331 @ (-209.6, -245.2, -1.0) — pack met on the way to Tavarok in 3 of 5 runs
+12. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-215.4, -223.4, -0.9) — pack met on the way to Tavarok in 3 of 5 runs
+13. **Tavarok** — entry 18343 @ (-321.7, -222.2, -0.8)
+15. **Ethereal Spellbinder** *(optional)* — entry 18312 @ (-353.0, -70.3, -1.0) — pack met on the way to Shaffar in 3 of 5 runs
+16. **Nexus Stalker** *(optional)* — entry 18314 @ (-389.2, -73.2, -0.9) — pack met on the way to Shaffar in 3 of 5 runs
+17. **Ethereal Spellbinder** *(optional)* — entry 18312 @ (-375.6, -37.7, -0.9) — pack met on the way to Shaffar in 3 of 5 runs
+18. **Ethereal Spellbinder** *(optional)* — entry 18312 @ (-261.0, 7.9, 16.8) — pack met on the way to Shaffar in 3 of 5 runs
+19. **Nexus-Prince Shaffar** — entry 18344 @ (-184.4, 9.3, 16.8)
 ### Auchenai Crypts (LFD 149, map 558, heroic LFD 178)
 
 1. **Shirrak the Dead Watcher** — entry 18371 @ (-50.9, -163.1, 26.4)
