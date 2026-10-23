@@ -16,15 +16,20 @@
  *
  * - "formation" (Value) -> stock FormationValue::Load() doesn't know "leader". Subclass adds
  *   the one case and delegates everything else to the base implementation.
- * - "unknown dungeon" (Trigger) -> stock UnknownDungeonTrigger::IsActive() hands control back
- *   to the real player whenever the bot is in a dungeon with a live master, which would keep
- *   undoing "dungeon lead"/"grind". Subclass short-circuits to false while either is active,
- *   defers to the base implementation otherwise.
+ * - "unknown dungeon" (Trigger) -> stock UnknownDungeonTrigger::IsActive() fires "give leader
+ *   in dungeon" (group leadership back to the real master) whenever a group-leading bot is in a
+ *   dungeon with a live master, which would undo the session's leadership. Subclass
+ *   short-circuits to false while this bot leads a Dungeon Lead session (any state - Starting,
+ *   active, Stopping: the session acquires and hands back leadership itself) and defers to the
+ *   base implementation otherwise. Followers never lead the group, so the stock action does
+ *   nothing for them either way. DLN-010: this used to also suppress the trigger for any bot
+ *   with "grind" - every grinding bot on the server, session or not.
  */
 
 #ifndef MOD_DUNGEONLEAD_OVERRIDES_H
 #define MOD_DUNGEONLEAD_OVERRIDES_H
 
+#include "DungeonLead/DungeonLeadActions.h"
 #include "Formations.h"
 #include "LfgTriggers.h"
 #include "Playerbots.h"
@@ -64,9 +69,7 @@ public:
 
     bool IsActive() override
     {
-        if (botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT))
-            return false;
-        if (botAI->HasStrategy("grind", BOT_STATE_NON_COMBAT))
+        if (DungeonLead::HasSession(botAI))
             return false;
 
         return UnknownDungeonTrigger::IsActive();

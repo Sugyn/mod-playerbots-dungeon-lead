@@ -91,7 +91,10 @@ something new — not reachable by a plain registry append:
 
 - **`UnknownDungeonTrigger::IsActive()`** (key `"unknown dungeon"`, in `TriggerContext`) hands the
   bot back to the real player whenever it's in a dungeon, which would otherwise keep undoing an
-  active "dungeon lead"/"grind" session.
+  active "dungeon lead"/"grind" session. (2026-10-23, DLN-010: the override keys on the bot
+  leading a Dungeon Lead session, `DungeonLead::HasSession`, instead of the "dungeon lead" or
+  "grind" strategy - the "grind" test also suppressed the trigger for every grinding bot outside
+  any session.)
 - **`FormationValue::Load()`** (key `"formation"`, in `ValueContext`) doesn't know a `"leader"`
   formation (follow the new bot leader instead of the real player).
 

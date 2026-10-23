@@ -42,6 +42,11 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Bots outside a Dungeon Lead session keep mod-playerbots' "unknown dungeon" behavior (DLN-010).
+  The module's override of that trigger returned false for any bot with the "grind" strategy, so
+  a grinding bot leading a real player's group in a dungeon never handed leadership back, session
+  or not. It now suppresses the trigger only while the bot leads a session
+  (`DungeonLead::HasSession`: Starting, active or Stopping).
 - `startdungeon pause` stops the leader where it is (DLN-007). It only set a flag: a route move
   already under way ran to its end, and the door controller could still use a lever or a bot's
   key while paused or in combat. Pause now stops the leader's movement out of combat, the route
