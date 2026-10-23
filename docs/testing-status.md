@@ -82,6 +82,20 @@ Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below)
 bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
 mixed human+bot runs have not been made on any build.
 
+## Campaign `verify-20261023-1959-dc1ee09` (DLN-014/017/018/024/025, Sezz'ziz + Slave Pens anchor data)
+
+Build `dc1ee09`, run context `053fc273eb921f3a` (route digest changed by the two 2026-10-23 SQL
+updates). 7 of 10 FULL_ROUTE: ZF 2/2, Deadmines 2/2, Slave Pens 2/2 (no skip at the moved anchor
+13), SFK 1/2, Mana-Tombs 0/2 (wipe limit both times, as on `41f4375`). No `strategy_restored` at
+all (14908 on `dbea4d4`), no `step_walk_limit`, `lost_lines` 0; world guard pass p50 2.2-2.5 ms,
+p95 2.9-3.3 ms, max 4.4 ms with 4 sessions every 2 s.
+
+Two regressions found, fixed in `da0f306`:
+- CC: 264 moons, 14 landed (0.05; 0.15-0.22 on the four campaigns before) - DLN-014 dropped a kept
+  moon while the caster was briefly unable to cast and re-marked it next plan.
+- SFK run 1879871743590409: after wipe 2, Odo one floor up 44 yd away had no direct path; the short
+  hop was rejected without the route-waypoint/probe fallbacks (DLN-011), Odo failed on `path`.
+
 ## Campaign `verify-20261023-1623-dbea4d4` (first run context: `ee4a40e190227422`)
 
 Build `dbea4d4` (DLN-012, DLN-015, DLN-022), context complete (module, core f19a18799a35,
@@ -211,20 +225,20 @@ All levels are bot-only; no mixed human+bot run exists.
 | Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
 |---|---|---|---|---|
 | Blood Furnace | Verified (pre-context) | `fcdda84` | `fcdda84` | full route (warning) PULL; full route |
-| Deadmines | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning); full route (warning) PACK_IDENTITY |
+| Deadmines | **Verified** | `dc1ee09` | `dc1ee09` | full route; full route |
 | Hellfire Ramparts | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route (warning) ROUTE |
-| Mana-Tombs | Full route | - | `41f4375` | partial (warning) PACK_IDENTITY, PULL, WIPE; full route (warning) PACK_IDENTITY |
+| Mana-Tombs | Full route | - | `dc1ee09` | partial (warning) PACK_IDENTITY, ROUTE; partial (warning) PACK_IDENTITY, ROUTE |
 | Ragefire Chasm | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning); full route (warning) PULL |
 | Razorfen Downs | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
 | Scarlet Monastery - Armory | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
 | Scarlet Monastery - Cathedral | Verified (pre-context) | `fcdda84` | `fcdda84` | full route (warning) ROUTE; full route (warning) PULL, ROUTE |
 | Scarlet Monastery - Library | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
-| Shadowfang Keep | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning) PACK_IDENTITY; full route (warning) PACK_IDENTITY |
-| Slave Pens | Verified (pre-context) | `3e3d6d2` | `dbea4d4` | partial (warning) WIPE; full route (warning) OBSERVABILITY |
+| Shadowfang Keep | **Verified** | `dbea4d4` | `dc1ee09` | partial (unhealthy) PACK_IDENTITY, ROUTE; full route (warning) PACK_IDENTITY |
+| Slave Pens | **Verified** | `dc1ee09` | `dc1ee09` | full route (warning) WIPE; full route (warning) WIPE |
 | Underbog | Full route | - | `fcdda84` | failed (warning) PULL, WIPE; full route (warning) PULL |
-| Zul'Farrak | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning); full route (warning) |
+| Zul'Farrak | **Verified** - modeled route only | `dc1ee09` | `dc1ee09` | full route; full route |
 
-From 293 runs in 33 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261023-1623-dbea4d4).
+From 303 runs in 34 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261023-1959-dc1ee09).
 
 <!-- END GENERATED -->
 
