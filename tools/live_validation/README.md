@@ -22,6 +22,9 @@ From the worldserver console or SOAP (GM level):
 .dungeonlead validate stop             # ends the campaign and releases the test bots
 ```
 
+Without console or SOAP access, `AiPlayerbot.DungeonLead.ValidationAutostart = "4,6,1,8"` starts
+the same campaign 2 minutes after the world starts.
+
 `DungeonLeadDebug.log` gets `[DungeonLead][Validation]` lines; each dungeon ends with
 `RESULT lfg=<id> started=<0|1> ended=<0|1> minutes=<n>` and the campaign with
 `RESULT campaign finished`.

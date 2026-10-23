@@ -19,6 +19,9 @@ the MAJOR bar above is met.
 ## [Unreleased]
 
 ### Added
+- `AiPlayerbot.DungeonLead.ValidationAutostart` (comma-separated LFG ids, default empty = off):
+  one `.dungeonlead validate` campaign started 2 minutes after the world starts. Replaces a
+  server-only source edit used for unattended campaigns on the test server.
 - `position_sample` lists the followers more than 30 yd from the leader (`far_followers`: role,
   distance, line of sight, moving, sitting, movement generator), to tell a party left behind from
   one at the tank's heels.

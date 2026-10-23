@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <ctime>
 #include <deque>
+#include <sstream>
 
 namespace
 {
@@ -48,6 +49,7 @@ namespace
     };
 
     constexpr uint32 kTickMs = 10000;
+    constexpr uint32 kAutostartDelayMs = 2 * MINUTE * IN_MILLISECONDS;  // ValidationAutostart: bots logged in
     constexpr uint32 kAssembleCapMs = 5 * MINUTE * IN_MILLISECONDS;  // pool login + profile preparation
     constexpr uint32 kStartCapMs = 5 * MINUTE * IN_MILLISECONDS;     // party formed, session not started
     // Sessions end themselves at CanaryTimeoutMinutes; this only catches one that doesn't.
@@ -294,6 +296,30 @@ std::string DungeonLead::ValidationStatus()
 
 void DungeonLead::ValidationTick()
 {
+    // AiPlayerbot.DungeonLead.ValidationAutostart: one campaign per process, 120 s after the first
+    // world tick (bots logged in), the listed LFG ids in order - an unattended campaign without a
+    // console or SOAP. Empty (default) = off.
+    static uint32 const firstTick = getMSTime();
+    static bool autostartDone = false;
+    if (!autostartDone && GetMSTimeDiffToNow(firstTick) >= kAutostartDelayMs)
+    {
+        autostartDone = true;
+        std::vector<uint32> ids;
+        std::stringstream ss(sDungeonLeadConfig.dungeonLeadValidationAutostart);
+        std::string tok;
+        while (std::getline(ss, tok, ','))
+            try
+            {
+                ids.push_back(static_cast<uint32>(std::stoul(tok)));
+            }
+            catch (std::exception const&)
+            {
+                // a blank or non-numeric entry is skipped
+            }
+        if (!ids.empty())
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead][Validation] autostart: {}", DungeonLead::StartValidation(ids));
+    }
+
     if (!g_running)
         return;
     if (g_lastTick && GetMSTimeDiffToNow(g_lastTick) < kTickMs)

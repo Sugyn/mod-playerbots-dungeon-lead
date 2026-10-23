@@ -258,3 +258,12 @@ AiPlayerbot.DungeonLead.EventWaitSeconds = 600
 #        Default:     3
 
 AiPlayerbot.DungeonLead.ValidationParallel = 3
+
+#    AiPlayerbot.DungeonLead.ValidationAutostart
+#        Description: Comma-separated LFG ids for one `.dungeonlead validate` campaign started
+#                      automatically 2 minutes after the world starts (once per process), in this
+#                      order; an id listed twice is run twice. For an unattended test server
+#                      without console or SOAP access. Empty = off.
+#        Default:     "" (off)
+
+AiPlayerbot.DungeonLead.ValidationAutostart = ""
