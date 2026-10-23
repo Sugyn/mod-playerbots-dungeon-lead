@@ -42,6 +42,13 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A finished run is not reopened (DLN-008). A manual run held after its route ended has its
+  terminal summary written; `startdungeon reset` cleared its outcome back to Running and walked the
+  route again under the same run id, whose result was already final (a second summary was
+  suppressed), and an instance change re-resolved a new route the same way. `startdungeon reset`
+  on a finished run is now refused (`reset_rejected`, with a stop/start hint), and the route walk
+  does nothing once the run's summary is written - only the formation is held. A reset before the
+  end works as before and is recorded (`reset`).
 - A queued leader change can no longer outlive the request that made it (DLN-009). mod-playerbots'
   `GroupSetLeaderOperation` checks only that both players exist and the target is in the bot's
   current group when the world thread runs it - a start cancelled before it ran, a new session,

@@ -25,7 +25,7 @@ pack_id. Grouped by what they prove, with what a replay is missing:
 
 | Area | v1 events | Proves | Missing for reconstruction |
 |---|---|---|---|
-| Lifecycle | `start`, `starting`, `leadership_request/confirmed/failed`, `leadership_request_rejected`, `stop`, `canary_stop`, `test_result`, `route_selected`, `no_route`, `pause`, `continue` | session start/end, leadership, route length | build/commit, campaign, scenario; run-relative time |
+| Lifecycle | `start`, `starting`, `leadership_request/confirmed/failed`, `leadership_request_rejected`, `stop`, `canary_stop`, `test_result`, `route_selected`, `no_route`, `pause`, `continue`, `reset`, `reset_rejected` | session start/end, leadership, route length | build/commit, campaign, scenario; run-relative time |
 | State machine | `state_transition` | every brain transition with reason, `after_ms`, objective, combat anchor (text) | anchor as numbers; leader position |
 | Movement | `pathing` (pos/target/dist in text), `reached`, `travel_reached`, `skip_stuck`, `leader_unstuck`, `leader_to_floor` | progress toward a step, stuck handling | continuous leader path (only sparse `pathing` text) |
 | Pull | `pull_state`, `pull_start`, `pull_established`, `pull_failed`, `pack_state`, `pack_resolution`, `pack_reset`, `already_dead`, `not_found` | pull lifecycle, pack state, member/add **counts** | member and add **identities** (guid/entry/position), pull id, expected vs engaged sets |

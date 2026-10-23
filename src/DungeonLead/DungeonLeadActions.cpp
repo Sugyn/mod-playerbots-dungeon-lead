@@ -2523,6 +2523,11 @@ void DungeonLead::RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st)
 bool DungeonLeadNextAction::Execute(Event /*event*/)
 {
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    // DLN-008: the run's terminal summary is written (a manual run held after its route ended):
+    // only the formation is held. Re-resolving here (another instance) would walk a new route
+    // under the finished run's id.
+    if (st.runSummaryRecorded)
+        return false;
 
     DungeonRoute const* route = ResolveRoute(st);
     // Waiting at a closed door (DungeonInteractionController): hold here until it opens or fails.
@@ -3802,9 +3807,20 @@ bool StartDungChatShortcutAction::Execute(Event event)
         }
         else if (sub == "reset")
         {
+            // DLN-008: a finished run (its terminal summary written - a manual run held after the
+            // route ended) is not reopened: route work after it would run under a run id whose
+            // result is final, and its second summary would be suppressed. A new run is stop + start.
+            if (st.runSummaryRecorded)
+            {
+                DungeonLead::RecordEvent(botAI, "reset_rejected", "run finished outcome=" + std::string(ToString(st.outcome)));
+                botAI->TellMaster("Dungeon lead: run #" + std::to_string(st.runId) +
+                                  " is finished - 'stopdungeon' then 'startdungeon' for a new run");
+                return true;
+            }
             // route progress only - debug mode, pause state and any owned mark survive this,
             // matching the README's "without redoing leadership/formations" (a full ResetState()
             // used to also silently turn debug mode back off)
+            DungeonLead::RecordEvent(botAI, "reset", "step=" + std::to_string(st.stepIndex));
             sDungeonRouteMgr.ResetRouteProgress(bot->GetGUID());
             botAI->TellMaster("Dungeon lead: route progress reset, picking the route back up from the start");
         }

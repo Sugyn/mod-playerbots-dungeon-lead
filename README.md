@@ -44,7 +44,7 @@ Whisper (or `/w`) the tank bot inside the dungeon:
 |---|---|
 | `startdungeon` | takes group leadership, sets the others to formation `leader`, enables `cc`, marks itself with the star icon, starts walking the route |
 | `startdungeon pause` / `continue` | holds in place / resumes |
-| `startdungeon reset` | resets route progress back to the first stop |
+| `startdungeon reset` | resets route progress back to the first stop; refused once the run has ended (route end held) - `stopdungeon` + `startdungeon` start a new run |
 | `startdungeon debug` | toggles verbose diagnostics to a log file (see "Debugging / reporting a bug" below) |
 | `startdungeon test` | same as plain `startdungeon`, reports one result line when the run ends |
 | `startdungeon status` | reports the current route/step/outcome, read-only |
