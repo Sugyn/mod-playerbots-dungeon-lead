@@ -27,7 +27,7 @@ Validation:
 - Fast suite (`bash tools/run_tests.sh`) after DLN-010: 394 kernel checks, 30 Python tests, all passing.
 - Worldserver build (`cmake --build build --target worldserver`, acore-clean, clang 18) after each
   DLN commit: clean, no install between them.
-- No live run has been made on a DLN build yet.
+- Live: first bot-only campaign on the DLN build in progress (below); no mixed human+bot run yet.
 
 Deployed 2026-10-23 on acore-clean: build `02fc932` installed (VM 107 snapshot
 `pre-dln-phase1-20261023` taken first), `2026_10_10_00_unresolved_doors.sql` applied (route table
