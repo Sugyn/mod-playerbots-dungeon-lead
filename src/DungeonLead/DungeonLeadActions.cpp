@@ -37,6 +37,7 @@
 #include "LootMgr.h"
 #include "LastMovementValue.h"
 #include "Map.h"
+#include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "PathGenerator.h"
@@ -3459,6 +3460,29 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
 // furthest reachable waypoint, cone-sample when blocked) — but a bot that makes no progress skips
 // the stop instead of teleporting to it: teleporting the tank away from its group is worse than
 // missing an optional boss.
+// DLN-011: MovementAction::MoveTo(..., exact_waypoint) hands only the end point to MovePoint, which
+// paths again on its own and falls back to a straight two-point spline when that fails - the path
+// checked here was not the path walked (ZF run 1879810038038528: the accepted path went west along
+// the floor at z 8-9, the leader went straight south and climbed to z 36). The accepted points are
+// sent as they are instead; recovery's walk-back already moves this way.
+bool DungeonLeadNextAction::MoveAlongPath(Movement::PointsArray points, float pathLength)
+{
+    if (points.size() < 2)
+        return false;
+    G3D::Vector3 const end = points.back();
+    if (!IsMovingAllowed() || IsDuplicateMove(end.x, end.y, end.z) ||
+        IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+        return false;
+    if (bot->IsSitState())
+        bot->SetStandState(UNIT_STAND_STATE_STAND);
+    bot->GetMotionMaster()->MoveSplinePath(&points);
+    float delay = IN_MILLISECONDS * MoveDelay(pathLength);
+    delay = std::min(std::max(0.0f, delay), float(sPlayerbotAIConfig.maxWaitForMove));
+    AI_VALUE(LastMovement&, "last movement")
+        .Set(bot->GetMapId(), end.x, end.y, end.z, bot->GetOrientation(), delay, MovementPriority::MOVEMENT_NORMAL);
+    return true;
+}
+
 bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
 {
     if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
@@ -3617,7 +3641,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             return;
         st.lastPathDecisionTs = getMSTime();
         st.lastPathDecisionKind = kind;
-        // "direct" and "probe" leave the path to MoveTo(); compute it here for the record only
+        // "probe" passes no path: compute it here for the record only
         std::unique_ptr<PathGenerator> own;
         if (!path)
         {
@@ -3650,16 +3674,27 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         DungeonLead::RecordEventV2(botAI, "path_decision", j.Done());
     };
 
-    if (disToDest < kPathFinderDis)
-    {
-        recordPath("direct", nullptr, dx, dy, dz);
-        return MoveTo(dest.GetMapId(), dx, dy, dz, false, false, false, true);
-    }
-
     // SHORT = a path cut at the point limit (a long way): as usable as a whole one. Without it every
     // destination more than ~300 yd of path away was "unreachable" (Deadmines, H7: the leader stood
-    // on the upper level unable to head for the cove).
+    // on the upper level unable to head for the cove). NOPATH, SHORTCUT (through geometry) and
+    // NOT_USING_PATH (no mmaps) are never walked.
     uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY | PATHFIND_SHORT;
+
+    if (disToDest < kPathFinderDis)
+    {
+        // DLN-011: a short hop follows an accepted path too; without one the walk does not move
+        // (the stuck handling below decides) instead of MovePoint's straight-line fallback.
+        PathGenerator path(bot);
+        path.CalculatePath(dx, dy, dz);
+        if (!(path.GetPathType() & ~typeOk) && path.GetPath().size() > 1)
+        {
+            recordPath("direct", &path, dx, dy, dz);
+            return MoveAlongPath(path.GetPath(), path.getPathLength());
+        }
+        recordPath("direct_rejected", &path, dx, dy, dz);
+        return false;
+    }
+
     {
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
@@ -3672,7 +3707,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             if (endDistToDest + 5.0f < disToDest)
             {
                 recordPath("path_end", &path, endPos.x, endPos.y, endPos.z);
-                return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
+                return MoveAlongPath(path.GetPath(), path.getPathLength());
             }
             // A full path cut at the point limit (SHORT, not INCOMPLETE) is a real way there even when
             // its first stretch leads away - a detour (Deadmines: from the upper level near the
@@ -3682,7 +3717,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
                 bot->GetExactDist(endPos.x, endPos.y, endPos.z) > 5.0f)
             {
                 recordPath("short_detour", &path, endPos.x, endPos.y, endPos.z);
-                return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
+                return MoveAlongPath(path.GetPath(), path.getPathLength());
             }
         }
     }
@@ -3710,7 +3745,7 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
                 if (bot->GetExactDist(end.x, end.y, end.z) < 5.0f)
                     continue;
                 recordPath("route_waypoint", &wp, end.x, end.y, end.z);
-                return MoveTo(bot->GetMapId(), end.x, end.y, end.z, false, false, false, true);
+                return MoveAlongPath(wp.GetPath(), wp.getPathLength());
             }
         }
     }
@@ -3726,6 +3761,8 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
     float const baseAngle = bot->GetAngle(&dest);
     float rx = 0.f, ry = 0.f, rz = 0.f;
     bool found = false;
+    Movement::PointsArray probePoints;
+    float probeLength = 0.f;
     for (int attempt = 0; attempt < 5; ++attempt)
     {
         float delta = (rand_norm() - 0.5f) * static_cast<float>(M_PI);  // +-90 deg, forward-biased
@@ -3743,12 +3780,14 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             ry = endPos.y;
             rz = endPos.z;
             minDelta = fabs(delta);
+            probePoints = path.GetPath();
+            probeLength = path.getPathLength();
         }
     }
-    if (found)
+    if (found && probePoints.size() > 1)
     {
         recordPath("probe", nullptr, rx, ry, rz);
-        return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
+        return MoveAlongPath(probePoints, probeLength);
     }
 
     recordPath("no_path", nullptr, dx, dy, dz);

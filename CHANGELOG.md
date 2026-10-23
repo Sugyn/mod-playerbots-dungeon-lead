@@ -45,6 +45,16 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- The route walk follows the path it checked (DLN-011). It inspected a PathGenerator path and then
+  called `MovementAction::MoveTo(..., exact_waypoint)`, which hands only the end point to
+  `MovePoint`; the core paths again and falls back to a straight two-point spline when that fails.
+  Zul'Farrak run 1879810038038528: the accepted path went west along the floor (z 8-9), the leader
+  went straight south and climbed to z 36, then the session went silent. Every route move (short
+  hop, path end, short detour, route waypoint, probe) now sends the accepted points through
+  `MotionMaster::MoveSplinePath` with the same `last movement` bookkeeping; a short hop without an
+  accepted path no longer moves (`path_decision` `direct_rejected`) and is handled by the stuck
+  policy instead of a straight-line move. Accepted path types are unchanged (normal, incomplete,
+  short, far-from-poly; never no-path, shortcut or not-using-path).
 - Telemetry lines lost after leaving the buffer are counted and reported (DLN-023). The flush
   drained the queue and then silently skipped a file that could not be opened, and ignored
   `fputs`/`fflush` errors; only buffer overflow was reported. Every line that does not reach its

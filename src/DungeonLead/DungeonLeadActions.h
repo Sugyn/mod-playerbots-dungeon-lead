@@ -192,6 +192,9 @@ public:
 private:
     DungeonRoute const* ResolveRoute(DungeonLeadState& st);
     bool MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
+    // DLN-011: move along exactly these accepted path points (MotionMaster::MoveSplinePath), with
+    // the same "last movement" bookkeeping MovementAction::MoveTo does.
+    bool MoveAlongPath(Movement::PointsArray points, float pathLength);
     bool WalkDoorStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
     bool WalkUseStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
     bool WalkTalkStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
