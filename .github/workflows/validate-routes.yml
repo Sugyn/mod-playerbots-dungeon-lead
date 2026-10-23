@@ -10,6 +10,10 @@ on:
   push:
     branches: [main]
     paths:
+      - 'sql/**'
+      - 'conf/**'
+      - 'tools/check_route_sql.py'
+      - 'tools/resolve_routes.py'
       - 'data/**'
       - 'src/**'
       - 'tests/**'
@@ -19,6 +23,10 @@ on:
       - '.github/workflows/validate-routes.yml'
   pull_request:
     paths:
+      - 'sql/**'
+      - 'conf/**'
+      - 'tools/check_route_sql.py'
+      - 'tools/resolve_routes.py'
       - 'data/**'
       - 'src/**'
       - 'tests/**'
@@ -32,4 +40,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 tools/validate_routes.py
+      - run: python3 tools/check_route_sql.py
       - run: bash tools/run_tests.sh

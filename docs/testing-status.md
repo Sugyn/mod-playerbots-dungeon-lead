@@ -82,6 +82,14 @@ Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below)
 bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
 mixed human+bot runs have not been made on any build.
 
+## Route SQL equivalence (DLN-019, 2026-10-23)
+
+`python3 tools/check_route_sql.py --upgrade-from a4ce2d8^ --mysql "ssh acore-clean-root mysql"`:
+CSV 497 rows == base SQL 497 rows; fresh install (current base SQL) == base SQL of `a4ce2d8^`
+(before the first `sql/updates` file) + all 18 updates in name order, 497 rows each, no
+difference. The live `acore_playerbots` table equals the CSV since `2026_10_10_00_unresolved_doors.sql`
+was applied (baseline manifest above).
+
 ## Campaign `verify-20261023-1421-3e3d6d2` (DLN-011 accepted-path movement)
 
 Same profile, build `3e3d6d2`; Deadmines, SFK, Slave Pens, ZF twice each. 7 of 8 FULL_ROUTE:

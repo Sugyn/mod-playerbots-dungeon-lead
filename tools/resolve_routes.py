@@ -92,34 +92,39 @@ for hid, d in lfg.items():
 # normal entries drop heroic_only steps
 rows = [r for r in rows if r["kind"] != "heroic_only"] + derived
 
-# --- safety check: never silently drop pathcheck-derived navigation waypoints ---
-# 2026-09-15: this script overwrites dungeon_routes.csv wholesale from routes.tsv, which only
-# knows "boss name -> resolve a creature spawn position". It has no way to represent a pure
-# navigation anchor placed at a PathGenerator-confirmed point (source="derived" in the CSV, e.g.
-# Wailing Caverns' bridge waypoints) - a fresh run silently regenerates the file without them,
-# with CI staying green because the validator only checks the *output*'s shape, not whether it
-# regressed real navigation fixes. See the 2026-09-15 independent architecture review, DL-014.
-# Refuse to overwrite if that would happen; --force bypasses this for a deliberate reconciliation.
-if "--force" not in sys.argv:
-    existing_path = f"{data}/dungeon_routes.csv"
-    if os.path.exists(existing_path):
-        with open(existing_path, newline="") as f:
-            existing_derived = {(r["lfg_id"], r["step"], r["boss"])
-                                 for r in csv.DictReader(f) if r.get("source") in ("derived", "gameobject")}
-        fresh_keys = {(str(r["lfg_id"]), str(r["step"]), r["boss"]) for r in rows}
-        lost = [k for k in existing_derived if (k[0], k[1], k[2]) not in fresh_keys]
-        if lost:
-            print(f"REFUSING TO OVERWRITE {existing_path}: {len(lost)} 'derived' navigation "
-                  f"waypoint(s) in the current file have no equivalent in a fresh resolve, and "
-                  f"would be silently deleted:", file=sys.stderr)
-            for lfg_id, step, boss in sorted(lost):
-                print(f"  lfg_id={lfg_id} step={step} '{boss}'", file=sys.stderr)
-            print("These aren't creature spawns this script can re-derive from routes.tsv/"
-                  "boss_positions.tsv - they were placed by hand against real pathcheck results. "
-                  "Reconcile routes.tsv to include them (as manually-added rows with fixed "
-                  "coordinates) before regenerating, or pass --force if this loss is intentional.",
-                  file=sys.stderr)
-            sys.exit(1)
+# --- safety check: a regeneration must keep every row the current file has ---
+# DLN-019: the current dungeon_routes.csv is authored in more places than routes.tsv can express -
+# fixed path anchors and navigation waypoints (source=derived/spawn), game-object rows, tools/
+# route_insert.py pull steps with their own numbering. The old guard compared (lfg_id, step, boss)
+# for source=derived/gameobject only; a renumbered route slipped through it. Every existing row is
+# now compared on lfg_id, difficulty, step, kind, boss, entry and x/y/z (0.01): anything the fresh
+# resolve would drop or change is listed and nothing is written. --force overwrites anyway (a
+# deliberate reconciliation, not a way to make a check pass); --dry-run only reports.
+def _key(r):
+    num = lambda v: "" if v in ("", None, "NULL") else f"{float(v):.2f}"
+    return (str(r["lfg_id"]), str(r["difficulty"]), str(r["step"]), r["kind"], r["boss"], str(r["entry"]),
+            num(r["x"]), num(r["y"]), num(r["z"]))
+
+existing_path = f"{data}/dungeon_routes.csv"
+lost = []
+if os.path.exists(existing_path):
+    with open(existing_path, newline="") as f:
+        existing = list(csv.DictReader(f))
+    fresh_keys = {_key(r) for r in rows}
+    lost = [r for r in existing if _key(r) not in fresh_keys]
+if lost:
+    print(f"{len(lost)} row(s) of {existing_path} would be dropped or changed by this resolve:", file=sys.stderr)
+    for r in lost:
+        print(f"  lfg_id={r['lfg_id']} diff={r['difficulty']} step={r['step']} {r['kind']} '{r['boss']}' "
+              f"entry={r['entry']} source={r['source']}", file=sys.stderr)
+if "--dry-run" in sys.argv:
+    print(f"dry run: {len(rows)} resolved rows, {len(lost)} existing row(s) not reproduced; nothing written")
+    sys.exit(1 if lost else 0)
+if lost and "--force" not in sys.argv:
+    print("REFUSING TO OVERWRITE: routes.tsv does not reproduce the current file. dungeon_routes.csv and the "
+          "SQL are the authority for authored rows (anchors, pull steps, game objects); edit them with "
+          "tools/route_insert.py or by hand, and check with tools/check_route_sql.py.", file=sys.stderr)
+    sys.exit(1)
 
 with open(f"{data}/dungeon_routes.csv", "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))

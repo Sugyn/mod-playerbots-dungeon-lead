@@ -148,5 +148,26 @@ class RouteScopeTest(unittest.TestCase):
         self.assertEqual(got["3"][1], "no_mandatory")
         self.assertEqual(got["4"][1:], ("partial_model", ["D"]))
 
+
+class RouteSqlTest(unittest.TestCase):
+    """DLN-019: the base SQL parser reads quoted values with commas, escaped quotes and NULLs."""
+
+    def test_parse_values(self):
+        from tools import check_route_sql as c
+        sql = ("INSERT INTO `t` (`a`) VALUES\n"
+               "(1,43,0,'Wailing, Caverns','-',3,'optional','Cobrahn\\'s approach',1,-104.533,1,NULL,''),\n"
+               "(2,43,0,'X','-',4,'boss','Y',NULL,NULL,NULL,NULL,'note (with) parens');\n")
+        got = c.parse_values(sql)
+        self.assertEqual(len(got), 2)
+        self.assertEqual(got[0][3], "Wailing, Caverns")
+        self.assertEqual(got[0][7], "Cobrahn's approach")
+        self.assertIsNone(got[0][11])
+        self.assertEqual(got[1][12], "note (with) parens")
+        self.assertIsNone(got[1][8])
+
+    def test_repository_csv_matches_base_sql(self):
+        from tools import check_route_sql as c
+        self.assertEqual(c.csv_rows(), c.sql_rows())
+
 if __name__ == "__main__":
     unittest.main()

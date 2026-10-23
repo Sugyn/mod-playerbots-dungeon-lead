@@ -42,6 +42,17 @@ the MAJOR bar above is met.
 - `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
 
 ### Changed
+- Route data: a regeneration can no longer rewrite authored rows, and fresh/upgrade installs are
+  checked to agree (DLN-019). `tools/resolve_routes.py` guarded only `source=derived/gameobject`
+  rows by (lfg_id, step, boss); a fresh resolve of the current `routes.tsv` would change 104 rows
+  and drop 6 (Wailing Caverns renumbered, anchors, game objects, pull steps) without tripping it.
+  It now compares every existing row on lfg_id, difficulty, step, kind, boss, entry and x/y/z,
+  lists every row it would drop or change and writes nothing (`--dry-run` only reports; `--force`
+  stays a deliberate override). The CSV and SQL are the authority for authored rows.
+  `tools/check_route_sql.py` compares `data/dungeon_routes.csv` with
+  `sql/playerbots_dungeon_route.sql` (now in CI, which also runs on `sql/` and `conf/` changes) and,
+  with `--upgrade-from REV --mysql CMD`, rehearses a fresh install against REV's base SQL plus every
+  update in two disposable databases.
 - A completed route says whether it is the whole dungeon (DLN-018, owner checkpoint H5 taken as
   the plan's minimal option: metadata next to the existing results, no new outcome). A route could
   end Complete / FULL_ROUTE with content it never attempts or verifies - `skip` rows (unsupported
