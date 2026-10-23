@@ -518,53 +518,71 @@ namespace
             // reason. Skip each mutation when its own wiped flag is false - startdungeon itself
             // (logWipeDetection=false) is untouched, everyone there is expected to need the full
             // apply anyway.
-            bool formationWiped = fv && fv->Save() != "leader";
-            bool strategyWiped = !memberAI->HasStrategy("follow", BOT_STATE_NON_COMBAT) ||
-                                 memberAI->HasStrategy("loot", BOT_STATE_NON_COMBAT);
-            if (logWipeDetection && (formationWiped || strategyWiped))
+            // DLN-015: each owned component on its own - formation, non-combat and combat
+            // strategies. Only what differs is changed: a follower that lost just "cc" or got "rpg"
+            // back is repaired; it used to be checked for "follow"/"loot" only.
+            using namespace DungeonLeadKernel;
+            auto has = [memberAI](BotState state) {
+                return [memberAI, state](char const* n) { return memberAI->HasStrategy(n, state); };
+            };
+            bool const formationWiped = fv && fv->Save() != "leader";
+            std::string const nonCombat = logWipeDetection
+                ? StrategyDelta(FollowerNonCombatStrategies(), has(BOT_STATE_NON_COMBAT))
+                : StrategyAll(FollowerNonCombatStrategies());
+            std::string const combat = logWipeDetection
+                ? StrategyDelta(FollowerCombatStrategies(), has(BOT_STATE_COMBAT))
+                : StrategyAll(FollowerCombatStrategies());
+            if (logWipeDetection && (formationWiped || !nonCombat.empty() || !combat.empty()))
             {
                 LOG_INFO("playerbots.dungeonlead",
-                         "[DungeonLead] follower {} was missing formation/strategy (external AI "
-                         "reset) - reconciliation loop restoring it (formation={} strategy={})",
-                         member->GetName(), formationWiped, strategyWiped);
-                DungeonLead::RecordEvent(botAI, "strategy_restored", "follower=" + member->GetName());
+                         "[DungeonLead] follower {} drifted from the session's strategies (external AI "
+                         "reset) - restoring formation={} non_combat='{}' combat='{}'",
+                         member->GetName(), formationWiped, nonCombat, combat);
+                DungeonLead::RecordEvent(botAI, "strategy_restored",
+                                         "follower=" + member->GetName() + " formation=" + (formationWiped ? "1" : "0") +
+                                             " non_combat=" + nonCombat + " combat=" + combat);
             }
             if (fv && (!logWipeDetection || formationWiped))
                 fv->Load("leader");
-            if (!logWipeDetection || strategyWiped)
-            {
-                // -new rpg/-rpg: upstream's RPG wandering teleports a bot to its RPG destination when
-                // it can't walk there (NewRpgBaseAction::MoveFarTo) - from inside an instance that
-                // means out of the dungeon (seen live in Shadowfang Keep: the leader landed in
-                // Silverpine while the party was drinking). Restored with the snapshot at Stop().
-                // -loot: see the leader below - a looting follower wandered off to old corpses and
-                // held every pull on "group too spread".
-                memberAI->ChangeStrategy("+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot",
-                                         BOT_STATE_NON_COMBAT);
-                memberAI->ChangeStrategy("+cc", BOT_STATE_COMBAT);
-            }
+            // -new rpg/-rpg: upstream's RPG wandering teleports a bot to its RPG destination when
+            // it can't walk there (NewRpgBaseAction::MoveFarTo) - from inside an instance that
+            // means out of the dungeon (seen live in Shadowfang Keep: the leader landed in
+            // Silverpine while the party was drinking). Restored with the snapshot at Stop().
+            // -loot: see the leader below - a looting follower wandered off to old corpses and
+            // held every pull on "group too spread".
+            if (!nonCombat.empty())
+                memberAI->ChangeStrategy(nonCombat, BOT_STATE_NON_COMBAT);
+            if (!combat.empty())
+                memberAI->ChangeStrategy(combat, BOT_STATE_COMBAT);
         }
-        // Same DL-020 guard for the leader's own two lines: only reassert if the reconciliation
-        // loop actually found it missing. HasStrategy("dungeon lead", ...) mirrors DungeonLead::IsOn
-        // exactly (see its declaration) - the leader's non-combat strategy is the canonical "is this
-        // session actually active" signal.
-        bool leaderStrategyWiped = !botAI->HasStrategy("dungeon lead", BOT_STATE_NON_COMBAT) ||
-                                   botAI->HasStrategy("loot", BOT_STATE_NON_COMBAT);
-        if (logWipeDetection && leaderStrategyWiped)
+        // The leader's two engines, same per-component check. HasStrategy("dungeon lead", ...) on
+        // the non-combat engine mirrors DungeonLead::IsOn exactly (see its declaration).
+        using namespace DungeonLeadKernel;
+        auto leaderHas = [botAI](BotState state) {
+            return [botAI, state](char const* n) { return botAI->HasStrategy(n, state); };
+        };
+        std::string const leaderNonCombat = logWipeDetection
+            ? StrategyDelta(LeaderNonCombatStrategies(), leaderHas(BOT_STATE_NON_COMBAT))
+            : StrategyAll(LeaderNonCombatStrategies());
+        std::string const leaderCombat = logWipeDetection
+            ? StrategyDelta(LeaderCombatStrategies(), leaderHas(BOT_STATE_COMBAT))
+            : StrategyAll(LeaderCombatStrategies());
+        if (logWipeDetection && (!leaderNonCombat.empty() || !leaderCombat.empty()))
         {
             LOG_INFO("playerbots.dungeonlead",
-                     "[DungeonLead] leader {} was missing its own strategy (external AI reset) - "
-                     "reconciliation loop restoring it", bot->GetName());
-            DungeonLead::RecordEvent(botAI, "strategy_restored", "leader=" + std::string(bot->GetName()));
+                     "[DungeonLead] leader {} drifted from its own strategies (external AI reset) - "
+                     "restoring non_combat='{}' combat='{}'", bot->GetName(), leaderNonCombat, leaderCombat);
+            DungeonLead::RecordEvent(botAI, "strategy_restored", "leader=" + std::string(bot->GetName()) +
+                                                                     " non_combat=" + leaderNonCombat +
+                                                                     " combat=" + leaderCombat);
         }
-        if (!logWipeDetection || leaderStrategyWiped)
-        {
-            // -loot: upstream's loot actions outrank "dungeon lead next" (5-8 vs 3.5), so the leader
-            // walked every corpse before moving on, even back to old ones 135 yd behind (GM-observed,
-            // SFK). Keys are looted by the interaction steps themselves. Restored at Stop().
-            botAI->ChangeStrategy("+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg,-loot", BOT_STATE_NON_COMBAT);
-            botAI->ChangeStrategy("+dungeon lead,+cc,+mark rti", BOT_STATE_COMBAT);
-        }
+        // -loot: upstream's loot actions outrank "dungeon lead next" (5-8 vs 3.5), so the leader
+        // walked every corpse before moving on, even back to old ones 135 yd behind (GM-observed,
+        // SFK). Keys are looted by the interaction steps themselves. Restored at Stop().
+        if (!leaderNonCombat.empty())
+            botAI->ChangeStrategy(leaderNonCombat, BOT_STATE_NON_COMBAT);
+        if (!leaderCombat.empty())
+            botAI->ChangeStrategy(leaderCombat, BOT_STATE_COMBAT);
     }
 
     // Equivalent to PositionsResetAction::ResetReturnPosition()/ResetStayPosition() (see

@@ -6,6 +6,7 @@
 #include "DungeonTelemetryBuffer.h"
 #include "DungeonTelemetryV2.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -1462,6 +1463,35 @@ namespace
               "resume: no checkpoint -> 0, after the checkpoint, never ahead of the route");
     }
 
+    // DLN-015: each owned strategy component is repaired on its own; a stable session needs no
+    // change at all, and session start applies the whole set.
+    void TestStrategyDelta()
+    {
+        auto hasSet = [](std::vector<std::string> on) {
+            return [on](char const* n) { return std::find(on.begin(), on.end(), n) != on.end(); };
+        };
+        std::vector<std::string> const followerOk = {"follow"};
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet(followerOk)).empty(),
+              "follower as set -> no non-combat change");
+        Check(StrategyDelta(FollowerCombatStrategies(), hasSet({"cc"})).empty(), "follower combat as set -> no change");
+        Check(StrategyDelta(FollowerCombatStrategies(), hasSet({})) == "+cc", "lost only cc -> +cc");
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "rpg"})) == "-rpg",
+              "rpg put back -> -rpg only (follow untouched)");
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "loot", "new rpg"})) == "-new rpg,-loot",
+              "several conflicts -> exactly those");
+        Check(StrategyDelta(LeaderCombatStrategies(), hasSet({"dungeon lead", "cc", "mark rti"})).empty(),
+              "leader combat as set -> no change");
+        Check(StrategyDelta(LeaderCombatStrategies(), hasSet({"dungeon lead", "cc"})) == "+mark rti",
+              "leader lost mark rti -> +mark rti");
+        Check(StrategyDelta(LeaderNonCombatStrategies(), hasSet({"dungeon lead", "grind"})).empty(),
+              "leader non-combat as set -> no change");
+        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot",
+              "session start: the same follower set as before");
+        Check(StrategyAll(LeaderNonCombatStrategies()) == "+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg,-loot",
+              "session start: the same leader non-combat set as before");
+        Check(StrategyAll(LeaderCombatStrategies()) == "+dungeon lead,+cc,+mark rti", "session start: leader combat set");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1569,6 +1599,7 @@ int main()
     TestPauseGates();
     TestQueuedLeaderChange();
     TestRecoveryDelta();
+    TestStrategyDelta();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace DungeonLeadKernel
@@ -1560,6 +1561,73 @@ namespace DungeonLeadKernel
         if (haveSpawn && (storedState == 0 || storedState == 2))
             return MissingDoorStep::Satisfied;
         return waitExpired ? MissingDoorStep::Fail : MissingDoorStep::Wait;
+    }
+
+    // DLN-015: the strategy components a session owns on one engine (non-combat or combat): each
+    // name that must be on or off. StrategyDelta gives only what differs from what the bot has, as
+    // a ChangeStrategy() string ("+cc,-rpg"), empty when nothing does - so a partial external reset
+    // (a lost "cc", a "rpg" put back) is repaired and a stable session is not touched.
+    struct OwnedStrategy
+    {
+        char const* name;
+        bool on;
+    };
+
+    template <class HasFn>
+    inline std::string StrategyDelta(std::vector<OwnedStrategy> const& owned, HasFn has)
+    {
+        std::string out;
+        for (OwnedStrategy const& o : owned)
+            if (has(o.name) != o.on)
+            {
+                if (!out.empty())
+                    out += ",";
+                out += (o.on ? "+" : "-");
+                out += o.name;
+            }
+        return out;
+    }
+
+    // The whole owned set as one ChangeStrategy() string (session start: everything is applied).
+    inline std::string StrategyAll(std::vector<OwnedStrategy> const& owned)
+    {
+        std::string out;
+        for (OwnedStrategy const& o : owned)
+        {
+            if (!out.empty())
+                out += ",";
+            out += (o.on ? "+" : "-");
+            out += o.name;
+        }
+        return out;
+    }
+
+    // What a session sets: followers on "+follow" with RPG, looting, grinding and staying off, and
+    // "+cc" in combat; the leader on "+dungeon lead,+grind" with the same off-list, and
+    // "+dungeon lead,+cc,+mark rti" in combat.
+    inline std::vector<OwnedStrategy> const& FollowerNonCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"follow", true},  {"passive", false}, {"stay", false},
+                                                     {"grind", false},  {"dungeon lead", false},
+                                                     {"new rpg", false}, {"rpg", false},     {"loot", false}};
+        return v;
+    }
+    inline std::vector<OwnedStrategy> const& FollowerCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"cc", true}};
+        return v;
+    }
+    inline std::vector<OwnedStrategy> const& LeaderNonCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"dungeon lead", true}, {"grind", true}, {"passive", false},
+                                                     {"stay", false},        {"new rpg", false}, {"rpg", false},
+                                                     {"loot", false}};
+        return v;
+    }
+    inline std::vector<OwnedStrategy> const& LeaderCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"dungeon lead", true}, {"cc", true}, {"mark rti", true}};
+        return v;
     }
 
     // DLN-004: who uses a key on a route object or door. Only a bot the module may act through

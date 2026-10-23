@@ -45,6 +45,13 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Each strategy a session owns is repaired on its own (DLN-015). The reconciliation loop looked at
+  a follower's "follow"/"loot" and the leader's non-combat "dungeon lead"/"loot" only, so a reset
+  that took just a follower's combat "cc", the leader's "mark rti" or "cc", or put "rpg"/"stay"
+  back was never repaired. The owned sets are listed once (`FollowerNonCombatStrategies` etc. in
+  `DungeonLeadKernels.h`); `StrategyDelta` gives exactly the missing or conflicting entries per
+  engine and only those are changed - a stable session still makes no `ChangeStrategy` call.
+  `strategy_restored` now names the formation flag and the non-combat/combat deltas.
 - The route walk follows the path it checked (DLN-011). It inspected a PathGenerator path and then
   called `MovementAction::MoveTo(..., exact_waypoint)`, which hands only the end point to
   `MovePoint`; the core paths again and falls back to a straight two-point spline when that fails.
