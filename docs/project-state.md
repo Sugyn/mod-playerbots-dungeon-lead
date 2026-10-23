@@ -12,7 +12,7 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 | Task | Phase | Priority | Status | Evidence / open gate |
 |---|---|---|---|---|
 | DLN-001 baseline manifest | 0 | P1 | IMPLEMENTED | manifest in testing-status; open: route-table hash and mmap identity as part of run context (DLN-022) |
-| DLN-002 integration build | 0 | P1 | IN_PROGRESS | worldserver builds clean on acore-clean `build/` (f19a18799 / 037c0141) for every DLN commit; open: all-class registration probe, start/status/stop smoke, AddClass login classification check (ADR-003) |
+| DLN-002 integration build | 0 | P1 | IN_PROGRESS | worldserver builds clean on acore-clean `build/` (f19a18799 / 037c0141) for every DLN commit; start/stop exercised by every campaign; AddClass misclassification checked - no effect on this config (ADR-004); registration probe `f59afd3` built, result pending the next restart |
 | DLN-003 recovery delta coverage | 0 | P1 | IMPLEMENTED | kernels `RecoveryClosesWhenIneligible`, `WalkBackFromEntrance`, `ReopenPathAnchors` + boundary tests; replay: new events leave the reconstruction unchanged, heartbeat is not a campaign record; live: 72 eating/drinking waits none aborted (0740-41f4375); Slave Pens wipe -> `checkpoint_walk_back` 663 yd, route completed, twice (1421-3e3d6d2) |
 | DLN-004 no actions through human characters | 1 | P1 | IMPLEMENTED | `180c93b`, kernel tests, build clean; open: live human-key scenarios |
 | DLN-005 SkipOptional keeps required trash | 1 | P1 | IMPLEMENTED | `fa2c41b`, kernel tests, build clean; open: ZF with SkipOptional=0/1 |
@@ -32,7 +32,8 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 | DLN-022 run context | 7 | P1 | IMPLEMENTED | `e6a79fb`; live: context `ee4a40e190227422` complete on `dbea4d4` (module, core f19a18799a35, playerbots 037c01418b5d, 497 route rows, 15 config keys, 3780 mmap files); open: a deliberate config/route change detected by compare |
 | DLN-024 distinct comparable evidence | 7 | P1 | IMPLEMENTED | `fbca540`; status regenerated - every existing level is now "(pre-context)"; first context-qualified pairs come from campaign 1623-dbea4d4 onward |
 | DLN-023 telemetry sink failures | 7 | P2 | IMPLEMENTED | `TelemetrySinkHealth` + kernel tests, heartbeat `lost_lines`, build clean; live: `lost_lines` 0 through campaign 0740-41f4375; open: unwritable/full log destination on staging |
-| DLN-016, DLN-020, DLN-021, DLN-025, DLN-026 | 3-7 | - | TODO | DLN-021 (mixed human runs) and the human parts of DLN-004/007/008/017/020 have no player available |
+| DLN-025 controller cost | 7 | P2 | IN_PROGRESS | heartbeat `guard_us` (`6115722`); open: measurements under 4 parallel sessions, budget with the owner |
+| DLN-016, DLN-020, DLN-021, DLN-026 | 3-7 | - | TODO | DLN-021 (mixed human runs) and the human parts of DLN-004/007/008/017/020 have no player available |
 
 Validation:
 - Fast suite (`bash tools/run_tests.sh`) after DLN-010: 394 kernel checks, 30 Python tests, all passing.
