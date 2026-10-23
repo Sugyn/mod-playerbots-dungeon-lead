@@ -1698,6 +1698,36 @@ namespace DungeonLeadKernel
         return v;
     }
 
+    // A talk NPC that offers no option yet is waiting on its event; a creature of that event can
+    // stand idle out of reach (Zul'Farrak: wave 3's Nekrum and Sezz'ziz spawn 28 yd from Bly's crew,
+    // nobody engages, Weegli's option never comes - run 1879850478469127 waited 10 min). The leader
+    // goes for one only if the route itself names its entry as event content of this dungeon, it is
+    // alive and attackable, and it stands within kEventCreatureRadius of the NPC. Nearest first.
+    constexpr float kEventCreatureRadius = 60.0f;
+
+    struct EventCreatureCandidate
+    {
+        bool routeEventEntry = false;
+        bool alive = false;
+        bool attackable = false;
+        float distToNpc = 0.f;
+        float distToLeader = 0.f;
+    };
+
+    inline int ChooseEventCreature(std::vector<EventCreatureCandidate> const& c)
+    {
+        int best = -1;
+        for (size_t i = 0; i < c.size(); ++i)
+        {
+            EventCreatureCandidate const& e = c[i];
+            if (!e.routeEventEntry || !e.alive || !e.attackable || e.distToNpc > kEventCreatureRadius)
+                continue;
+            if (best < 0 || e.distToLeader < c[size_t(best)].distToLeader)
+                best = int(i);
+        }
+        return best;
+    }
+
     // DLN-004: who uses a key on a route object or door. Only a bot the module may act through
     // (not a real player, not a player's self-bot) is ever made to cast, Use or loot; a key held only
     // by a player is asked for, and the world is watched for the player using it.

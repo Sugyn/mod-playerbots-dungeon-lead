@@ -82,6 +82,13 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Zul'Farrak: a talk step whose NPC offers no option yet goes for an idle creature of its event
+  (run 1879850478469127: wave 3's Nekrum and Sezz'ziz stood at their summon spot 28 yd from Bly's
+  crew, nobody engaged them, Weegli offered only the "event in progress" menu for 10 minutes and
+  the run stopped). Only a creature whose entry the route lists as `event` content, alive,
+  attackable and within 60 yd of the NPC (`ChooseEventCreature`); recorded as `event_assist
+  idle_event_creature=`. Route data: ZF step 10 Shadowpriest Sezz'ziz gets its entry (7275,
+  `NPC_SHADOWPRIEST_SEZZZIZ`), `sql/updates/2026_10_23_00_zf_sezzziz_entry.sql`.
 - A pull waiting for the party no longer walks the leader on toward the pack after 20 s (DLN-012).
   `PullHoldsLeader` released a `WaitingParty` hold after 20 s; with a member between the soft and
   hard range the party was ready to walk but not to pull, so the leader walked into the unready

@@ -153,7 +153,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 7. **Sergeant Bly** — entry 7604 @ (1882.89, 1299.27, 48.3843) — after Weegli: Bly and his crew turn hostile
 8. **Sergeant Bly** `derived` — entry 7604 @ (1883.82, 1200.83, 8.87) — fought where the crew waits downstairs
 9. **Nekrum Gutchewer** **[event]** `script` — entry 7796 (no static spawn) — wave 3
-10. **Shadowpriest Sezz'ziz** **[event]** `unknown` — wave 3
+10. **Shadowpriest Sezz'ziz** **[event]** `script` — entry 7275 (no static spawn) — wave 3
 11. **End Door** **[door]** `gameobject` — entry 146084 @ (1854.53, 1142.89, 16.0846) — blown by Weegli; Ukorz is behind it
 12. **Chief Ukorz Sandscalp** — entry 7267 @ (1727.5, 1017.3, 54.9) — with Ruuzlu
 13. **Hydromancer Velratha** *(optional)* — entry 7795 @ (1698.2, 1210.7, 9.4)

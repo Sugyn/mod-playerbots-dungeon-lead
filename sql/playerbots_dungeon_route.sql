@@ -135,7 +135,7 @@ INSERT INTO `playerbots_dungeon_route` (`lfg_id`,`map_id`,`difficulty`,`name`,`w
 (24,209,0,'Zul\'Farrak','-',7,'talk','Sergeant Bly',7604,1882.89,1299.27,48.3843,'after Weegli: Bly and his crew turn hostile'),
 (24,209,0,'Zul\'Farrak','-',8,'required','Sergeant Bly',7604,1883.82,1200.83,8.87,'fought where the crew waits downstairs'),
 (24,209,0,'Zul\'Farrak','-',9,'event','Nekrum Gutchewer',7796,NULL,NULL,NULL,'wave 3'),
-(24,209,0,'Zul\'Farrak','-',10,'event','Shadowpriest Sezz\'ziz',NULL,NULL,NULL,NULL,'wave 3'),
+(24,209,0,'Zul\'Farrak','-',10,'event','Shadowpriest Sezz\'ziz',7275,NULL,NULL,NULL,'wave 3'),
 (24,209,0,'Zul\'Farrak','-',11,'door','End Door',146084,1854.53,1142.89,16.0846,'blown by Weegli; Ukorz is behind it'),
 (24,209,0,'Zul\'Farrak','-',12,'boss','Chief Ukorz Sandscalp',7267,1727.5,1017.3,54.9,'with Ruuzlu'),
 (24,209,0,'Zul\'Farrak','-',13,'optional','Hydromancer Velratha',7795,1698.2,1210.7,9.4,''),

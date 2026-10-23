@@ -1570,6 +1570,28 @@ namespace
         Check(std::string(ToString(DungeonRouteScope::PartialModel)) == "partial_model", "scope names");
     }
 
+    // An idle creature of the talk NPC's event is attacked only if the route names its entry as
+    // event content, it is alive and attackable, within 60 yd of the NPC; nearest to the leader.
+    void TestEventCreature()
+    {
+        auto E = [](bool route, bool alive, bool attackable, float npc, float leader) {
+            EventCreatureCandidate e;
+            e.routeEventEntry = route;
+            e.alive = alive;
+            e.attackable = attackable;
+            e.distToNpc = npc;
+            e.distToLeader = leader;
+            return e;
+        };
+        // ZF wave 3: Nekrum 28 yd from Weegli, Sezz'ziz 29 yd
+        Check(ChooseEventCreature({E(true, true, true, 28.f, 30.f), E(true, true, true, 29.f, 25.f)}) == 1,
+              "both wave bosses idle -> the nearer one to the leader");
+        Check(ChooseEventCreature({E(false, true, true, 10.f, 10.f)}) == -1, "not route event content -> never");
+        Check(ChooseEventCreature({E(true, true, false, 10.f, 10.f)}) == -1, "friendly (escort NPC) -> never");
+        Check(ChooseEventCreature({E(true, true, true, 61.f, 10.f)}) == -1, "beyond 60 yd of the NPC -> never");
+        Check(ChooseEventCreature({}) == -1, "nothing there -> keep waiting");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1680,6 +1702,7 @@ int main()
     TestStrategyDelta();
     TestRunContext();
     TestRouteScope();
+    TestEventCreature();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

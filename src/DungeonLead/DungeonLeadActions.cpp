@@ -3536,6 +3536,40 @@ bool DungeonLeadNextAction::WalkTalkStep(DungeonLeadState& st, WorldPosition con
                                          std::to_string(st.eventWaitMs));
         }
         bot->PlayerTalkClass->SendCloseGossip();
+        // the event this NPC waits on may have a creature standing idle (ChooseEventCreature)
+        if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+        {
+            std::vector<Creature*> found;
+            std::vector<DungeonLeadKernel::EventCreatureCandidate> candidates;
+            for (DungeonRouteStep const& r : route->steps)
+            {
+                if (r.kind != DungeonRouteKind::Event || !r.entry)
+                    continue;
+                Creature* c = bot->FindNearestCreature(r.entry, 150.0f, /*alive*/ true);
+                if (!c)
+                    continue;
+                DungeonLeadKernel::EventCreatureCandidate e;
+                e.routeEventEntry = true;
+                e.alive = c->IsAlive();
+                e.attackable = bot->IsValidAttackTarget(c);
+                e.distToNpc = c->GetDistance(npc);
+                e.distToLeader = bot->GetDistance(c);
+                found.push_back(c);
+                candidates.push_back(e);
+            }
+            int const pick = DungeonLeadKernel::ChooseEventCreature(candidates);
+            if (pick >= 0)
+            {
+                Creature* target = found[size_t(pick)];
+                if (Group* group = bot->GetGroup())
+                    group->SetTargetIcon(RtiTargetValue::skullIndex, bot->GetGUID(), target->GetGUID());
+                botAI->DoSpecificAction("attack rti target", Event(), /*silent*/ true);
+                DungeonLead::RecordEvent(botAI, "event_assist",
+                                         step.boss + " idle_event_creature=" + target->GetName() + " dist_npc=" +
+                                             std::to_string(int(candidates[size_t(pick)].distToNpc)));
+                return true;
+            }
+        }
         if (EventWaitExpired(st))
             DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter,
                                        DungeonFailureReason::ObjectiveTimeout, "talk_not_available");
