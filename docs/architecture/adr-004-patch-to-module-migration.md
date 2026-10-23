@@ -162,6 +162,17 @@ environment. That temporary self-trigger is not part of this module's shipped co
   options are: the one remaining small patch, kept deliberately minimal and documented here, or an
   AzerothCore `PlayerScript::OnPlayerLogin` hook that runs after mod-playerbots' own and corrects
   the misclassification from outside rather than preventing it.
+  2026-10-23 (DLN-002), checked on mod-playerbots `037c01418b5d`: still unfixed upstream - an
+  AddClass test bot lands in `RandomPlayerbotMgr::players` ("Including non-random bot player ... into
+  random bot update" in Playerbots.log). The only public way out of that list is
+  `OnPlayerLogout()`, which also disables the bot's own bots and resets their strategies, so a
+  module-side correction is not safe. What reads `players`: `SyncLevelWithPlayers` (level sync),
+  `RandomBotConcentrateInPlayerZone` (open-world zones only, instanceable maps skipped), the
+  battleground queue pass and the LFG pass (both only act on queued players; test bots are not
+  queued), `GetRandomPlayer()` (no caller). On acore-clean `SyncLevelWithPlayers = 0` and the zone
+  concentration key is unset (default 0), so the misclassification has no effect there. It matters
+  only with either of those enabled - then the patch or an upstream change is required before using
+  `DungeonTestBotPool`.
 - No build-time CI for the module (a GitHub Actions compile check was considered and declined for
   cost/self-hosted-runner reasons). Lower priority than before this migration, since there's no
   more pinned-commit drift for a scheduled check to catch; a compile break from a mod-playerbots

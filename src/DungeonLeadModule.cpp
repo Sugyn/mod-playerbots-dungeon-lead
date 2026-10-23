@@ -36,6 +36,8 @@
 #include "HunterAiObjectContext.h"
 #include "MageAiObjectContext.h"
 #include "Map.h"
+#include "Timer.h"
+#include "ObjectAccessor.h"
 #include "PaladinAiObjectContext.h"
 #include "PassThroughStrategy.h"
 #include "Playerbots.h"
@@ -223,6 +225,49 @@ namespace
         append(sPlayerbotAIConfig.randomBotNonCombatStrategies);
     }
 
+    // DLN-002: the registry overwrites are only proven for the classes that ever ran a session
+    // (warrior, priest, mage, rogue in every campaign so far). Once, a few minutes after start (bots
+    // logged in), for one online bot of each class: its own AI context must create the module's
+    // strategy and action, and resolve "unknown dungeon" and "formation" to the module's overrides.
+    // Logged per class; a class with no bot online is reported as not probed.
+    void ProbeRegistration()
+    {
+        static char const* const names[] = {"", "warrior", "paladin", "hunter", "rogue", "priest", "death knight",
+                                            "shaman", "mage", "warlock", "", "druid"};
+        bool probed[12] = {};
+        uint32 ok = 0, failed = 0;
+        for (auto const& kv : ObjectAccessor::GetPlayers())
+        {
+            Player* p = kv.second;
+            uint8 const cls = p ? p->getClass() : 0;
+            if (!p || cls >= 12 || !names[cls][0] || probed[cls])
+                continue;
+            PlayerbotAI* ai = GET_PLAYERBOT_AI(p);
+            AiObjectContext* ctx = ai ? ai->GetAiObjectContext() : nullptr;
+            if (!ctx)
+                continue;
+            probed[cls] = true;
+            bool const strategy = ctx->GetStrategy("dungeon lead") != nullptr;
+            bool const action = ctx->GetAction("dungeon lead next") != nullptr;
+            bool const trigger = dynamic_cast<DungeonLeadAwareUnknownDungeonTrigger*>(ctx->GetTrigger("unknown dungeon"));
+            bool const formation = dynamic_cast<DungeonLeadFormationValue*>(ctx->GetUntypedValue("formation"));
+            bool const all = strategy && action && trigger && formation;
+            (all ? ok : failed)++;
+            if (all)
+                LOG_INFO("playerbots", "[DungeonLead] registration probe {} ({}): ok", names[cls], p->GetName());
+            else
+                LOG_ERROR("playerbots", "[DungeonLead] registration probe {} ({}): strategy={} action={} "
+                          "unknown_dungeon_override={} formation_override={}",
+                          names[cls], p->GetName(), strategy, action, trigger, formation);
+        }
+        std::string missing;
+        for (uint8 c = 1; c < 12; ++c)
+            if (names[c][0] && !probed[c])
+                missing += (missing.empty() ? "" : ", ") + std::string(names[c]);
+        LOG_INFO("playerbots", "[DungeonLead] registration probe: {} class(es) ok, {} failed, not probed (no bot "
+                 "online): {}", ok, failed, missing.empty() ? "none" : missing);
+    }
+
     // Registers on the first world tick - guaranteed to run after mod-playerbots' own
     // AiObjectContext::BuildAllSharedContexts() (and PlayerbotAIConfig::Initialize(), which is
     // what InjectIntoDefaultStrategies() depends on) have already run, with no module-load-order
@@ -252,6 +297,14 @@ namespace
                 LOG_INFO("playerbots",
                          "[DungeonLead] registered into base + 10 per-class contexts, "
                          "'dungeon lead commands' added to default non-combat strategies");
+            }
+
+            static uint32 const firstTick = getMSTime();
+            static bool probeDone = false;
+            if (!probeDone && GetMSTimeDiffToNow(firstTick) >= 3 * MINUTE * IN_MILLISECONDS)
+            {
+                probeDone = true;
+                ProbeRegistration();
             }
 
             // Same per-tick reconciliation the patch hooked into mod-playerbots' own OnUpdate

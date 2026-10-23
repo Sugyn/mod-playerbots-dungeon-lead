@@ -19,6 +19,11 @@ the MAJOR bar above is met.
 ## [Unreleased]
 
 ### Added
+- Registration probe (DLN-002): 3 minutes after start, for one online bot of each class, its own AI
+  context must create the "dungeon lead" strategy and "dungeon lead next" action and resolve
+  "unknown dungeon" and "formation" to the module's overrides; logged per class (`registration
+  probe <class>: ok` or the failing parts), with the classes that had no bot online. Campaigns so
+  far only ever ran warrior, priest, mage and rogue bots in sessions.
 - Run context on new telemetry (DLN-022): module, core and mod-playerbots commits, route-table,
   config and mmap digests, one `context_id` over them and an `incomplete` flag (a part unknown or
   uncommitted module sources). Computed once per process at the first world tick; the full object
