@@ -82,6 +82,27 @@ Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below)
 bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
 mixed human+bot runs have not been made on any build.
 
+## Campaign `verify-20261023-1421-3e3d6d2` (DLN-011 accepted-path movement)
+
+Same profile, build `3e3d6d2`; Deadmines, SFK, Slave Pens, ZF twice each. 7 of 8 FULL_ROUTE:
+
+| Run | Dungeon | Verdict | Health | Notes |
+|---|---|---|---|---|
+| 1879850478469120 | Deadmines | FULL_ROUTE | warning | 1 wipe; Greenskin reached (partial on `02fc932` was a path failure there) |
+| 1879850478469121 | Shadowfang Keep | FULL_ROUTE | clean | |
+| 1879850478469122 | Zul'Farrak | FULL_ROUTE | clean | |
+| 1879850478469123 | Slave Pens | FULL_ROUTE | warning | 1 wipe, `checkpoint_walk_back` step 43 -> 0 (resume 663 yd away); anchor "path Mennu to Rokmar 13" skipped (optional, see below) |
+| 1879850478469124 | Deadmines | FULL_ROUTE | warning | 1 wipe |
+| 1879850478469125 | Shadowfang Keep | FULL_ROUTE | warning | 1 wipe |
+| 1879850478469126 | Slave Pens | FULL_ROUTE | warning | 1 wipe, `checkpoint_walk_back` step 40 -> 0 |
+| 1879850478469127 | Zul'Farrak | PARTIAL | unhealthy | Weegli Blastfuse (required talk) at (1878,1227,9) with a gossip flag but no menu for 10 min, `talk_not_available` twice, run stopped |
+
+Path decisions: 383 direct, 132 path_end, 10 route_waypoint, 11 direct_rejected - all 11 at the
+Slave Pens anchor "path Mennu to Rokmar 13" (-45.7,-478.5,7.2), 9.6 yd from and 8.8 yd above
+the leader, path type NOPATH|SHORTCUT. That anchor also failed (`skip_stuck`) on `41f4375`,
+before DLN-011: route data (DLN-013), not the movement change. No leader-not-in-world close-out,
+no climb like run 1879810038038528.
+
 ## Campaign `verify-20261023-0740-41f4375` (TBC normals, DLN-003/DLN-023 build)
 
 Same profile, build `41f4375`, Slave Pens (140) and Mana-Tombs (148) twice each:
