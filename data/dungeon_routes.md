@@ -351,7 +351,7 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 27. **Slave Pens path Mennu to Rokmar 10** *(optional)* — entry 1 @ (-101.0, -516.9, -9.5) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
 28. **Slave Pens path Mennu to Rokmar 11** *(optional)* — entry 1 @ (-96.4, -519.8, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
 29. **Slave Pens path Mennu to Rokmar 12** *(optional)* — entry 1 @ (-74.1, -488.5, 0.1) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
-30. **Slave Pens path Mennu to Rokmar 13** *(optional)* — entry 1 @ (-45.7, -478.5, 7.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+30. **Slave Pens path Mennu to Rokmar 13** *(optional)* `derived` — entry 1 @ (-42.0, -473.8, -1.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
 31. **Slave Pens path Mennu to Rokmar 14** *(optional)* — entry 1 @ (-11.0, -457.1, 2.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
 32. **Rokmar the Crackler** — entry 17991 @ (18.3, -448.4, 3.1)
 33. **Slave Pens path Rokmar to Quagmirran 1** *(optional)* — entry 1 @ (-33.0, -473.3, -1.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)

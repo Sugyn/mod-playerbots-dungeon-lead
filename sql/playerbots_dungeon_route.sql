@@ -285,7 +285,7 @@ INSERT INTO `playerbots_dungeon_route` (`lfg_id`,`map_id`,`difficulty`,`name`,`w
 (140,547,0,'Slave Pens','-',27,'optional','Slave Pens path Mennu to Rokmar 10',1,-101.0,-516.9,-9.5,'path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)'),
 (140,547,0,'Slave Pens','-',28,'optional','Slave Pens path Mennu to Rokmar 11',1,-96.4,-519.8,-2.0,'path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)'),
 (140,547,0,'Slave Pens','-',29,'optional','Slave Pens path Mennu to Rokmar 12',1,-74.1,-488.5,0.1,'path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)'),
-(140,547,0,'Slave Pens','-',30,'optional','Slave Pens path Mennu to Rokmar 13',1,-45.7,-478.5,7.2,'path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)'),
+(140,547,0,'Slave Pens','-',30,'optional','Slave Pens path Mennu to Rokmar 13',1,-42.0,-473.8,-1.6,'path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)'),
 (140,547,0,'Slave Pens','-',31,'optional','Slave Pens path Mennu to Rokmar 14',1,-11.0,-457.1,2.6,'path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)'),
 (140,547,0,'Slave Pens','-',32,'boss','Rokmar the Crackler',17991,18.3,-448.4,3.1,''),
 (140,547,0,'Slave Pens','-',33,'optional','Slave Pens path Rokmar to Quagmirran 1',1,-33.0,-473.3,-1.0,'path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)'),

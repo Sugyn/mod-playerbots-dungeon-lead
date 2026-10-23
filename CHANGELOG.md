@@ -82,6 +82,10 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Slave Pens: path anchor "Mennu to Rokmar 13" moved from (-45.7, -478.5, 7.2), 9 yd above the
+  walkable floor and unreachable (`skip_stuck` on every run since it was added), to
+  (-42.0, -473.8, -1.6), where the leader arrives from anchor 12 and walks on to anchor 14 in the
+  logged runs (DLN-013). `sql/updates/2026_10_23_01_slave_pens_anchor_13.sql`.
 - Zul'Farrak: a talk step whose NPC offers no option yet goes for an idle creature of its event
   (run 1879850478469127: wave 3's Nekrum and Sezz'ziz stood at their summon spot 28 yd from Bly's
   crew, nobody engaged them, Weegli offered only the "event in progress" menu for 10 minutes and
