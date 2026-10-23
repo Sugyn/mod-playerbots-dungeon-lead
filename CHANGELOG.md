@@ -19,6 +19,13 @@ the MAJOR bar above is met.
 ## [Unreleased]
 
 ### Added
+- Run context on new telemetry (DLN-022): module, core and mod-playerbots commits, route-table,
+  config and mmap digests, one `context_id` over them and an `incomplete` flag (a part unknown or
+  uncommitted module sources). Computed once per process at the first world tick; the full object
+  is in each run's `start` event and in `campaign_started`, `build.context_id` on every event, and
+  `tools/run_replay` puts it in the run metadata (`null` for older runs). The mod-playerbots commit
+  is passed to `tools/write_build_info.sh` by the build host. Golden run models gained
+  `metadata.context: null`, nothing else changed.
 - `AiPlayerbot.DungeonLead.ValidationAutostart` (comma-separated LFG ids, default empty = off):
   one `.dungeonlead validate` campaign started 2 minutes after the world starts. Replaces a
   server-only source edit used for unattended campaigns on the test server.

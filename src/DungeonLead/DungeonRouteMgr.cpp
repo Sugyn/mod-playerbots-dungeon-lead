@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 void DungeonRouteMgr::Load()
 {
@@ -33,6 +34,7 @@ void DungeonRouteMgr::Load()
 
     uint32 count = 0;
     uint32 unknownKinds = 0;
+    uint64 digest = DungeonLeadKernel::Fnv1a64("");
     if (result)
     {
         do
@@ -67,6 +69,13 @@ void DungeonRouteMgr::Load()
                           "treated as unwalkable/non-mandatory", kindStr, lfgId, step.step, step.boss);
             }
 
+            char coords[64];
+            snprintf(coords, sizeof(coords), "%.2f|%.2f|%.2f", step.x, step.y, step.z);
+            digest = DungeonLeadKernel::Fnv1a64(std::to_string(lfgId) + "|" + std::to_string(route.mapId) + "|" +
+                                                    std::to_string(route.difficulty) + "|" + std::to_string(step.step) +
+                                                    "|" + kindStr + "|" + step.boss + "|" + std::to_string(step.entry) +
+                                                    "|" + coords + "\n",
+                                                digest);
             route.steps.push_back(step);
             ++count;
         } while (result->NextRow());
@@ -110,13 +119,29 @@ void DungeonRouteMgr::Load()
         doorsResolved = uint32(bestDist2.size());
     }
 
-    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind, {}/{} door spawns)",
-             count, routes.size(), unknownKinds, doorsResolved, uint32(doorMap.size()));
+    routeRows = count;
+    routeDigest = result ? DungeonLeadKernel::Hex64(digest) : std::string("unknown");
+    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind, {}/{} door spawns, "
+             "digest {})", count, routes.size(), unknownKinds, doorsResolved, uint32(doorMap.size()), routeDigest);
 }
 
 void DungeonRouteMgr::EnsureLoaded()
 {
     std::call_once(loadOnce, [this] { Load(); });
+}
+
+std::string DungeonRouteMgr::RouteDigest()
+{
+    EnsureLoaded();
+    std::lock_guard<std::mutex> lock(mtx);
+    return routeDigest;
+}
+
+uint32 DungeonRouteMgr::RouteRows()
+{
+    EnsureLoaded();
+    std::lock_guard<std::mutex> lock(mtx);
+    return routeRows;
 }
 
 DungeonRoute const* DungeonRouteMgr::GetByLfgId(uint32 lfgId)

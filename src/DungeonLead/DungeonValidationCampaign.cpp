@@ -259,6 +259,7 @@ std::string DungeonLead::StartValidation(std::vector<uint32> const& lfgIds)
                                     .Num("parallelism", uint32_t(parallel))
                                     .Num("timeout_minutes", uint32_t(sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes))
                                     .Raw("dungeons", "[" + idsJson + "]")
+                                    .Raw("context", DungeonLead::ContextJson())
                                     .Done());
     VLog("campaign start " + g_campaignId + ": " + ids + " (" + std::to_string(parallel) + " at a time)");
     return "Validation campaign started: " + std::to_string(g_total) + " dungeon(s), " + std::to_string(parallel) +

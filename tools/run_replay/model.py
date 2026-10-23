@@ -46,11 +46,15 @@ class _Builder:
         first, last = self.events[0], self.events[-1]
         dungeon = next((e["dungeon"] for e in reversed(self.events) if (e.get("dungeon") or {}).get("lfg_id")),
                        first.get("dungeon"))
+        start = next((e for e in self.events if e["event_type"] == "start"), None)
         return {
             "run_id": first["run_id"],
             "campaign_id": first.get("campaign_id", ""),
             "scenario_id": first.get("scenario_id", ""),
             "build": first.get("build", {}),
+            # DLN-022: module/core/playerbots commits and route/config/mmap digests; None for runs
+            # recorded before the context existed (not invented after the fact)
+            "context": (start or {}).get("payload", {}).get("context"),
             "dungeon": dungeon,
             "leader": (first.get("leader") or {}).get("name"),
             "started_at": first.get("wall_time"),

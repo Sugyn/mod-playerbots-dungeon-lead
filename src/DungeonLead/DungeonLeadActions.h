@@ -38,6 +38,11 @@ namespace DungeonLead
     // DLN-004: a group member the module may act through (cast, Use, loot, move) - a bot, not a
     // real player and not a player's self-bot. The one policy for every autonomous side effect.
     bool IsBotActor(Player* p);
+    // DLN-022: the run context (module/core/playerbots commits, route/config/mmap digests),
+    // computed once on first use - at a session or campaign start, not in the AI tick.
+    DungeonLeadKernel::RunContext const& Context();
+    // The same as one JSON object, for "start" and campaign_started.
+    std::string ContextJson();
     Creature* FindBossNear(PlayerbotAI* botAI, float range);
 
     // Route progress, shared by the route walk and the pull controller.

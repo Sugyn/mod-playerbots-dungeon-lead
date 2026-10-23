@@ -1578,6 +1578,59 @@ namespace DungeonLeadKernel
         return waitExpired ? MissingDoorStep::Fail : MissingDoorStep::Wait;
     }
 
+    // DLN-022: the context a run was made in, so two runs are only compared or counted together
+    // when the stack under them is the same. Digests are FNV-1a 64 over normalized text; "unknown"
+    // where a part could not be read - never a guess.
+    inline uint64_t Fnv1a64(std::string const& s, uint64_t h = 14695981039346656037ULL)
+    {
+        for (unsigned char c : s)
+        {
+            h ^= c;
+            h *= 1099511628211ULL;
+        }
+        return h;
+    }
+
+    inline std::string Hex64(uint64_t v)
+    {
+        static char const digits[] = "0123456789abcdef";
+        std::string out(16, '0');
+        for (int i = 15; i >= 0; --i, v >>= 4)
+            out[size_t(i)] = digits[v & 0xf];
+        return out;
+    }
+
+    struct RunContext
+    {
+        std::string moduleSha = "unknown";      // DUNGEONLEAD_COMMIT_SHA ("-dirty" = uncommitted sources)
+        std::string coreSha = "unknown";        // GitRevision::GetHash()
+        std::string playerbotsSha = "unknown";  // DUNGEONLEAD_PLAYERBOTS_SHA (from the build host)
+        std::string routeDigest = "unknown";    // playerbots_dungeon_route as loaded
+        uint32_t routeRows = 0;
+        std::string configDigest = "unknown";   // AiPlayerbot.DungeonLead.* keys set in config files
+        uint32_t configKeys = 0;
+        std::string mmapDigest = "unknown";     // mmaps file names and sizes
+        uint32_t mmapFiles = 0;
+
+        // One id for the whole context: equal ids = same module, core, playerbots, routes, config
+        // and mmaps.
+        std::string Id() const
+        {
+            return Hex64(Fnv1a64(moduleSha + "|" + coreSha + "|" + playerbotsSha + "|" + routeDigest + "|" +
+                                 configDigest + "|" + mmapDigest));
+        }
+
+        // True when any part is unknown or the module tree was dirty: such a run is evidence, but
+        // not for a qualification (DLN-024).
+        bool Incomplete() const
+        {
+            for (std::string const* v : {&moduleSha, &coreSha, &playerbotsSha, &routeDigest, &configDigest, &mmapDigest})
+                if (*v == "unknown")
+                    return true;
+            return moduleSha.find("-dirty") != std::string::npos;
+        }
+    };
+
     // DLN-015: the strategy components a session owns on one engine (non-combat or combat): each
     // name that must be on or off. StrategyDelta gives only what differs from what the bot has, as
     // a ChangeStrategy() string ("+cc,-rpg"), empty when nothing does - so a partial external reset

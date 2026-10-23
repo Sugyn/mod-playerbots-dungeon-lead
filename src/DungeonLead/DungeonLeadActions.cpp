@@ -37,6 +37,9 @@
 #include "LootMgr.h"
 #include "LastMovementValue.h"
 #include "Map.h"
+#include "World.h"
+#include "Config.h"
+#include "GitRevision.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
@@ -63,6 +66,7 @@
 #include <atomic>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -354,6 +358,7 @@ namespace
             .Open("build")
             .Str("commit_sha", DUNGEONLEAD_COMMIT_SHA)
             .Str("module_version", DUNGEONLEAD_MODULE_VERSION)
+            .Str("context_id", DungeonLead::Context().Id())
             .Close()
             .Open("dungeon")
             .Num("lfg_id", uint32_t(st.lfgId))
@@ -1057,6 +1062,74 @@ bool DungeonLead::HasSession(PlayerbotAI* botAI)
 bool DungeonLead::IsBotActor(Player* p)
 {
     return p && !IsRealPlayer(p) && !IsSelfBot(p);
+}
+
+DungeonLeadKernel::RunContext const& DungeonLead::Context()
+{
+    static DungeonLeadKernel::RunContext ctx;
+    static std::once_flag once;
+    std::call_once(once, [] {
+        ctx.moduleSha = DUNGEONLEAD_COMMIT_SHA;
+        ctx.coreSha = GitRevision::GetHash();
+        ctx.playerbotsSha = DUNGEONLEAD_PLAYERBOTS_SHA;
+        ctx.routeDigest = sDungeonRouteMgr.RouteDigest();
+        ctx.routeRows = sDungeonRouteMgr.RouteRows();
+
+        // the keys set in the config files; everything else is the code default of this module commit
+        std::vector<std::string> keys = sConfigMgr->GetKeysByString("AiPlayerbot.DungeonLead.");
+        std::sort(keys.begin(), keys.end());
+        std::string cfg;
+        for (std::string const& k : keys)
+            cfg += k + "=" + sConfigMgr->GetOption<std::string>(k, "", false) + "\n";
+        ctx.configDigest = DungeonLeadKernel::Hex64(DungeonLeadKernel::Fnv1a64(cfg));
+        ctx.configKeys = uint32(keys.size());
+
+        // mmaps: file names and sizes (a re-extraction changes them); "unknown" if unreadable
+        try
+        {
+            std::vector<std::string> files;
+            for (auto const& e : std::filesystem::directory_iterator(sWorld->GetDataPath() + "mmaps"))
+                if (e.is_regular_file())
+                    files.push_back(e.path().filename().string() + " " + std::to_string(e.file_size()));
+            std::sort(files.begin(), files.end());
+            std::string list;
+            for (std::string const& f : files)
+                list += f + "\n";
+            if (!files.empty())
+            {
+                ctx.mmapDigest = DungeonLeadKernel::Hex64(DungeonLeadKernel::Fnv1a64(list));
+                ctx.mmapFiles = uint32(files.size());
+            }
+        }
+        catch (std::exception const& ex)
+        {
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] run context: mmaps not readable ({})", ex.what());
+        }
+        LOG_INFO("playerbots.dungeonlead",
+                 "[DungeonLead] run context {}: module={} core={} playerbots={} routes={}({} rows) config={}({} keys) "
+                 "mmaps={}({} files){}",
+                 ctx.Id(), ctx.moduleSha, ctx.coreSha, ctx.playerbotsSha, ctx.routeDigest, ctx.routeRows,
+                 ctx.configDigest, ctx.configKeys, ctx.mmapDigest, ctx.mmapFiles, ctx.Incomplete() ? " INCOMPLETE" : "");
+    });
+    return ctx;
+}
+
+std::string DungeonLead::ContextJson()
+{
+    DungeonLeadKernel::RunContext const& c = Context();
+    return DungeonLeadKernel::JsonLine()
+        .Str("context_id", c.Id())
+        .Str("module_sha", c.moduleSha)
+        .Str("core_sha", c.coreSha)
+        .Str("playerbots_sha", c.playerbotsSha)
+        .Str("route_digest", c.routeDigest)
+        .Num("route_rows", c.routeRows)
+        .Str("config_digest", c.configDigest)
+        .Num("config_keys", c.configKeys)
+        .Str("mmap_digest", c.mmapDigest)
+        .Num("mmap_files", c.mmapFiles)
+        .Bool("incomplete", c.Incomplete())
+        .Done();
 }
 
 bool DungeonLead::GroupInCombat(PlayerbotAI* botAI)
@@ -1918,7 +1991,8 @@ void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* mast
              bot->GetInstanceId(), PlayerbotAI::IsTank(bot));
     DungeonLead::RecordEvent(botAI, "start",
                               "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no") +
-                              " origin=" + ToString(origin));
+                              " origin=" + ToString(origin),
+                              DungeonLeadKernel::JsonLine().Raw("context", DungeonLead::ContextJson()).Done());
 
     // CRITICAL BUG found in live testing, fixed by the reconciliation loop below rather than by
     // this function: a group leadership change (needed above whenever the tank wasn't already

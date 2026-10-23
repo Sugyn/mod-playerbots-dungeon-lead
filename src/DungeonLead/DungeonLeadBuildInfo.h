@@ -21,6 +21,12 @@
 #define DUNGEONLEAD_COMMIT_SHA "unknown"
 #endif
 
+// The mod-playerbots commit the module was built against (DLN-022), if the build host passed it to
+// tools/write_build_info.sh; the core commit comes from GitRevision at run time.
+#ifndef DUNGEONLEAD_PLAYERBOTS_SHA
+#define DUNGEONLEAD_PLAYERBOTS_SHA "unknown"
+#endif
+
 #define DUNGEONLEAD_MODULE_VERSION "0.14.0-alpha"
 
 #endif

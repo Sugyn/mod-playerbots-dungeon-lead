@@ -349,5 +349,23 @@ class DeltaEventsTest(unittest.TestCase):
             self.assertEqual([r["record"] for r in written], ["campaign_started", "run_result", "campaign_finished"])
 
 
+
+class ContextTest(unittest.TestCase):
+    """DLN-022: the run context in the start event reaches the model; older runs have none."""
+
+    def test_context_from_start_event(self):
+        evs = synthetic()
+        ctx = {"context_id": "0123456789abcdef", "module_sha": "abc1234", "core_sha": "f19a18799a35",
+               "playerbots_sha": "037c01418b5d", "route_digest": "1111111111111111", "route_rows": 497,
+               "config_digest": "2222222222222222", "config_keys": 15, "mmap_digest": "3333333333333333",
+               "mmap_files": 3780, "incomplete": False}
+        start = next(e for e in evs if e["event_type"] == "start")
+        start["payload"] = dict(start["payload"], context=ctx)
+        md = model.reconstruct(evs)["metadata"]
+        self.assertEqual(md["context"], ctx)
+
+    def test_no_context_before_it_existed(self):
+        self.assertIsNone(model.reconstruct(synthetic())["metadata"]["context"])
+
 if __name__ == "__main__":
     unittest.main()

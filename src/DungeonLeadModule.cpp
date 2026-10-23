@@ -246,6 +246,9 @@ namespace
                 LOG_INFO("playerbots", "[DungeonLead] module loaded, world tick reached - registering...");
                 RegisterEverywhere();
                 InjectIntoDefaultStrategies();
+                // DLN-022: route/config/mmap digests once, here on the world thread, not on the
+                // first event an AI tick records
+                DungeonLead::Context();
                 LOG_INFO("playerbots",
                          "[DungeonLead] registered into base + 10 per-class contexts, "
                          "'dungeon lead commands' added to default non-combat strategies");

@@ -53,7 +53,7 @@ within the same second.
   "scenario_id": "lfg8-lvl20-bot5-wtank-phealer-wmr-dps-lfg-target-level",
   "wall_time": "2026-10-06T15:11:22.481Z",
   "run_ms": 1240533,
-  "build": {"commit_sha": "5f667c8", "module_version": "0.13.0-alpha"},
+  "build": {"commit_sha": "5f667c8", "module_version": "0.13.0-alpha", "context_id": "9f2c41b07d3e8a15"},
   "dungeon": {"lfg_id": 8, "name": "Shadowfang Keep", "map_id": 33, "instance_id": 4},
   "leader": {"guid": "1234", "name": "Aevar", "x": -190.12, "y": 2211.40, "z": 79.76, "o": 2.18, "alive": true},
   "state": "travelling",
@@ -87,11 +87,25 @@ Tools must reject a `schema_version` they do not know instead of guessing.
 | `campaign_id` | `.dungeonlead validate`: `verify-<UTC yyyymmdd-hhmm>-<commit_sha>` |
 | `scenario_id` | `lfg<id>-lvl<target level>-<validation profile>` for a campaign run |
 
+### Run context (DLN-022)
+
+Computed once per worldserver process at the first world tick: `context_id` (FNV-1a 64 of the
+parts below), `module_sha` (`DUNGEONLEAD_COMMIT_SHA`, `-dirty` for uncommitted sources),
+`core_sha` (`GitRevision::GetHash()`), `playerbots_sha` (passed to `tools/write_build_info.sh` by
+the build host, else `unknown`), `route_digest` + `route_rows` (playerbots_dungeon_route as
+loaded), `config_digest` + `config_keys` (the `AiPlayerbot.DungeonLead.*` keys set in config
+files; unset keys are the code defaults of `module_sha`), `mmap_digest` + `mmap_files` (mmaps
+file names and sizes), `incomplete` (a part unknown or a dirty module). The full object is in the
+`start` event's payload (`context`) and in `campaign_started`; every event carries
+`build.context_id`. Runs recorded before 2026-10-23 have none - their metadata says `null`. A
+config reload or a route-table change without a restart is not reflected until the next start of
+the process.
+
 `DungeonLeadCampaigns.jsonl` records, one object per line, each with `schema_version`, `record`
 and `campaign_id`:
 
 - `campaign_started`: `started_at`, `commit_sha`, `module_version`, `validation_profile`,
-  `parallelism`, `timeout_minutes`, `dungeons` (LFG ids, in queue order).
+  `parallelism`, `timeout_minutes`, `dungeons` (LFG ids, in queue order), `context` (run context).
 - `run_result`: `lfg_id`, `tank`, `started`, `ended` (false = the campaign stopped a run that was
   still active - a campaign failure, not a dungeon one), `minutes`.
 - `run_requeued`: `lfg_id`, `reason`.

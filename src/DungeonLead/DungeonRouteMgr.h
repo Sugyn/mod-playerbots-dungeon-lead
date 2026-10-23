@@ -486,6 +486,9 @@ public:
     // out `DungeonRoute const*` into it and holding it past the lock below is safe.
     void Load();
     DungeonRoute const* GetByLfgId(uint32 lfgId);
+    // DLN-022: digest of the route table as loaded (normalized rows, load order) and its row count.
+    std::string RouteDigest();
+    uint32 RouteRows();
     std::vector<DungeonRoute const*> GetByMap(uint32 mapId, uint32 difficulty);
 
     // DungeonLeadState is only ever read/written by its own bot's own AI update (one thread at a
@@ -542,6 +545,8 @@ private:
     std::once_flag loadOnce;
     std::mutex mtx;
     std::unordered_map<uint32, DungeonRoute> routes;
+    std::string routeDigest = "unknown";
+    uint32 routeRows = 0;
     std::unordered_map<ObjectGuid, DungeonLeadState> states;
     std::unordered_map<uint32, std::unordered_set<uint32>> killedByInstance;
     std::unordered_map<uint32, Entrance> entranceByLfg;

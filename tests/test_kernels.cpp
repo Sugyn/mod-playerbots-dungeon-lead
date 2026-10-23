@@ -1523,6 +1523,35 @@ namespace
         Check(StrategyAll(LeaderCombatStrategies()) == "+dungeon lead,+cc,+mark rti", "session start: leader combat set");
     }
 
+    // DLN-022: the run context id changes with any part of the stack and is stable otherwise;
+    // an unknown part or a dirty module tree marks the context incomplete.
+    void TestRunContext()
+    {
+        Check(Hex64(Fnv1a64("")) == "cbf29ce484222325", "FNV-1a 64 offset basis");
+        Check(Hex64(Fnv1a64("a")) == "af63dc4c8601ec8c", "FNV-1a 64 of 'a'");
+        RunContext a;
+        a.moduleSha = "02fc932";
+        a.coreSha = "f19a18799a35";
+        a.playerbotsSha = "037c01418b5d";
+        a.routeDigest = "1111111111111111";
+        a.configDigest = "2222222222222222";
+        a.mmapDigest = "3333333333333333";
+        RunContext b = a;
+        Check(a.Id() == b.Id() && a.Id().size() == 16, "same stack -> same id");
+        Check(!a.Incomplete(), "every part known, clean module -> complete");
+        b.routeDigest = "1111111111111112";
+        Check(a.Id() != b.Id(), "route change, same module -> different id");
+        b = a;
+        b.configDigest = "2222222222222223";
+        Check(a.Id() != b.Id(), "config change -> different id");
+        b = a;
+        b.playerbotsSha = "unknown";
+        Check(b.Incomplete(), "unknown playerbots commit -> incomplete");
+        b = a;
+        b.moduleSha = "02fc932-dirty";
+        Check(b.Incomplete(), "dirty module tree -> incomplete");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1631,6 +1660,7 @@ int main()
     TestQueuedLeaderChange();
     TestRecoveryDelta();
     TestStrategyDelta();
+    TestRunContext();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
