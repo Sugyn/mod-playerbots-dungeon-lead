@@ -82,6 +82,9 @@ def section(vr):
             for r in latest)
         if v:
             level = "**Verified**" if v[2] == "context" else "Verified (pre-context)"
+            # DLN-018: a verified route that does not model the whole dungeon says so
+            if any(r.get("dungeon_support") == "modeled_route_only" for r in rs if r["run_id"] in v[1]):
+                level += " - modeled route only"
         elif any(r["result"] == "FULL_ROUTE" for r in rs):
             level = "Full route"
         elif any(r["result"] == "PARTIAL" for r in rs):

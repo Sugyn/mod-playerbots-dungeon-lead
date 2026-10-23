@@ -42,6 +42,17 @@ the MAJOR bar above is met.
 - `tools/run_replay/status.py`: the testing-status table is generated from campaign artifacts.
 
 ### Changed
+- A completed route says whether it is the whole dungeon (DLN-018, owner checkpoint H5 taken as
+  the plan's minimal option: metadata next to the existing results, no new outcome). A route could
+  end Complete / FULL_ROUTE with content it never attempts or verifies - `skip` rows (unsupported
+  mechanics, event dungeons), generic `event` rows (escorts, waves, vehicles) and unpositioned
+  `heroic_only` rows. Each route now has a scope (`DungeonRouteScope`: full, partial_model,
+  no_mandatory) with the unmodeled rows by name, in `route_selected` and the route-end event, in
+  `startdungeon status` and in the route-end chat line ("modeled route only"). `tools/run_replay`
+  keeps FULL_ROUTE's meaning and adds `dungeon_support` (dungeon_modeled_in_full,
+  modeled_route_only, nothing_verified, unknown before this) to the verdict (analysis version 2);
+  status.py marks a verified pair "modeled route only". `validate_routes.py` prints the scope
+  count (current data: 39 full, 41 partial_model, 16 no_mandatory; `--scope` lists them).
 - Verified needs two distinct runs on one complete run context (DLN-024). `status.py` grouped
   qualifying runs by module commit and profile, counted one run listed in two campaigns twice and
   accepted unknown builds. It now counts distinct run ids, requires a complete record and groups by

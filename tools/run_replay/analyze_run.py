@@ -6,7 +6,7 @@ wipe, alert ids and times). When the model can't support a cause, the class is O
 guessing.
 """
 
-ANALYSIS_VERSION = 1
+ANALYSIS_VERSION = 2  # 2: dungeon_support next to result (DLN-018)
 
 CLASSES = ("ROUTE", "PACK_IDENTITY", "TARGETING", "PULL", "LEASH", "READINESS", "RECOVERY", "WIPE",
            "INTERACTION", "BOSS", "LEADERSHIP", "TELEPORT", "UPSTREAM_PLAYERBOT", "DATA_ERROR", "CAMPAIGN",
@@ -183,7 +183,21 @@ def verdict(m, campaign_result=None):
     if mt["wipes"]:
         warnings.append(f"wipes={mt['wipes']}")
     health = "unhealthy" if unhealthy else "warning" if warnings else "clean"
+    # DLN-018: FULL_ROUTE keeps its meaning (the modeled route); whether that is the whole dungeon
+    # is said separately. "unknown" for runs recorded before the route scope existed.
+    scope = (md.get("route_scope") or {}).get("scope")
+    if result != "FULL_ROUTE":
+        support = None
+    elif scope == "full":
+        support = "dungeon_modeled_in_full"
+    elif scope == "partial_model":
+        support = "modeled_route_only"
+    elif scope == "no_mandatory":
+        support = "nothing_verified"
+    else:
+        support = "unknown"
     return {"analysis_version": ANALYSIS_VERSION, "run_id": md["run_id"], "result": result, "result_reason": why,
+            "dungeon_support": support, "unmodeled": (md.get("route_scope") or {}).get("unmodeled"),
             "health": health, "unhealthy": unhealthy, "warnings": warnings,
             "commit_sha": md["build"].get("commit_sha"), "campaign_id": md.get("campaign_id"),
             "scenario_id": md.get("scenario_id")}

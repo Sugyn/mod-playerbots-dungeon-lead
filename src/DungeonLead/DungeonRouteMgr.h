@@ -169,6 +169,20 @@ struct DungeonRoute
         return false;
     }
 
+    // DLN-018: what the route models of its dungeon, and the rows it does not.
+    std::vector<std::string> UnmodeledSteps() const
+    {
+        std::vector<std::string> out;
+        for (DungeonRouteStep const& s : steps)
+            if (UnmodeledContent(s.kind, s.HasPosition()))
+                out.push_back(s.boss);
+        return out;
+    }
+    DungeonRouteScope Scope() const
+    {
+        return ClassifyRouteScope(HasAnyMandatory(), uint32_t(UnmodeledSteps().size()));
+    }
+
     // First walkable step - the fallback entrance when the map has no entrance teleport (see
     // DungeonRouteMgr::GetEntrance). Note it is usually the first boss/pack, not a safe spot.
     DungeonRouteStep const* RecoveryPoint() const

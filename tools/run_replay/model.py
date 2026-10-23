@@ -47,6 +47,8 @@ class _Builder:
         dungeon = next((e["dungeon"] for e in reversed(self.events) if (e.get("dungeon") or {}).get("lfg_id")),
                        first.get("dungeon"))
         start = next((e for e in self.events if e["event_type"] == "start"), None)
+        selected = next((e for e in self.events if e["event_type"] == "route_selected"), None)
+        scope = (selected or {}).get("payload", {}).get("scope")
         return {
             "run_id": first["run_id"],
             "campaign_id": first.get("campaign_id", ""),
@@ -55,6 +57,9 @@ class _Builder:
             # DLN-022: module/core/playerbots commits and route/config/mmap digests; None for runs
             # recorded before the context existed (not invented after the fact)
             "context": (start or {}).get("payload", {}).get("context"),
+            # DLN-018: what the route models of the dungeon (full / partial_model / no_mandatory)
+            # and the rows it does not model; None for runs recorded before
+            "route_scope": {"scope": scope, "unmodeled": selected["payload"].get("unmodeled", [])} if scope else None,
             "dungeon": dungeon,
             "leader": (first.get("leader") or {}).get("name"),
             "started_at": first.get("wall_time"),

@@ -129,5 +129,24 @@ class TestMixedRoute(unittest.TestCase):
         self.assertIn("mandatory 'required'", errors[0])
 
 
+
+class RouteScopeTest(unittest.TestCase):
+    """DLN-018: the validator's scope rule matches DungeonRouteScope (C++)."""
+
+    def test_scopes(self):
+        from tools import validate_routes as v
+        def r(lfg, kind, boss, entry="100", x="1.0"):
+            return {"lfg_id": lfg, "lfg_name": "D" + lfg, "kind": kind, "boss": boss, "entry": entry,
+                    "x": x, "y": "2.0", "z": "3.0"}
+        rows = [r("1", "boss", "A"), r("1", "optional", "trash"), r("1", "optional", "anchor", entry="1"),
+                r("2", "boss", "B"), r("2", "skip", "Elevator", entry="", x=""),
+                r("3", "event", "Waves", entry="", x=""),
+                r("4", "boss", "C"), r("4", "heroic_only", "D", entry="", x="")]
+        got = v.route_scopes(rows)
+        self.assertEqual(got["1"][1], "full")
+        self.assertEqual(got["2"][1:], ("partial_model", ["Elevator"]))
+        self.assertEqual(got["3"][1], "no_mandatory")
+        self.assertEqual(got["4"][1:], ("partial_model", ["D"]))
+
 if __name__ == "__main__":
     unittest.main()

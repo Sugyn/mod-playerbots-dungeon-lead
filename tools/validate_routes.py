@@ -191,6 +191,28 @@ def validate(data_dir=DATA):
     return rows, errors, warnings, steps_by_lfg, lfg
 
 
+PATH_ANCHOR_ENTRY = "1"
+
+
+def route_scopes(rows):
+    """DLN-018, same rule as DungeonRouteScope in DungeonRouteTypes.h: per lfg_id "full",
+    "partial_model" (some skip / event / unknown-kind / unpositioned heroic_only row) or
+    "no_mandatory", with the unmodeled rows by name."""
+    by = {}
+    for r in rows:
+        by.setdefault(r["lfg_id"], []).append(r)
+    out = {}
+    for lfg_id, rs in by.items():
+        has_pos = lambda r: bool(r["entry"]) and r["entry"] != "0" and any(r[k] not in ("", "0", "0.0") for k in "xyz")
+        mandatory = any(r["kind"] in MANDATORY_KINDS and r["entry"] != PATH_ANCHOR_ENTRY for r in rs)
+        unmodeled = [r["boss"] for r in rs
+                     if r["kind"] in ("skip", "event") or r["kind"] not in VALID_KINDS
+                     or (r["kind"] == "heroic_only" and not has_pos(r))]
+        scope = "no_mandatory" if not mandatory else "partial_model" if unmodeled else "full"
+        out[lfg_id] = (rs[0].get("lfg_name", ""), scope, unmodeled)
+    return out
+
+
 def main():
     rows, errors, warnings, steps_by_lfg, _lfg = validate()
 
@@ -201,6 +223,14 @@ def main():
     print(f"WARNINGS: {len(warnings)}")
     for w in warnings:
         print(f"  WARN: {w}")
+    scopes = route_scopes(rows)
+    counts = {k: sum(1 for v in scopes.values() if v[1] == k) for k in ("full", "partial_model", "no_mandatory")}
+    print(f"ROUTE SCOPE (DLN-018): {counts['full']} full, {counts['partial_model']} partial_model, "
+          f"{counts['no_mandatory']} no_mandatory")
+    if "--scope" in sys.argv:
+        for lfg_id, (name, scope, unmodeled) in sorted(scopes.items(), key=lambda kv: int(kv[0])):
+            if scope != "full":
+                print(f"  {scope}: lfg_id {lfg_id} ({name}): {', '.join(unmodeled) or '-'}")
 
     return 1 if errors else 0
 

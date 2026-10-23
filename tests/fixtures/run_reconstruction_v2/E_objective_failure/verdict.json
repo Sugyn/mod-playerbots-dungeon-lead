@@ -1,7 +1,8 @@
 {
- "analysis_version": 1,
+ "analysis_version": 2,
  "campaign_id": "verify-20261006-1626-d1f1ddf",
  "commit_sha": "d1f1ddf",
+ "dungeon_support": null,
  "health": "unhealthy",
  "result": "PARTIAL",
  "result_reason": "progress to step 11, outcome partial",
@@ -10,5 +11,6 @@
  "unhealthy": [
   "mandatory_objective_failed"
  ],
+ "unmodeled": null,
  "warnings": []
 }

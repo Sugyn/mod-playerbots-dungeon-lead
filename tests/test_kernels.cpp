@@ -1552,6 +1552,24 @@ namespace
         Check(b.Incomplete(), "dirty module tree -> incomplete");
     }
 
+    // DLN-018: a route that skips or does not execute part of its dungeon is a modeled route,
+    // not the dungeon; a route with nothing mandatory proves nothing.
+    void TestRouteScope()
+    {
+        Check(UnmodeledContent(DungeonRouteKind::Skip, false) && UnmodeledContent(DungeonRouteKind::Event, true),
+              "skip and generic event rows are not modeled");
+        Check(UnmodeledContent(DungeonRouteKind::HeroicOnly, false) && !UnmodeledContent(DungeonRouteKind::HeroicOnly, true),
+              "heroic-only without a position is not modeled; with one it is a boss");
+        Check(!UnmodeledContent(DungeonRouteKind::Boss, true) && !UnmodeledContent(DungeonRouteKind::Door, true) &&
+                  !UnmodeledContent(DungeonRouteKind::Talk, true) && !UnmodeledContent(DungeonRouteKind::Use, true) &&
+                  !UnmodeledContent(DungeonRouteKind::Optional, true) && !UnmodeledContent(DungeonRouteKind::Required, true),
+              "bosses, trash, doors and confirmed interactions are modeled");
+        Check(ClassifyRouteScope(true, 0) == DungeonRouteScope::Full, "all modeled -> full");
+        Check(ClassifyRouteScope(true, 1) == DungeonRouteScope::PartialModel, "Oculus after Drakos (skip) -> partial model");
+        Check(ClassifyRouteScope(false, 0) == DungeonRouteScope::NoMandatory, "nothing mandatory -> no_mandatory");
+        Check(std::string(ToString(DungeonRouteScope::PartialModel)) == "partial_model", "scope names");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1661,6 +1679,7 @@ int main()
     TestRecoveryDelta();
     TestStrategyDelta();
     TestRunContext();
+    TestRouteScope();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -15,7 +15,7 @@ import os
 
 from . import analyze_run, model, report, schema
 
-INDEX_VERSION = 2  # 2: run context_id / context_incomplete / complete_record per run (DLN-024)
+INDEX_VERSION = 3  # 2: context_id / context_incomplete / complete_record (DLN-024); 3: dungeon_support (DLN-018)
 
 
 def _write(path, text):
@@ -104,7 +104,8 @@ def build(events_path, campaigns_path, campaign_id, out_root):
             "context_incomplete": (m["metadata"].get("context") or {}).get("incomplete"),
             "complete_record": m["metadata"].get("complete_record"),
             "started_at": m["metadata"].get("started_at"), "duration_ms": m["metadata"]["duration_ms"],
-            "result": v["result"], "health": v["health"], "metrics": m["metrics"],
+            "result": v["result"], "health": v["health"], "dungeon_support": v.get("dungeon_support"),
+            "metrics": m["metrics"],
             "findings": [f["classification"] for f in fl["findings"]],
             "artifact": f"runs/{run_id}/derived/run_model.json",
             "report": f"runs/{run_id}/report/report.html",

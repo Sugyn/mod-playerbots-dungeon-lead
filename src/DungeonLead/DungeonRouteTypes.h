@@ -166,4 +166,39 @@ inline bool SkipOptionalEligible(DungeonRouteKind kind, uint32_t entry)
            ClassifyRequirement(kind, entry) == DungeonObjectiveRequirement::Optional;
 }
 
+// DLN-018: how much of a dungeon a route models. A route can end Complete with content it never
+// attempts or verifies: `skip` rows (unsupported mechanics, event dungeons), generic `event` rows
+// (escorts, waves, vehicles, scripted spawns - no executor confirms them) and `heroic_only` rows
+// without a resolved position. Complete then means "the modeled route", not "the dungeon".
+enum class DungeonRouteScope : uint8_t
+{
+    Full,          // every row is a modeled objective (boss, trash, door, use/talk, anchor)
+    PartialModel,  // some content is not modeled (UnmodeledContent)
+    NoMandatory,   // nothing mandatory at all - a Complete would prove nothing
+};
+
+inline char const* ToString(DungeonRouteScope s)
+{
+    switch (s)
+    {
+        case DungeonRouteScope::Full:         return "full";
+        case DungeonRouteScope::PartialModel: return "partial_model";
+        case DungeonRouteScope::NoMandatory:  return "no_mandatory";
+    }
+    return "unknown";
+}
+
+inline bool UnmodeledContent(DungeonRouteKind kind, bool hasPosition)
+{
+    return kind == DungeonRouteKind::Skip || kind == DungeonRouteKind::Event || kind == DungeonRouteKind::Unknown ||
+           (kind == DungeonRouteKind::HeroicOnly && !hasPosition);
+}
+
+inline DungeonRouteScope ClassifyRouteScope(bool anyMandatory, uint32_t unmodeledRows)
+{
+    if (!anyMandatory)
+        return DungeonRouteScope::NoMandatory;
+    return unmodeledRows ? DungeonRouteScope::PartialModel : DungeonRouteScope::Full;
+}
+
 #endif

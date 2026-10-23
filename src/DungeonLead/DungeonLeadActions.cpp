@@ -330,6 +330,17 @@ namespace
     // One schema v2 event line (docs/telemetry-schema-v2.md): the envelope from the session state
     // and the leader, then the payload - "detail" (the v1 free text, when there is one) plus the
     // members of `payload`.
+    // DLN-018: the route's scope as payload fields - "scope" and the unmodeled rows by name.
+    std::string RouteScopeJson(DungeonRoute const& route)
+    {
+        std::vector<std::string> const unmodeled = route.UnmodeledSteps();
+        std::string arr = "[";
+        for (size_t i = 0; i < unmodeled.size(); ++i)
+            arr += (i ? ",\"" : "\"") + DungeonLeadKernel::JsonEscape(unmodeled[i]) + "\"";
+        arr += "]";
+        return DungeonLeadKernel::JsonLine().Str("scope", ToString(route.Scope())).Raw("unmodeled", arr).Done();
+    }
+
     std::string BuildV2Line(Player* bot, DungeonLeadState& st, std::string const& event, std::string const* detail,
                             std::string const& payload)
     {
@@ -2390,7 +2401,8 @@ DungeonRoute const* DungeonLeadNextAction::ResolveRoute(DungeonLeadState& st)
     botAI->TellMasterNoFacing(out);
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route lfg={} '{}' map={} steps={} walkable={}", bot->GetName(),
              route->lfgId, route->name, route->mapId, route->steps.size(), walkable);
-    DungeonLead::RecordEvent(botAI, "route_selected", std::to_string(walkable) + " stops");
+    DungeonLead::RecordEvent(botAI, "route_selected", std::to_string(walkable) + " stops",
+                             RouteScopeJson(*route));
     return route;
 }
 
@@ -2790,11 +2802,15 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                     out << (i ? ", " : " ") << st.skippedSteps[i];
                 out << ")";
             }
+            // DLN-018: a completed route is the modeled route - say when that is not the whole dungeon
+            if (route->Scope() == DungeonRouteScope::PartialModel)
+                out << " - modeled route only, " << route->UnmodeledSteps().size() << " part(s) of this dungeon not modeled";
             botAI->TellMasterNoFacing(out);
-            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route {} ({} skipped)", bot->GetName(), outcome, st.skippedSteps.size());
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} route {} ({} skipped, scope {})", bot->GetName(), outcome,
+                     st.skippedSteps.size(), ToString(route->Scope()));
             DungeonLead::RecordEvent(botAI, hadNothingToVerify ? "route_blocked" :
                                       st.mandatorySkipped ? "route_partial" : "route_complete",
-                                      std::to_string(st.skippedSteps.size()) + " skipped");
+                                      std::to_string(st.skippedSteps.size()) + " skipped", RouteScopeJson(*route));
             DungeonLead::RecordRunSummary(botAI, "route_end");
 
             // 2026-09-15 (independent architecture review DL-018 - "a route-complete test clears
@@ -3984,6 +4000,7 @@ bool StartDungChatShortcutAction::Execute(Event event)
                 stepName = "(route complete)";
             std::ostringstream out;
             out << "Dungeon lead status: run #" << st.runId << " " << (route ? route->name : "no route")
+                << (route ? std::string(" (route scope ") + ToString(route->Scope()) + ")" : std::string())
                 << " | step " << stepName << " | objective " << DungeonLeadBrain::CurrentObjective(st).Describe()
                 << " | pack " << (st.packId ? "#" + std::to_string(st.packId) + " " + DungeonLeadKernel::ToString(st.packState)
                                           : std::string("none"))

@@ -417,5 +417,39 @@ class EligibilityTest(unittest.TestCase):
         self.assertTrue(c["directly_comparable"], "missing context is reported, not blocking")
         self.assertTrue(any("run context unknown for new" in d for d in c["differences"]))
 
+
+class ScopeTest(unittest.TestCase):
+    """DLN-018: FULL_ROUTE keeps its meaning; whether it is the whole dungeon is said separately."""
+
+    def with_scope(self, scope, unmodeled):
+        evs = synthetic()
+        evs.insert(1, dict(evs[0], event_seq=evs[0]["event_seq"], event_type="route_selected",
+                           payload={"detail": "12 stops", "scope": scope, "unmodeled": unmodeled}))
+        for i, e in enumerate(evs):
+            e["event_seq"] = i + 1
+        return model.reconstruct(evs)
+
+    def test_partial_model(self):
+        m = self.with_scope("partial_model", ["The Oculus"])
+        self.assertEqual(m["metadata"]["route_scope"], {"scope": "partial_model", "unmodeled": ["The Oculus"]})
+        v = analyze_run.verdict(m)
+        self.assertEqual((v["result"], v["dungeon_support"], v["unmodeled"]),
+                         ("FULL_ROUTE", "modeled_route_only", ["The Oculus"]))
+
+    def test_full_scope(self):
+        v = analyze_run.verdict(self.with_scope("full", []))
+        self.assertEqual((v["result"], v["dungeon_support"]), ("FULL_ROUTE", "dungeon_modeled_in_full"))
+
+    def test_before_scope_existed(self):
+        v = analyze_run.verdict(model.reconstruct(synthetic()))
+        self.assertEqual((v["result"], v["dungeon_support"]), ("FULL_ROUTE", "unknown"))
+
+    def test_status_says_modeled_route_only(self):
+        from tools.run_replay import status
+        rs = [{"run_id": i, "build": "m", "profile": "p", "result": "FULL_ROUTE", "health": "clean",
+               "started_at": "t", "context_id": "c", "context_incomplete": False, "complete_record": True,
+               "dungeon_support": "modeled_route_only"} for i in ("1", "2")]
+        self.assertEqual(status.verified(rs), ("m", ["1", "2"], "context"))
+
 if __name__ == "__main__":
     unittest.main()
