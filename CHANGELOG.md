@@ -82,6 +82,18 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A new pull waits for a healer that can heal the tank (DLN-017). Readiness checked the healer's
+  map, life and mana, not whether it could reach the tank: a healer behind a wall or 50 yd back
+  still authorized the pull. Pull readiness now needs a living healer (by spec) in line of sight of
+  the leader within 40 yd (`ReadyStatus::HealerOutOfReach`, offender named; checked for healers
+  only); walking is not held by it, the pull wait has its usual bounds, and a party without a
+  healer is unchanged. Sitting counts as eating/drinking only with a regeneration aura - bots sit
+  only for that, a player who sits down no longer holds the party.
+- Config: the older keys (HealerManaPct, StuckSeconds, CcTimeoutSeconds, CcAbsoluteTimeoutSeconds,
+  WipeRecoverySeconds, MaxWipesPerRun, Leash, ArriveDistance) are range-checked like the newer
+  ones, floats also against nan/inf, CcAbsoluteTimeoutSeconds not below CcTimeoutSeconds; out of
+  range is logged and clamped, defaults are unchanged. `StuckSeconds`' description now matches the
+  objective failure policy (optional skipped, mandatory retried, then partial).
 - The moon (CC mark) goes only to a mob a party bot can crowd-control (DLN-014). The target plan
   picked an elite non-boss for CC without asking whether anyone could do it; with no capable caster
   the mob sat excluded from damage until the CC timeout. A CC candidate now needs a living bot in

@@ -176,7 +176,8 @@ namespace DungeonLeadKernel
         bool online = true;           // in world with a session
         bool sameMap = false;         // same map object as the leader
         bool inCombat = false;
-        bool sitting = false;         // eating/drinking (bots) or sitting (players)
+        bool sitting = false;         // sitting with a food/drink regeneration aura (DLN-017)
+        bool lineOfSight = true;      // healers only: line of sight to the leader (DLN-017)
         float manaPct = 100.0f;
         float healthPct = 100.0f;
         float distance = 0.0f;        // to the leader, only meaningful when sameMap
@@ -207,6 +208,7 @@ namespace DungeonLeadKernel
         float softRange = 40.0f;      // a member farther than this -> no new pull (PartySoftRange)
         float hardRange = 90.0f;      // a member farther than this -> stop walking too (PartyHardRange)
         float minHealthPct = 50.0f;   // out of combat, anyone below this -> wait (0 = off)
+        float healReach = 40.0f;      // a healer farther than this from the leader can't heal it (DLN-017)
     };
 
     enum class ReadyPurpose : uint8_t
@@ -230,6 +232,7 @@ namespace DungeonLeadKernel
         MasterTooFar,       // off-map or beyond leash
         Fragmented,         // a member beyond PartyHardRange
         PartySpread,        // a member beyond PartySoftRange - pulls only
+        HealerOutOfReach,   // pulls only: no living healer in sight of the leader within healReach (DLN-017)
     };
 
     inline char const* ToString(ReadyStatus s)
@@ -248,6 +251,7 @@ namespace DungeonLeadKernel
             case ReadyStatus::MemberLost:        return "party member lost (other map or offline)";
             case ReadyStatus::Fragmented:        return "group too spread";
             case ReadyStatus::PartySpread:       return "group spread out, holding the pull";
+            case ReadyStatus::HealerOutOfReach:  return "healer out of sight or range of the tank, holding the pull";
         }
         return "unknown";
     }
@@ -434,6 +438,26 @@ namespace DungeonLeadKernel
             return {ReadyStatus::Fragmented, cohesion.offender};
         if (cohesion.level == Cohesion::SoftWarning && purpose == ReadyPurpose::Pull)
             return {ReadyStatus::PartySpread, cohesion.offender};
+        // DLN-017: a new pull needs a healer that can heal the tank - in sight and in range. A party
+        // without a healer is not held here (its own policy, owner checkpoint H1).
+        if (purpose == ReadyPurpose::Pull)
+        {
+            bool anyHealer = false, healerInReach = false;
+            int offender = -1;
+            for (size_t i = 0; i < f.members.size(); ++i)
+            {
+                PartyMemberFacts const& m = f.members[i];
+                if (m.isSelf || !m.isHealerBySpec || !m.alive || !m.sameMap || m.gameMaster)
+                    continue;
+                anyHealer = true;
+                if (m.lineOfSight && m.distance <= p.healReach)
+                    healerInReach = true;
+                else if (offender < 0)
+                    offender = int(i);
+            }
+            if (anyHealer && !healerInReach)
+                return {ReadyStatus::HealerOutOfReach, offender};
+        }
         return {};
     }
 

@@ -151,6 +151,33 @@ namespace
     ReadyStatus Walk(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Walk).status; }
     ReadyStatus Pull(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Pull).status; }
 
+    // DLN-017: a new pull needs a healer in sight of the tank and within reach; walking does not.
+    void TestHealerReach()
+    {
+        PartyFacts f = Party();
+        Check(Pull(f) == ReadyStatus::Ready, "healer in sight at 10 yd -> ready");
+        f.members[2].lineOfSight = false;
+        Check(Pull(f) == ReadyStatus::HealerOutOfReach, "healer behind a wall -> hold the pull");
+        Check(EvaluateReadiness(f, kReady, ReadyPurpose::Pull).offender == 2, "the healer is named");
+        Check(Walk(f) == ReadyStatus::Ready, "walking is not held by it");
+        f.members[2].lineOfSight = true;
+        f.members[2].distance = 41.0f;
+        Check(Pull(f) != ReadyStatus::Ready, "healer beyond 40 yd -> not ready to pull");
+        f.members[2].distance = 39.0f;
+        Check(Pull(f) == ReadyStatus::Ready, "healer back in reach -> ready");
+        // a second healer in reach is enough
+        PartyFacts two = Party();
+        two.members[3].isHealerBySpec = true;
+        two.members[2].lineOfSight = false;
+        Check(Pull(two) == ReadyStatus::Ready, "one of two healers in reach -> ready");
+        // no healer in the party: not held here (owner checkpoint H1)
+        PartyFacts none = Party();
+        none.members[2].isHealerBySpec = none.members[2].isHealerRole = false;
+        none.members[2].lineOfSight = false;
+        Check(Pull(none) == ReadyStatus::Ready, "healer-less party -> unchanged");
+        Check(std::string(ToString(ReadyStatus::HealerOutOfReach)).find("healer") != std::string::npos, "named");
+    }
+
     void TestReadiness()
     {
         Check(CombatCounts(true, true, 999999), "fighting an enemy: in combat");
@@ -1688,6 +1715,7 @@ int main()
     TestLeadership();
     TestHealer();
     TestReadiness();
+    TestHealerReach();
     TestBrain();
     TestRouteTypes();
     TestSkipOptionalEligibility();

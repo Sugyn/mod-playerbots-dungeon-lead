@@ -6,24 +6,30 @@
 #
 #    AiPlayerbot.DungeonLead.HealerManaPct
 #        Description: Below this healer mana %, the leader holds position instead of pulling/walking on.
+#        Range:       0-100
 #        Default:     20
 
 AiPlayerbot.DungeonLead.HealerManaPct = 20
 
 #    AiPlayerbot.DungeonLead.Leash
 #        Description: Yards from the real player before the leader stops and waits.
+#        Range:       10-300
 #        Default:     60
 
 AiPlayerbot.DungeonLead.Leash = 60
 
 #    AiPlayerbot.DungeonLead.ArriveDistance
 #        Description: Yards counted as "arrived" at a route step.
+#        Range:       1-30
 #        Default:     8
 
 AiPlayerbot.DungeonLead.ArriveDistance = 8
 
 #    AiPlayerbot.DungeonLead.StuckSeconds
-#        Description: Seconds with no progress toward a step before it's skipped (never teleported to).
+#        Description: Seconds with no progress toward a step before the step counts as failed (never
+#                     teleported to): optional content is skipped, a boss/required objective is
+#                     retried (ObjectiveRetryRounds), then the run ends partial.
+#        Range:       5-600
 #        Default:     45
 
 AiPlayerbot.DungeonLead.StuckSeconds = 45
@@ -31,6 +37,7 @@ AiPlayerbot.DungeonLead.StuckSeconds = 45
 #    AiPlayerbot.DungeonLead.CcTimeoutSeconds
 #        Description: Combat-aware grace window before a moon-marked CC candidate nobody is
 #                      crowd-controlling is released back into normal targeting.
+#        Range:       1-120
 #        Default:     10
 
 AiPlayerbot.DungeonLead.CcTimeoutSeconds = 10
@@ -38,18 +45,21 @@ AiPlayerbot.DungeonLead.CcTimeoutSeconds = 10
 #    AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds
 #        Description: Absolute ceiling on the above, regardless of whether the candidate ever
 #                      entered combat.
+#        Range:       1-600, not below CcTimeoutSeconds
 #        Default:     45
 
 AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds = 45
 
 #    AiPlayerbot.DungeonLead.WipeRecoverySeconds
 #        Description: Seconds to wait after a wipe before attempting to recover/continue.
+#        Range:       30-3600
 #        Default:     300
 
 AiPlayerbot.DungeonLead.WipeRecoverySeconds = 300
 
 #    AiPlayerbot.DungeonLead.MaxWipesPerRun
 #        Description: How many wipes one run tolerates before giving up. 0 = unlimited.
+#        Range:       0-20
 #        Default:     3
 
 AiPlayerbot.DungeonLead.MaxWipesPerRun = 3

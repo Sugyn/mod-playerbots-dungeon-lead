@@ -121,11 +121,17 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
             m.online = member->IsInWorld() && member->GetSession();
             m.sameMap = member->GetMap() == bot->GetMap();
             m.inCombat = CombatWithEnemy(bot, member);
-            m.sitting = member->IsSitState();
+            // DLN-017: sitting is a wait only while eating or drinking (a regeneration aura) - bots
+            // sit only for that; a player who just sits down does not hold the party.
+            m.sitting = member->IsSitState() &&
+                        (member->HasAuraType(SPELL_AURA_MOD_REGEN) || member->HasAuraType(SPELL_AURA_MOD_POWER_REGEN));
             m.manaPct = member->GetPowerPct(POWER_MANA);
             m.healthPct = member->GetHealthPct();
             if (m.sameMap)
                 m.distance = bot->GetDistance(member);
+            // DLN-017: healers only (a sight check per member and tick is not free)
+            if (m.sameMap && m.isHealerBySpec && !m.isSelf)
+                m.lineOfSight = member->IsWithinLOSInMap(bot);
             if (st)
             {
                 auto it = std::find_if(st->knownHealerRole.begin(), st->knownHealerRole.end(),

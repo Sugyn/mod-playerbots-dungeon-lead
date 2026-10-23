@@ -19,6 +19,7 @@
 #include "Config.h"
 #include "Log.h"
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 class DungeonLeadConfig
@@ -94,17 +95,39 @@ private:
         return clamped;
     }
 
+    // A float key out of range or not finite (nan/inf) falls back to the clamp / the default, logged.
+    static float BoundedFloat(char const* key, float def, float lo, float hi)
+    {
+        float const v = sConfigMgr->GetOption<float>(key, def);
+        if (!std::isfinite(v))
+        {
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} = {} is not a number, using {}", key, v, def);
+            return def;
+        }
+        float const clamped = std::clamp(v, lo, hi);
+        if (clamped != v)
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} = {} out of range [{}, {}], using {}", key, v, lo, hi,
+                      clamped);
+        return clamped;
+    }
+
     DungeonLeadConfig()
     {
-        dungeonLeadHealerManaPct = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.HealerManaPct", 20);
-        dungeonLeadStuckSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.StuckSeconds", 45);
-        dungeonLeadCcTimeoutSeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.CcTimeoutSeconds", 10);
-        dungeonLeadCcAbsoluteTimeoutSeconds =
-            sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds", 45);
-        dungeonLeadWipeRecoverySeconds = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.WipeRecoverySeconds", 300);
-        dungeonLeadMaxWipesPerRun = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.MaxWipesPerRun", 3);
-        dungeonLeadLeash = sConfigMgr->GetOption<float>("AiPlayerbot.DungeonLead.Leash", 60.0f);
-        dungeonLeadArriveDistance = sConfigMgr->GetOption<float>("AiPlayerbot.DungeonLead.ArriveDistance", 8.0f);
+        // DLN-017: the older keys get the same range check as the newer ones; defaults unchanged
+        dungeonLeadHealerManaPct = Bounded("AiPlayerbot.DungeonLead.HealerManaPct", 20, 0, 100);
+        dungeonLeadStuckSeconds = Bounded("AiPlayerbot.DungeonLead.StuckSeconds", 45, 5, 600);
+        dungeonLeadCcTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.CcTimeoutSeconds", 10, 1, 120);
+        dungeonLeadCcAbsoluteTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds", 45, 1, 600);
+        if (dungeonLeadCcAbsoluteTimeoutSeconds < dungeonLeadCcTimeoutSeconds)
+        {
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] CcAbsoluteTimeoutSeconds ({}) below CcTimeoutSeconds ({}), "
+                      "using CcTimeoutSeconds", dungeonLeadCcAbsoluteTimeoutSeconds, dungeonLeadCcTimeoutSeconds);
+            dungeonLeadCcAbsoluteTimeoutSeconds = dungeonLeadCcTimeoutSeconds;
+        }
+        dungeonLeadWipeRecoverySeconds = Bounded("AiPlayerbot.DungeonLead.WipeRecoverySeconds", 300, 30, 3600);
+        dungeonLeadMaxWipesPerRun = Bounded("AiPlayerbot.DungeonLead.MaxWipesPerRun", 3, 0, 20);
+        dungeonLeadLeash = BoundedFloat("AiPlayerbot.DungeonLead.Leash", 60.0f, 10.0f, 300.0f);
+        dungeonLeadArriveDistance = BoundedFloat("AiPlayerbot.DungeonLead.ArriveDistance", 8.0f, 1.0f, 30.0f);
         dungeonLeadSkipOptional = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.SkipOptional", false);
         dungeonLeadMarkCc = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.MarkCc", true);
         dungeonLeadRangedPull = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.RangedPull", true);
