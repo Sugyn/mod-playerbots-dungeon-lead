@@ -547,7 +547,38 @@ namespace
         f.current = PullState::Approaching;
         Check(PullHoldsLeader(PullState::WaitingParty, 0), "waiting for the party holds the leader in place");
         Check(PullHoldsLeader(PullState::WaitingPatrol, 0), "waiting for a patrol holds the leader in place");
-        Check(!PullHoldsLeader(PullState::WaitingParty, kPullHoldStillMaxMs), "a hold that never resolves walks on");
+        // DLN-012: a party wait never releases the leader toward the unready pack; past the
+        // still-wait it is a regroup recovery, and the pull try fails at partyWaitMaxMs.
+        Check(PullHoldsLeader(PullState::WaitingParty, kPullHoldStillMaxMs), "an unresolved party wait still holds");
+        Check(!PullHoldsLeader(PullState::WaitingPatrol, kPullHoldStillMaxMs), "a patrol wait ends (the pull goes ahead)");
+        Check(!PullHoldExpired(PullState::WaitingParty, kPullHoldStillMaxMs - 1) &&
+                  PullHoldExpired(PullState::WaitingParty, kPullHoldStillMaxMs),
+              "19999 ms: still waiting; 20000 ms: handed to the regroup recovery");
+        Check(!PullHoldExpired(PullState::WaitingPatrol, 60000) && !PullHoldExpired(PullState::Marking, 60000),
+              "only a party wait is a regroup");
+        {
+            PullFacts w = Pull(PullState::WaitingParty);
+            w.partyReady = false;
+            w.msInState = kPull.partyWaitMaxMs - 1;
+            Check(DecidePull(w, kPull) == PullState::WaitingParty, "party wait inside the backstop -> keeps waiting");
+            w.msInState = kPull.partyWaitMaxMs;
+            Check(DecidePull(w, kPull) == PullState::Failed, "party wait at the backstop -> the try fails (bounded)");
+            w.partyReady = true;
+            Check(DecidePull(w, kPull) == PullState::Marking, "member back in soft range -> Marking");
+            w = Pull(PullState::WaitingParty);
+            w.partyReady = false;
+            w.leaderInCombat = true;
+            Check(DecidePull(w, kPull) == PullState::Approaching, "attacked while waiting -> the fight first");
+            // brain: the regroup wins over holding at the pack; it is never Travelling meanwhile
+            ActiveFacts a;
+            a.current = LeadState::PrePull;
+            a.leaderAlive = true;
+            a.walkReady = true;  // soft spread: fine to walk, not to pull
+            a.preparingPull = PullHoldsLeader(PullState::WaitingParty, 50000);
+            Check(DecideActive(a).next == LeadState::PrePull, "soft spread at the pack past 20 s -> held, not walking");
+            a.recovering = true;
+            Check(DecideActive(a).next == LeadState::Recovery, "regroup recovery open -> Recovery");
+        }
         Check(PullHoldsLeader(PullState::Marking, kPullHoldStillMaxMs), "marking always holds");
         Check(!PullHoldsLeader(PullState::Approaching, 0), "approaching walks");
         f = Pull(PullState::Marking);

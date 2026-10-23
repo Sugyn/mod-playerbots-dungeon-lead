@@ -38,7 +38,9 @@ namespace
     }
 
     // What needs recovering right now, and who it is about.
-    RecoveryReason Observe(PlayerbotAI* botAI, DungeonPartySnapshot const& party, Player*& who)
+    // `pullHoldExpired`: the pull at the current pack has waited past kPullHoldStillMaxMs for a
+    // member outside the soft range (DLN-012) - that spread is a regroup here.
+    RecoveryReason Observe(PlayerbotAI* botAI, DungeonPartySnapshot const& party, bool pullHoldExpired, Player*& who)
     {
         who = nullptr;
         Player* bot = botAI->GetBot();
@@ -71,6 +73,16 @@ namespace
                 }
         if (!who)
             who = party.Member(r.offender);
+        if (r.status == DungeonLeadKernel::ReadyStatus::Ready && pullHoldExpired)
+        {
+            DungeonLeadKernel::Readiness const pull =
+                DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
+            if (pull.status == DungeonLeadKernel::ReadyStatus::PartySpread)
+            {
+                who = party.Member(pull.offender);
+                return RecoveryReason::PartyFragmented;
+            }
+        }
         return DungeonLeadKernel::RecoveryFor(r.status, healerAlive);
     }
 }
@@ -82,11 +94,15 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
 
     // Only between fights, with the leader alive: in combat the fight comes first, and the
     // leader's own death is WipeRecovery.
+    // ... and a pull at the pack held for the party past its still-wait (DLN-012).
+    bool const pullHoldExpired = DungeonLeadKernel::PullHoldExpired(
+        st.pullState, st.pullStateTs ? GetMSTimeDiffToNow(st.pullStateTs) : 0);
     bool const eligible = (st.state == LeadState::WaitingReady || st.state == LeadState::PostCombat ||
-                           st.state == LeadState::Recovery) &&
+                           st.state == LeadState::Recovery ||
+                           (pullHoldExpired && (st.state == LeadState::PrePull || st.state == LeadState::BossPrep))) &&
                           bot->IsAlive() && !st.paused;
     Player* who = nullptr;
-    RecoveryReason const observed = eligible ? Observe(botAI, party, who) : RecoveryReason::None;
+    RecoveryReason const observed = eligible ? Observe(botAI, party, pullHoldExpired, who) : RecoveryReason::None;
 
     // An ordinary wait (eating, drinking, healing up) does not run through a fight: its clock would
     // be long past the abort mark when the fight ends (Mana-Tombs: a drink open at 33.8 min, a

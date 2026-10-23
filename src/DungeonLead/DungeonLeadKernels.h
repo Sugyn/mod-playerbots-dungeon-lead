@@ -864,6 +864,9 @@ namespace DungeonLeadKernel
         // Longest wait for patrols to pass before pulling anyway - a patrol that stands or loops
         // around the pack never passes (SFK courtyard: patrols joined 8 of 14 tank deaths).
         uint32_t patrolHoldMaxMs = 20000;  // = kPullHoldStillMaxMs: the leader holds that long
+        // Longest a pull waits for the party in range of the pack before the try fails (DLN-012).
+        // The regroup recovery normally ends the wait long before: this is the backstop.
+        uint32_t partyWaitMaxMs = 300000;
     };
 
     inline PullState DecidePull(PullFacts const& f, PullPolicy const& p)
@@ -906,26 +909,38 @@ namespace DungeonLeadKernel
                 if (!f.packAlive || !f.inPullRange || f.leaderInCombat)
                     return PullState::Approaching;
                 if (!f.partyReady)
-                    return PullState::WaitingParty;
+                    return f.current == PullState::WaitingParty && f.msInState >= p.partyWaitMaxMs
+                               ? PullState::Failed
+                               : PullState::WaitingParty;
                 if (f.patrolNear && f.msPatrolHeld < p.patrolHoldMaxMs)
                     return PullState::WaitingPatrol;
                 return PullState::Marking;
         }
     }
 
-    // Longest the leader stands still for a held pull before walking on as before - a member
-    // that never closes up (stuck, a soft-range spread that doesn't resolve) can't hold the run.
+    // How long a pull waits for the party standing still before the party's spread is a regroup
+    // recovery (DLN-012). It used to release the leader to walk on toward the pack instead, into
+    // proximity aggro with the party still unready.
     constexpr uint32_t kPullHoldStillMaxMs = 20000;
 
     // Whether the pull controller holds the leader in place (PrePull/BossPrep instead of
-    // Travelling): marking, and a pull waiting for the party or a patrol. Travelling on toward the
+    // Travelling): marking, a pull waiting for the party, a patrol. Travelling on toward the
     // pack's coordinates while "holding" walked the tank into aggro range - 53 of 62 waits ended
-    // in a fight without a mark (campaigns 5f3d706..bc537b9).
+    // in a fight without a mark (campaigns 5f3d706..bc537b9). A party wait is held for as long as
+    // it lasts - bounded by the regroup recovery (PullHoldExpired) and PullPolicy::partyWaitMaxMs;
+    // a patrol wait for kPullHoldStillMaxMs, after which the pull goes ahead (patrolHoldMaxMs).
     inline bool PullHoldsLeader(PullState s, uint32_t msInState)
     {
-        if (s == PullState::Marking)
+        if (s == PullState::Marking || s == PullState::WaitingParty)
             return true;
-        return (s == PullState::WaitingParty || s == PullState::WaitingPatrol) && msInState < kPullHoldStillMaxMs;
+        return s == PullState::WaitingPatrol && msInState < kPullHoldStillMaxMs;
+    }
+
+    // A party wait at the pack that has gone on past kPullHoldStillMaxMs: the spread is handed to
+    // the regroup recovery (the leader walks back to the member, away from the pack).
+    inline bool PullHoldExpired(PullState s, uint32_t msInState)
+    {
+        return s == PullState::WaitingParty && msInState >= kPullHoldStillMaxMs;
     }
 
     // ---------------------------------------------------------------------------------------

@@ -314,7 +314,8 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                 break;
             // A pull that never got its mark placed is a failed try too (attempts otherwise count
             // only from Initiating) - without this a marking that keeps timing out loops forever.
-            if (previous == PullState::Marking || previous == PullState::Approaching)
+            if (previous == PullState::Marking || previous == PullState::Approaching ||
+                previous == PullState::WaitingParty)
                 ++st.pullAttempts;
             st.pullNoSightSince = 0;  // the next try gets its own time (it failed at once)
             DungeonLead::RecordEvent(botAI, "pull_failed", pack.name + " attempt=" + std::to_string(st.pullAttempts) +

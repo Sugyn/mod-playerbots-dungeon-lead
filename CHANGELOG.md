@@ -45,6 +45,14 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A pull waiting for the party no longer walks the leader on toward the pack after 20 s (DLN-012).
+  `PullHoldsLeader` released a `WaitingParty` hold after 20 s; with a member between the soft and
+  hard range the party was ready to walk but not to pull, so the leader walked into the unready
+  pack's aggro. The leader now stays held; past 20 s the spread member is a regroup recovery
+  (`party_fragmented`: the leader walks back to the member along a path, a bot member is then
+  brought, never a player; the recovery's own act/escalate/episode bounds apply), and a party wait
+  that reaches 300 s fails the pull try (attempt counted, then the objective failure policy).
+  Patrol waits are unchanged (20 s, then the pull goes ahead).
 - Each strategy a session owns is repaired on its own (DLN-015). The reconciliation loop looked at
   a follower's "follow"/"loot" and the leader's non-combat "dungeon lead"/"loot" only, so a reset
   that took just a follower's combat "cc", the leader's "mark rti" or "cc", or put "rpg"/"stay"
