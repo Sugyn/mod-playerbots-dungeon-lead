@@ -3882,8 +3882,10 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
 
     if (disToDest < kPathFinderDis)
     {
-        // DLN-011: a short hop follows an accepted path too; without one the walk does not move
-        // (the stuck handling below decides) instead of MovePoint's straight-line fallback.
+        // DLN-011: a short hop follows an accepted path too, never MovePoint's straight-line
+        // fallback. Without one it goes on to the same fallbacks as a long way (the route's
+        // earlier stops, short probes) - SFK run 1879871743590409: Odo one floor up 44 yd away,
+        // NOPATH from the courtyard, the hop was rejected and nothing else was tried.
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
         if (!(path.GetPathType() & ~typeOk) && path.GetPath().size() > 1)
@@ -3892,7 +3894,6 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             return MoveAlongPath(path.GetPath(), path.getPathLength());
         }
         recordPath("direct_rejected", &path, dx, dy, dz);
-        return false;
     }
 
     {

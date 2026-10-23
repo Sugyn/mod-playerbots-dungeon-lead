@@ -763,7 +763,8 @@ namespace
             Check(q.cc == 0 && q.primary == 3 && q.secondary == 2, "no usable CC caster -> no moon");
             TargetPlan keep;
             keep.cc = 1;
-            Check(PickTargetPlan(noCaster, keep, true).cc == 0, "a kept, uncontrolled moon without a caster is released");
+            Check(PickTargetPlan(noCaster, keep, true).cc == 1,
+                  "a kept moon stays through a moment of no castable CC (GCD, casting) - no flapping");
             noCaster[0].controlled = true;
             Check(PickTargetPlan(noCaster, keep, true).cc == 1, "a mob already controlled keeps its moon");
         }

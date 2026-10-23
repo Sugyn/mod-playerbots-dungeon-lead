@@ -988,8 +988,8 @@ namespace DungeonLeadKernel
         bool ccRefused = false;   // our CC never landed on it this step - don't mark it again
         bool fleeing = false;     // running for help (flee for assistance) or fleeing: it brings a pack
         // DLN-014: a bot of the party could crowd-control it with its class CC right now as far as
-        // the spell check goes (PlayerbotAI::CanCastSpell; range is not required). Re-evaluated on
-        // every plan - a cooldown or a sight line is temporary.
+        // the spell check goes (PlayerbotAI::CanCastSpell; range is not required). Gates a new
+        // moon only - a cooldown or a sight line is temporary, a kept moon stays.
         bool ccCastable = true;
     };
 
@@ -1080,8 +1080,11 @@ namespace DungeonLeadKernel
         // CC first among the kept slots: a kept CC target must not be promoted to a kill target -
         // until it is the only enemy left; then it is released and becomes the kill target.
         TargetCandidate const* keptCc = wantCc && previous.cc ? find(previous.cc) : nullptr;
-        if (keptCc && keptCc->elite && !keptCc->boss && !keptCc->ccRefused && candidates.size() > 1 &&
-            (keptCc->ccCastable || keptCc->controlled))
+        // DLN-014: ccCastable gates a new moon only. CanCastSpell is false for a moment while the
+        // caster is on its global cooldown or casting something else; dropping a kept moon on that
+        // released and re-marked it plan after plan (campaign 1959-dc1ee09: 264 marks, 252
+        // releases, 14 landed). A kept moon that never lands is CheckCcMark's to release.
+        if (keptCc && keptCc->elite && !keptCc->boss && !keptCc->ccRefused && candidates.size() > 1)
             plan.cc = keptCc->id;
         // A mob already crowd controlled (an earlier moon, a class AI's own sheep) keeps the moon
         // rather than a second mob being controlled and the first one broken.

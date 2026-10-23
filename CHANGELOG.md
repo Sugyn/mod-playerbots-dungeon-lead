@@ -119,8 +119,10 @@ the MAJOR bar above is met.
   the party with the combat "cc" strategy for which `PlayerbotAI::CanCastSpell` accepts one of
   mod-playerbots' CC spells on it (polymorph, banish, fear, hibernate, entangling roots, cyclone,
   freezing trap, scare beast - creature type, immunity, cooldown and sight as the spell check sees
-  them; range not required). Re-evaluated every plan; a kept moon on an uncontrolled mob without a
-  caster is released, a mob already controlled keeps it. Players' own CC is not planned for; the
+  them; range not required). It gates a new moon only: a kept moon stays (CanCastSpell is false
+  for a moment during the caster's global cooldown or another cast - releasing on that flapped the
+  moon, campaign 1959-dc1ee09: 264 marks, 14 landed); CheckCcMark still releases one that never
+  lands. Players' own CC is not planned for; the
   cast itself stays mod-playerbots'. Exclusive caster reservation is not implemented.
 - Slave Pens: path anchor "Mennu to Rokmar 13" moved from (-45.7, -478.5, 7.2), 9 yd above the
   walkable floor and unreachable (`skip_stuck` on every run since it was added), to
@@ -148,6 +150,10 @@ the MAJOR bar above is met.
   `DungeonLeadKernels.h`); `StrategyDelta` gives exactly the missing or conflicting entries per
   engine and only those are changed - a stable session still makes no `ChangeStrategy` call.
   `strategy_restored` now names the formation flag and the non-combat/combat deltas.
+- A short route hop with no accepted path falls back like a long one (fix of DLN-011): it used to
+  stop there (`direct_rejected`) and try nothing else; SFK run 1879871743590409 then failed Odo the
+  Blindwatcher, one floor up 44 yd away, on `path` after a wipe. It now goes on to the route's
+  earlier stops and the short probes - still never a straight-line move.
 - The route walk follows the path it checked (DLN-011). It inspected a PathGenerator path and then
   called `MovementAction::MoveTo(..., exact_waypoint)`, which hands only the end point to
   `MovePoint`; the core paths again and falls back to a straight two-point spline when that fails.
