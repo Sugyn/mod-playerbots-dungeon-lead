@@ -82,6 +82,29 @@ Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below)
 bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
 mixed human+bot runs have not been made on any build.
 
+## Campaign `verify-20261023-1623-dbea4d4` (first run context: `ee4a40e190227422`)
+
+Build `dbea4d4` (DLN-012, DLN-015, DLN-022), context complete (module, core f19a18799a35,
+mod-playerbots 037c01418b5d, 497 route rows, 15 config keys, 3780 mmap files). ZF, SFK,
+Deadmines, Slave Pens, RFC twice each: 9 of 10 FULL_ROUTE. First **Verified** pairs on one
+complete run context: Deadmines, Ragefire Chasm, Shadowfang Keep, Zul'Farrak (bot-only).
+
+| Run | Dungeon | Verdict | Notes |
+|---|---|---|---|
+| 1879858194939904 | Zul'Farrak | FULL_ROUTE | |
+| 1879858194939905 | Shadowfang Keep | FULL_ROUTE | 1 wipe |
+| 1879858194939906 | Deadmines | FULL_ROUTE | 1 wipe |
+| 1879858194939907 | Slave Pens | FULL_ROUTE | 1 wipe |
+| 1879858194939908 | Ragefire Chasm | FULL_ROUTE | 1 wipe |
+| 1879858194939909 | Zul'Farrak | FULL_ROUTE | |
+| 1879858194939910 | Deadmines | FULL_ROUTE | |
+| 1879858194939911 | Shadowfang Keep | FULL_ROUTE | 1 wipe |
+| 1879858194939912 | Slave Pens | PARTIAL | after a wipe and the walk back (674 yd) step 24 oscillated from minute 30 to the 110 min timeout: walk toward anchor 8, "master too far" (test bot at (-4.5,-425,-13)), back - led to the step walk limit |
+| 1879858194939913 | Ragefire Chasm | FULL_ROUTE | |
+
+Defect found in all ten runs: `strategy_restored ... combat=+cc` on every guard pass for warriors
+(14908 times) - DLN-015 owned a "cc" strategy warriors do not have; fixed in `e96ab5b`.
+
 ## Route SQL equivalence (DLN-019, 2026-10-23)
 
 `python3 tools/check_route_sql.py --upgrade-from a4ce2d8^ --mysql "ssh acore-clean-root mysql"`:
@@ -188,20 +211,20 @@ All levels are bot-only; no mixed human+bot run exists.
 | Dungeon | Level | Verified on | Latest build | Latest runs (newest first) |
 |---|---|---|---|---|
 | Blood Furnace | Verified (pre-context) | `fcdda84` | `fcdda84` | full route (warning) PULL; full route |
-| Deadmines | Verified (pre-context) | `3e3d6d2` | `3e3d6d2` | full route (warning) PACK_IDENTITY; full route (warning) PACK_IDENTITY |
+| Deadmines | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning); full route (warning) PACK_IDENTITY |
 | Hellfire Ramparts | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route (warning) ROUTE |
 | Mana-Tombs | Full route | - | `41f4375` | partial (warning) PACK_IDENTITY, PULL, WIPE; full route (warning) PACK_IDENTITY |
-| Ragefire Chasm | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
+| Ragefire Chasm | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning); full route (warning) PULL |
 | Razorfen Downs | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
 | Scarlet Monastery - Armory | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
 | Scarlet Monastery - Cathedral | Verified (pre-context) | `fcdda84` | `fcdda84` | full route (warning) ROUTE; full route (warning) PULL, ROUTE |
 | Scarlet Monastery - Library | Verified (pre-context) | `fcdda84` | `fcdda84` | full route; full route |
-| Shadowfang Keep | Verified (pre-context) | `3e3d6d2` | `3e3d6d2` | full route (warning) PACK_IDENTITY; full route |
-| Slave Pens | Verified (pre-context) | `3e3d6d2` | `3e3d6d2` | full route (warning) WIPE; full route (warning) OBSERVABILITY |
+| Shadowfang Keep | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning) PACK_IDENTITY; full route (warning) PACK_IDENTITY |
+| Slave Pens | Verified (pre-context) | `3e3d6d2` | `dbea4d4` | partial (warning) WIPE; full route (warning) OBSERVABILITY |
 | Underbog | Full route | - | `fcdda84` | failed (warning) PULL, WIPE; full route (warning) PULL |
-| Zul'Farrak | Verified (pre-context) | `b0993ee` | `3e3d6d2` | partial (unhealthy) UNKNOWN; full route |
+| Zul'Farrak | **Verified** | `dbea4d4` | `dbea4d4` | full route (warning); full route (warning) |
 
-From 283 runs in 32 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261023-1421-3e3d6d2).
+From 293 runs in 33 telemetry v2 campaigns (verify-20261006-1608-b73632e … verify-20261023-1623-dbea4d4).
 
 <!-- END GENERATED -->
 
