@@ -1371,6 +1371,36 @@ namespace
         Check(DecideInteraction(f, 120000) == InteractionState::Complete, "door opened while paused -> observed");
     }
 
+    // DLN-009: a queued leader change is re-judged when it runs. Cancelled/restarted sessions,
+    // group changes and a player taking the lead meanwhile reject it; the current request applies.
+    void TestQueuedLeaderChange()
+    {
+        using Q = QueuedLeaderChange;
+        QueuedLeaderFacts ok;
+        ok.requestCurrent = ok.sameGroup = ok.targetMember = ok.leaderAsExpected = true;
+        Check(DecideQueuedLeaderChange(ok) == Q::Apply, "current request, same group, expected leader -> apply");
+        QueuedLeaderFacts f = ok;
+        f.requestCurrent = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectSuperseded,
+              "start cancelled / new session generation / session active already -> rejected");
+        f = ok;
+        f.sameGroup = false;
+        f.targetMember = f.leaderAsExpected = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectGroup, "bot moved to another group (target there too) -> rejected");
+        f = ok;
+        f.targetMember = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectTarget, "target left the group -> rejected");
+        f = ok;
+        f.leaderAsExpected = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectLeader, "a player took the lead meanwhile -> not overwritten");
+        f = ok;
+        f.targetIsLeader = true;
+        f.leaderAsExpected = false;
+        Check(DecideQueuedLeaderChange(f) == Q::AlreadyDone, "a retry after the first one landed -> no change");
+        f.requestCurrent = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectSuperseded, "superseded wins over already-done");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1475,6 +1505,7 @@ int main()
     TestMissingDoor();
     TestKeyUser();
     TestPauseGates();
+    TestQueuedLeaderChange();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

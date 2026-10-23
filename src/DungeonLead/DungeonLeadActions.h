@@ -125,6 +125,9 @@ namespace DungeonLead
 
     // Leadership lifecycle internals, see StartSession()/Stop() and DungeonLeadBrain.
     void ActivateSession(PlayerbotAI* botAI, Group* group, Player* master, DungeonLeadKernel::TransitionReason reason);
+    // Starts a new transfer (target, the leader it moves away from, the bot's group, a new
+    // generation - DLN-009); RequestLeadership() then queues it and its bounded retries.
+    void BeginLeadershipTransfer(Player* bot, DungeonLeadState& st, ObjectGuid target, ObjectGuid from);
     void RequestLeadership(Player* bot, DungeonLeadState& st);
     void ReconcileLeadership(PlayerbotAI* botAI);
     // Always-on structured logging to DungeonLeadSessions.csv (player, dungeon, tank, group,

@@ -214,6 +214,17 @@ bool DungeonRouteMgr::HasState(ObjectGuid guid)
     return states.count(guid) != 0;
 }
 
+bool DungeonRouteMgr::LeadershipRequestCurrent(ObjectGuid guid, uint32 generation)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = states.find(guid);
+    if (it == states.end())
+        return false;
+    DungeonLeadState const& st = it->second;
+    return generation && st.leadershipGeneration == generation &&
+           (st.state == DungeonLeadKernel::LeadState::Starting || st.state == DungeonLeadKernel::LeadState::Stopping);
+}
+
 std::vector<ObjectGuid> DungeonRouteMgr::GetActiveSessionGuids()
 {
     std::lock_guard<std::mutex> lock(mtx);

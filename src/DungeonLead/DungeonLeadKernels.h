@@ -69,6 +69,59 @@ namespace DungeonLeadKernel
         return LeadershipStep::GiveUp;
     }
 
+    // DLN-009: a queued leader change is checked again when the world thread runs it - the
+    // request can outlive the session that asked for it (start cancelled, a new session, the bot
+    // in another group, a player who took the lead meanwhile). It applies only if it is still the
+    // session's current request and the group is the one it was made for, with the leader it was
+    // made against.
+    enum class QueuedLeaderChange : uint8_t
+    {
+        Apply,
+        AlreadyDone,       // the target already leads: nothing to change
+        RejectSuperseded,  // no session, or not its current request (cancelled/restarted/stopped)
+        RejectGroup,       // the bot is in no group or another group
+        RejectTarget,      // the target is not a member of that group
+        RejectLeader,      // someone else changed the leader since the request
+    };
+
+    struct QueuedLeaderFacts
+    {
+        bool requestCurrent = false;   // session exists, in Starting/Stopping, same generation
+        bool sameGroup = false;        // bot's group GUID == the one at request time
+        bool targetMember = false;
+        bool targetIsLeader = false;
+        bool leaderAsExpected = false; // leader == the one the request moves away from
+    };
+
+    inline QueuedLeaderChange DecideQueuedLeaderChange(QueuedLeaderFacts const& f)
+    {
+        if (!f.requestCurrent)
+            return QueuedLeaderChange::RejectSuperseded;
+        if (!f.sameGroup)
+            return QueuedLeaderChange::RejectGroup;
+        if (!f.targetMember)
+            return QueuedLeaderChange::RejectTarget;
+        if (f.targetIsLeader)
+            return QueuedLeaderChange::AlreadyDone;
+        if (!f.leaderAsExpected)
+            return QueuedLeaderChange::RejectLeader;
+        return QueuedLeaderChange::Apply;
+    }
+
+    inline char const* ToString(QueuedLeaderChange c)
+    {
+        switch (c)
+        {
+            case QueuedLeaderChange::Apply:            return "apply";
+            case QueuedLeaderChange::AlreadyDone:      return "already_done";
+            case QueuedLeaderChange::RejectSuperseded: return "superseded";
+            case QueuedLeaderChange::RejectGroup:      return "group_changed";
+            case QueuedLeaderChange::RejectTarget:     return "target_not_member";
+            case QueuedLeaderChange::RejectLeader:     return "leader_changed";
+        }
+        return "unknown";
+    }
+
     // ---------------------------------------------------------------------------------------
     // Healer availability
     // ---------------------------------------------------------------------------------------

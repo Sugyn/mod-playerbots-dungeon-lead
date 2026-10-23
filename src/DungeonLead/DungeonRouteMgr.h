@@ -353,6 +353,11 @@ struct DungeonLeadState
     ObjectGuid leadershipFrom;     // who held it when the transfer was requested
     uint32 leadershipRequestTs = 0;  // getMSTime() of the last request
     uint8 leadershipAttempts = 0;    // requests made so far, failed enqueues included
+    // Which transfer the queued requests belong to (DLN-009): new for each acquire (StartSession)
+    // and each handback (Stop), kept across retries; a queued request of another generation, or of
+    // a session that is gone, is rejected when the world thread runs it.
+    uint32 leadershipGeneration = 0;
+    ObjectGuid leadershipGroup;      // the group the transfer was requested in
     DungeonLeadSessionOrigin origin = DungeonLeadSessionOrigin::Manual;
     // 2026-09-15 (independent architecture review DL-006 - the one remaining silent exit path: a
     // hard disconnect never runs any Stop() call site at all): every other RecordRunSummary() call
@@ -510,6 +515,9 @@ public:
     // Read-only membership test - unlike State(), never creates an entry. True for any lifecycle
     // stage, so "is this bot already busy with a session" includes Starting and Stopping.
     bool HasState(ObjectGuid guid);
+    // DLN-009: whether a queued leader change of `generation` is still this session's current
+    // transfer (entry exists, Starting or Stopping, same generation). Read-only, like HasState().
+    bool LeadershipRequestCurrent(ObjectGuid guid, uint32 generation);
 
     // Per-instance "already killed" memory: survives a per-bot state reset (startdungeon reset, a
     // fresh ResolveRoute after a route mismatch, ...) so a boss confirmed dead once is never

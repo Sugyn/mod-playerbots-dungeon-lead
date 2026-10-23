@@ -1676,8 +1676,7 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
     // as Stopping - strategies are already restored above, so nothing else runs for it - until
     // GuardActiveSessions() observes the original owner as leader again, retrying a bounded
     // number of times. A failed enqueue counts as an attempt and is retried the same way.
-    stopping.leadershipTarget = handbackTo;
-    stopping.leadershipFrom = bot->GetGUID();
+    BeginLeadershipTransfer(bot, stopping, handbackTo, bot->GetGUID());
     RequestLeadership(bot, stopping);
 }
 
@@ -1779,8 +1778,7 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
     DungeonLeadBrain::TransitionTo(botAI, st, DungeonLeadKernel::LeadState::Starting,
                                    DungeonLeadKernel::TransitionReason::SessionStart);
-    st.leadershipTarget = bot->GetGUID();
-    st.leadershipFrom = group->GetLeaderGUID();
+    BeginLeadershipTransfer(bot, st, bot->GetGUID(), group->GetLeaderGUID());
     RequestLeadership(bot, st);
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} STARTING by {} origin={} - waiting to become group leader",
              bot->GetName(), master ? master->GetName() : "canary", ToString(origin));
@@ -1801,6 +1799,8 @@ void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* mast
         DungeonLeadBrain::TransitionTo(botAI, st, DungeonLeadKernel::LeadState::WaitingReady, reason);
         st.leadershipTarget = ObjectGuid::Empty;
         st.leadershipFrom = ObjectGuid::Empty;
+        st.leadershipGroup = ObjectGuid::Empty;
+        st.leadershipGeneration = 0;  // a request still queued for this acquire is now stale
         st.leadershipRequestTs = 0;
         st.leadershipAttempts = 0;
         origin = st.origin;
@@ -1841,13 +1841,93 @@ void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* mast
     // this self-heals whenever the external reset actually lands, however long that takes.
 }
 
+namespace
+{
+    std::atomic<uint32> sLeadershipGeneration{0};
+
+    // DLN-009: mod-playerbots' GroupSetLeaderOperation with the session checks redone when the
+    // world thread runs it (DecideQueuedLeaderChange). The stock one only checks that both players
+    // exist and the target is in the bot's current group, so a request outlived a cancelled start,
+    // a restarted session, a group change or a player taking the lead meanwhile.
+    class DungeonLeadSetLeaderOperation : public PlayerbotOperation
+    {
+    public:
+        DungeonLeadSetLeaderOperation(ObjectGuid owner, ObjectGuid newLeader, ObjectGuid group, ObjectGuid fromLeader,
+                                      uint32 generation)
+            : m_owner(owner), m_newLeader(newLeader), m_group(group), m_fromLeader(fromLeader), m_generation(generation)
+        {
+        }
+
+        bool Execute() override
+        {
+            Player* bot = ObjectAccessor::FindPlayer(m_owner);
+            Player* newLeader = ObjectAccessor::FindPlayer(m_newLeader);
+            if (!bot || !newLeader)
+                return false;
+            Group* group = bot->GetGroup();
+            DungeonLeadKernel::QueuedLeaderFacts f;
+            f.requestCurrent = sDungeonRouteMgr.LeadershipRequestCurrent(m_owner, m_generation);
+            f.sameGroup = group && group->GetGUID() == m_group;
+            f.targetMember = f.sameGroup && group->IsMember(m_newLeader);
+            f.targetIsLeader = f.sameGroup && group->GetLeaderGUID() == m_newLeader;
+            f.leaderAsExpected = f.sameGroup && group->GetLeaderGUID() == m_fromLeader;
+            DungeonLeadKernel::QueuedLeaderChange const decision = DungeonLeadKernel::DecideQueuedLeaderChange(f);
+            if (decision == DungeonLeadKernel::QueuedLeaderChange::Apply)
+            {
+                group->ChangeLeader(m_newLeader);
+                group->SendUpdate();
+                return true;
+            }
+            if (decision == DungeonLeadKernel::QueuedLeaderChange::AlreadyDone)
+                return true;
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} queued leader change to {} rejected: {} (generation {})",
+                     bot->GetName(), newLeader->GetName(), DungeonLeadKernel::ToString(decision), m_generation);
+            // only into a session that still exists - a rejected request of a finished one has no run
+            if (decision != DungeonLeadKernel::QueuedLeaderChange::RejectSuperseded)
+                if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
+                    DungeonLead::RecordEvent(botAI, "leadership_request_rejected",
+                                             std::string(DungeonLeadKernel::ToString(decision)) +
+                                                 " generation=" + std::to_string(m_generation));
+            return false;
+        }
+
+        ObjectGuid GetBotGuid() const override { return m_owner; }
+        uint32 GetPriority() const override { return 50; }  // same as GroupSetLeaderOperation
+        std::string GetName() const override { return "DungeonLeadSetLeader"; }
+        bool IsValid() const override
+        {
+            return ObjectAccessor::FindPlayer(m_owner) && ObjectAccessor::FindPlayer(m_newLeader);
+        }
+
+    private:
+        ObjectGuid m_owner;
+        ObjectGuid m_newLeader;
+        ObjectGuid m_group;
+        ObjectGuid m_fromLeader;
+        uint32 m_generation;
+    };
+}
+
+// A new leadership transfer (acquire or handback): its own generation, the group it is for.
+void DungeonLead::BeginLeadershipTransfer(Player* bot, DungeonLeadState& st, ObjectGuid target, ObjectGuid from)
+{
+    st.leadershipTarget = target;
+    st.leadershipFrom = from;
+    st.leadershipGroup = bot->GetGroup() ? bot->GetGroup()->GetGUID() : ObjectGuid::Empty;
+    st.leadershipGeneration = ++sLeadershipGeneration;
+    if (!st.leadershipGeneration)  // wrapped: 0 means "none"
+        st.leadershipGeneration = ++sLeadershipGeneration;
+    st.leadershipAttempts = 0;
+}
+
 // One leadership request. Counted as an attempt whether or not the enqueue itself succeeds - a
 // full queue is just a request that will not be observed, and is retried on the same schedule.
 void DungeonLead::RequestLeadership(Player* bot, DungeonLeadState& st)
 {
     ++st.leadershipAttempts;
     st.leadershipRequestTs = getMSTime();
-    auto op = std::make_unique<GroupSetLeaderOperation>(bot->GetGUID(), st.leadershipTarget);
+    auto op = std::make_unique<DungeonLeadSetLeaderOperation>(bot->GetGUID(), st.leadershipTarget, st.leadershipGroup,
+                                                             st.leadershipFrom, st.leadershipGeneration);
     bool const queued = PlayerbotWorldThreadProcessor::instance().QueueOperation(std::move(op));
     if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
         DungeonLead::RecordEvent(botAI, "leadership_request",

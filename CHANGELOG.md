@@ -42,6 +42,16 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- A queued leader change can no longer outlive the request that made it (DLN-009). mod-playerbots'
+  `GroupSetLeaderOperation` checks only that both players exist and the target is in the bot's
+  current group when the world thread runs it - a start cancelled before it ran, a new session,
+  the bot in another group, or a player taking the lead meanwhile did not stop it. The module now
+  queues its own `DungeonLeadSetLeaderOperation`, which re-checks on execution that it is the
+  session's current transfer (a generation per acquire/handback, kept across retries, dropped on
+  activation), the group GUID it was made in, and the leader it moves away from
+  (`DecideQueuedLeaderChange`). A rejection inside a live session is recorded as
+  `leadership_request_rejected` with the reason. The observed-leadership retry/abandon policy is
+  unchanged.
 - Bots outside a Dungeon Lead session keep mod-playerbots' "unknown dungeon" behavior (DLN-010).
   The module's override of that trigger returned false for any bot with the "grind" strategy, so
   a grinding bot leading a real player's group in a dungeon never handed leadership back, session
