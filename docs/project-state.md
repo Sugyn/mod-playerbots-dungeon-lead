@@ -24,8 +24,11 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 | DLN-011 accepted path execution | 2 | P1 | IMPLEMENTED | `3e3d6d2`, build clean; evidence: ZF run 1879810038038528 path vs actual; live campaign 1421-3e3d6d2: 7/8 full routes, Greenskin reached, 11 direct_rejected all at one pre-existing bad anchor; open: missing-mmap-tile negative test |
 | DLN-012 expired pull hold | 2 | P1 | IMPLEMENTED | `872fa7a`, kernel tests, build clean, not deployed yet; open: staged soft-range straggler and patrol live |
 | DLN-015 strategy repair per component | 3 | P2 | IMPLEMENTED | `95f3352`, kernel tests, build clean, not deployed yet; open: injected partial resets live |
+| DLN-018 route scope vs dungeon support | 5 | P1 | IMPLEMENTED | `8da1e09`; H5 taken as the plan's minimal option (metadata, no new outcome); 39 full / 41 partial_model / 16 no_mandatory routes; not deployed yet |
+| DLN-022 run context | 7 | P1 | IMPLEMENTED | `e6a79fb`; live: context `ee4a40e190227422` complete on `dbea4d4` (module, core f19a18799a35, playerbots 037c01418b5d, 497 route rows, 15 config keys, 3780 mmap files); open: a deliberate config/route change detected by compare |
+| DLN-024 distinct comparable evidence | 7 | P1 | IMPLEMENTED | `fbca540`; status regenerated - every existing level is now "(pre-context)"; first context-qualified pairs come from campaign 1623-dbea4d4 onward |
 | DLN-023 telemetry sink failures | 7 | P2 | IMPLEMENTED | `TelemetrySinkHealth` + kernel tests, heartbeat `lost_lines`, build clean; live: `lost_lines` 0 through campaign 0740-41f4375; open: unwritable/full log destination on staging |
-| DLN-013 (known: Slave Pens anchor "path Mennu to Rokmar 13" unreachable), DLN-014, DLN-016 .. DLN-022, DLN-024 .. DLN-026 | 2-7 | - | TODO | DLN-021 (mixed human runs) and the human parts of DLN-004/007/008/017/020 have no player available |
+| DLN-013 (known: Slave Pens anchor "path Mennu to Rokmar 13" unreachable), DLN-014, DLN-016, DLN-017, DLN-019 .. DLN-021, DLN-025, DLN-026 | 2-7 | - | TODO | DLN-021 (mixed human runs) and the human parts of DLN-004/007/008/017/020 have no player available |
 
 Validation:
 - Fast suite (`bash tools/run_tests.sh`) after DLN-010: 394 kernel checks, 30 Python tests, all passing.
