@@ -29,6 +29,14 @@ Validation:
   DLN commit: clean, no install between them.
 - No live run has been made on a DLN build yet.
 
-Next action: install the DLN build on acore-clean (snapshot VM 107 first, apply
-`2026_10_10_00_unresolved_doors.sql`), smoke start/status/stop, then the Phase 1 live scenarios and
-DLN-003.
+Deployed 2026-10-23 on acore-clean: build `02fc932` installed (VM 107 snapshot
+`pre-dln-phase1-20261023` taken first), `2026_10_10_00_unresolved_doors.sql` applied (route table
+now equal to `data/dungeon_routes.csv`, previous table dumped to
+`/root/playerbots_dungeon_route.pre-20261023.sql`), worldserver restarted. Campaign
+`ValidationAutostart = "24,6,8,24,6,8"` (ZF, Deadmines, SFK twice, bot-only) running; first
+observations: four sessions started, SFK cell door opened by the leader's lever, Ashcrombe talk,
+courtyard door seen open.
+
+Next action: replay the campaign (`tools/run_replay`), check DLN-004/006/009 evidence in it
+(bot key use on Troll Cage and Defias Cannon, door steps, leader handback through
+DungeonLeadSetLeaderOperation), then DLN-003.
