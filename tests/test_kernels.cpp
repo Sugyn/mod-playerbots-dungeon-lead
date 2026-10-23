@@ -1631,6 +1631,20 @@ namespace
         Check(ChooseEventCreature({}) == -1, "nothing there -> keep waiting");
     }
 
+    // DLN-025: the heartbeat's controller cost summary.
+    void TestDurationWindow()
+    {
+        DurationWindow w;
+        Check(w.Summarize().count == 0 && w.Summarize().max == 0, "empty window");
+        for (uint32_t v = 1; v <= 100; ++v)
+            w.Add(v * 10);
+        DurationWindow::Summary const s = w.Summarize();
+        Check(s.count == 100 && s.max == 1000, "count and max");
+        Check(s.p50 >= 500 && s.p50 <= 510 && s.p95 >= 950 && s.p95 <= 960, "p50 / p95 by rank");
+        w.Reset();
+        Check(w.Summarize().count == 0, "reset starts a new window");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1743,6 +1757,7 @@ int main()
     TestRunContext();
     TestRouteScope();
     TestEventCreature();
+    TestDurationWindow();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

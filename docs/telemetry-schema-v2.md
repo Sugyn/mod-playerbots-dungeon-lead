@@ -113,7 +113,9 @@ and `campaign_id`:
 - `heartbeat` (no `campaign_id`; once a minute while the world tick runs): `time` (server local
   time), `active_sessions`, `queued_lines`, `lost_lines` (cumulative lines that left the buffer
   but did not reach their file - open, write or flush failed - since process start; 0 = no known
-  loss). A heartbeat proves the flush path ran, not that a session advanced. Losses are also
+  loss), `guard_us` (DLN-025: wall time of the `GuardActiveSessions` passes since the previous
+  heartbeat - `passes`, `p50`, `p95`, `max` in microseconds). A heartbeat proves the flush path
+  ran, not that a session advanced. Losses are also
   logged to the core log (`playerbots.dungeonlead`) on the first loss per file, every 60 s while
   failing, and on recovery.
 

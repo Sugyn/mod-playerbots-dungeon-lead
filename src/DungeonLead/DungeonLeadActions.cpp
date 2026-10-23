@@ -67,6 +67,7 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -199,6 +200,8 @@ namespace
     FILE* g_eventsV2File = nullptr;
     FILE* g_campaignsFile = nullptr;
     DungeonLeadKernel::TelemetrySinkHealth g_sinkHealth;  // world thread only (FlushTelemetry)
+    // DLN-025: GuardActiveSessions pass durations since the last heartbeat (world thread only)
+    DungeonLeadKernel::DurationWindow g_guardCost;
 
     // Writes the header into a fresh (empty) file the first time it is opened.
     void EnsureHeader(FILE* f, bool& done, char const* header)
@@ -892,6 +895,16 @@ void DungeonLead::FlushTelemetry(bool force)
                                  .Num("active_sessions", uint32(sDungeonRouteMgr.GetActiveSessionGuids().size()))
                                  .Num("queued_lines", uint32(g_telemetry.Size()))
                                  .Num("lost_lines", uint64(g_sinkHealth.TotalLost()))
+                                 .Raw("guard_us", [] {
+                                     DungeonLeadKernel::DurationWindow::Summary const g = g_guardCost.Summarize();
+                                     g_guardCost.Reset();
+                                     return DungeonLeadKernel::JsonLine()
+                                         .Num("passes", g.count)
+                                         .Num("p50", g.p50)
+                                         .Num("p95", g.p95)
+                                         .Num("max", g.max)
+                                         .Done();
+                                 }())
                                  .Done() +
                              "\n");
     }
@@ -1543,6 +1556,17 @@ void DungeonLead::GuardActiveSessions()
     if (lastRunTs && now - lastRunTs < 2000)
         return;
     lastRunTs = now;
+
+    // DLN-025: wall time of this pass, whatever path it leaves by (heartbeat guard_us)
+    struct PassTimer
+    {
+        std::chrono::steady_clock::time_point const start = std::chrono::steady_clock::now();
+        ~PassTimer()
+        {
+            auto const us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
+            g_guardCost.Add(uint32(std::min<int64>(us.count(), std::numeric_limits<uint32>::max())));
+        }
+    } passTimer;
 
     for (ObjectGuid const& guid : sDungeonRouteMgr.GetActiveSessionGuids())
     {

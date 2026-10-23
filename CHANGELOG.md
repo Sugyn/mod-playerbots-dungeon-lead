@@ -19,6 +19,9 @@ the MAJOR bar above is met.
 ## [Unreleased]
 
 ### Added
+- Controller cost in the campaign heartbeat (DLN-025): `guard_us` - passes, p50, p95 and max wall
+  time of `GuardActiveSessions` (the ~2 s world-thread pass over every session) since the previous
+  heartbeat, measured with a steady clock around the pass.
 - Registration probe (DLN-002): 3 minutes after start, for one online bot of each class, its own AI
   context must create the "dungeon lead" strategy and "dungeon lead next" action and resolve
   "unknown dungeon" and "formation" to the module's overrides; logged per class (`registration

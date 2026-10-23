@@ -1660,6 +1660,37 @@ namespace DungeonLeadKernel
         }
     };
 
+    // DLN-025: run-time cost of a periodic controller pass, summarised once a minute (heartbeat).
+    // Samples in microseconds; Summary() sorts a copy, Reset() starts the next window.
+    struct DurationWindow
+    {
+        std::vector<uint32_t> samplesUs;
+
+        void Add(uint32_t us) { samplesUs.push_back(us); }
+
+        struct Summary
+        {
+            uint32_t count = 0, p50 = 0, p95 = 0, max = 0;
+        };
+
+        Summary Summarize() const
+        {
+            Summary out;
+            if (samplesUs.empty())
+                return out;
+            std::vector<uint32_t> v = samplesUs;
+            std::sort(v.begin(), v.end());
+            auto at = [&](double q) { return v[std::min(v.size() - 1, size_t(q * double(v.size() - 1) + 0.5))]; };
+            out.count = uint32_t(v.size());
+            out.p50 = at(0.50);
+            out.p95 = at(0.95);
+            out.max = v.back();
+            return out;
+        }
+
+        void Reset() { samplesUs.clear(); }
+    };
+
     // DLN-015: the strategy components a session owns on one engine (non-combat or combat): each
     // name that must be on or off. StrategyDelta gives only what differs from what the bot has, as
     // a ChangeStrategy() string ("+cc,-rpg"), empty when nothing does - so a partial external reset
