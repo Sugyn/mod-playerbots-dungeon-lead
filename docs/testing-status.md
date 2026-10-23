@@ -82,6 +82,25 @@ Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below)
 bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
 mixed human+bot runs have not been made on any build.
 
+## Campaign `verify-20261023-0553-b0993ee` (Phase 1 + leader-not-in-world close-out)
+
+Same profile and stack as below, build `b0993ee`. All six runs FULL_ROUTE (`tools/run_replay`):
+
+| Run | Dungeon | Health | Notes |
+|---|---|---|---|
+| 1879818526261248 | Deadmines | warning | 2 wipes |
+| 1879818526261249 | Shadowfang Keep | clean | |
+| 1879818526261250 | Zul'Farrak | clean | |
+| 1879818526261251 | Zul'Farrak | warning | 2 wipes |
+| 1879818526261252 | Deadmines | clean | leader handback through `DungeonLeadSetLeaderOperation`, confirmed on attempt 1 |
+| 1879818526261253 | Shadowfang Keep | warning | leader handback confirmed on attempt 1 |
+
+Six `use` (Gunpowder, Defias Cannon, Troll Cage) all by the leader bot, two keys looted by it, six
+doors seen open, no `door_not_found`, no `leadership_request_rejected`, no leader-not-in-world
+close-out (the close-out did not trigger; the ZF stall of run 1879810038038528 did not recur).
+Together with the campaign below: ZF, Deadmines and SFK each have two FULL_ROUTE runs on one build
+(`b0993ee`), bot-only.
+
 ## Campaign `verify-20261023-0338-02fc932` (Phase 1 fixes DLN-004..010)
 
 Bot-only, profile `bot5-wtank-phealer-wmr-dps-lfg-target-level`, 4 in parallel, build `02fc932`

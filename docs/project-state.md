@@ -19,7 +19,7 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 | DLN-006 missing mandatory door | 1 | P1 | IMPLEMENTED | `57b20d0`, kernel tests, build clean; open: SFK/Deadmines door runs, invalid door entry |
 | DLN-007 pause stops motion and door actions | 1 | P1 | IMPLEMENTED | `78cfb57`, kernel tests, build clean; open: pause mid-leg and at a closed door |
 | DLN-008 finished run not reopened | 1 | P1 | IMPLEMENTED | `5f21c83`, build clean; owner checkpoint H2 taken as the plan's minimal option (refuse reset); open: held-complete reset/stop live |
-| DLN-009 stale queued leadership | 1 | P1 | IMPLEMENTED | `d84caea`, kernel tests, build clean; open: delayed-queue/cancel/group-change scenarios |
+| DLN-009 stale queued leadership | 1 | P1 | IMPLEMENTED | `d84caea`, kernel tests, build clean; live: 2 handbacks confirmed through the new operation (campaign 0553-b0993ee); open: delayed-queue/cancel/group-change rejection scenarios |
 | DLN-010 unknown-dungeon override scoped | 1 | P2 | IMPLEMENTED | `285b6f8`, build clean; open: no-session grinding bot control |
 | DLN-023 telemetry sink failures | 7 | P2 | IMPLEMENTED | `TelemetrySinkHealth` + kernel tests, heartbeat `lost_lines`, build clean; open: unwritable/full log destination on staging |
 | DLN-011 .. DLN-022, DLN-024 .. DLN-026 | 2-7 | - | TODO | |
