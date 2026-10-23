@@ -21,8 +21,11 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 | DLN-008 finished run not reopened | 1 | P1 | IMPLEMENTED | `5f21c83`, build clean; owner checkpoint H2 taken as the plan's minimal option (refuse reset); open: held-complete reset/stop live |
 | DLN-009 stale queued leadership | 1 | P1 | IMPLEMENTED | `d84caea`, kernel tests, build clean; live: 2 handbacks confirmed through the new operation (campaign 0553-b0993ee); open: delayed-queue/cancel/group-change rejection scenarios |
 | DLN-010 unknown-dungeon override scoped | 1 | P2 | IMPLEMENTED | `285b6f8`, build clean; open: no-session grinding bot control |
+| DLN-011 accepted path execution | 2 | P1 | IMPLEMENTED | `3e3d6d2`, build clean; evidence: ZF run 1879810038038528 path vs actual; live campaign 6/8/140/24 x2 running on it |
+| DLN-012 expired pull hold | 2 | P1 | IMPLEMENTED | `872fa7a`, kernel tests, build clean, not deployed yet; open: staged soft-range straggler and patrol live |
+| DLN-015 strategy repair per component | 3 | P2 | IMPLEMENTED | `95f3352`, kernel tests, build clean, not deployed yet; open: injected partial resets live |
 | DLN-023 telemetry sink failures | 7 | P2 | IMPLEMENTED | `TelemetrySinkHealth` + kernel tests, heartbeat `lost_lines`, build clean; live: `lost_lines` 0 through campaign 0740-41f4375; open: unwritable/full log destination on staging |
-| DLN-011 .. DLN-022, DLN-024 .. DLN-026 | 2-7 | - | TODO | |
+| DLN-013, DLN-014, DLN-016 .. DLN-022, DLN-024 .. DLN-026 | 2-7 | - | TODO | DLN-021 (mixed human runs) and the human parts of DLN-004/007/008/017/020 have no player available |
 
 Validation:
 - Fast suite (`bash tools/run_tests.sh`) after DLN-010: 394 kernel checks, 30 Python tests, all passing.
