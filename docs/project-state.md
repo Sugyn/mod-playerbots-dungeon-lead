@@ -12,7 +12,7 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 | Task | Phase | Priority | Status | Evidence / open gate |
 |---|---|---|---|---|
 | DLN-001 baseline manifest | 0 | P1 | IMPLEMENTED | manifest in testing-status; open: route-table hash and mmap identity as part of run context (DLN-022) |
-| DLN-002 integration build | 0 | P1 | IN_PROGRESS | worldserver builds clean on acore-clean `build/` (f19a18799 / 037c0141) for every DLN commit; start/stop exercised by every campaign; AddClass misclassification checked - no effect on this config (ADR-004); registration probe `f59afd3` built, result pending the next restart |
+| DLN-002 integration build | 0 | P1 | IN_PROGRESS | worldserver builds clean on acore-clean `build/` (f19a18799 / 037c0141) for every DLN commit; start/stop exercised by every campaign; AddClass misclassification checked - no effect on this config (ADR-004); registration probe on `dc1ee09`: all 10 classes ok (strategy, action, both overrides); open: a no-session grinding-bot control run (DLN-010) |
 | DLN-003 recovery delta coverage | 0 | P1 | IMPLEMENTED | kernels `RecoveryClosesWhenIneligible`, `WalkBackFromEntrance`, `ReopenPathAnchors` + boundary tests; replay: new events leave the reconstruction unchanged, heartbeat is not a campaign record; live: 72 eating/drinking waits none aborted (0740-41f4375); Slave Pens wipe -> `checkpoint_walk_back` 663 yd, route completed, twice (1421-3e3d6d2) |
 | DLN-004 no actions through human characters | 1 | P1 | IMPLEMENTED | `180c93b`, kernel tests, build clean; open: live human-key scenarios |
 | DLN-005 SkipOptional keeps required trash | 1 | P1 | IMPLEMENTED | `fa2c41b`, kernel tests, build clean; open: ZF with SkipOptional=0/1 |
@@ -41,7 +41,7 @@ Validation:
   DLN commit: clean, no install between them.
 - Live: first bot-only campaign on the DLN build in progress (below); no mixed human+bot run yet.
 
-Deployed 2026-10-23 on acore-clean: build `02fc932` installed (VM 107 snapshot
+Deployed 2026-10-23 on acore-clean, first: build `02fc932` installed (VM 107 snapshot
 `pre-dln-phase1-20261023` taken first), `2026_10_10_00_unresolved_doors.sql` applied (route table
 now equal to `data/dungeon_routes.csv`, previous table dumped to
 `/root/playerbots_dungeon_route.pre-20261023.sql`), worldserver restarted. Campaign
@@ -49,6 +49,10 @@ now equal to `data/dungeon_routes.csv`, previous table dumped to
 observations: four sessions started, SFK cell door opened by the leader's lever, Ashcrombe talk,
 courtyard door seen open.
 
-Next action: replay the campaign (`tools/run_replay`), check DLN-004/006/009 evidence in it
+Current deployment (2026-10-23 evening): `dc1ee09`, run context `053fc273eb921f3a`, route table
+with `2026_10_23_00`/`_01` applied (equal to the CSV), campaign ZF/Slave Pens/Mana-Tombs/DM/SFK x2
+running. First Verified pairs on a complete context (`dbea4d4`): Deadmines, RFC, SFK, ZF.
+
+Previous next action: replay the campaign (`tools/run_replay`), check DLN-004/006/009 evidence in it
 (bot key use on Troll Cage and Defias Cannon, door steps, leader handback through
 DungeonLeadSetLeaderOperation), then DLN-003.
