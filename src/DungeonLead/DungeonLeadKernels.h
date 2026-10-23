@@ -1179,6 +1179,12 @@ namespace DungeonLeadKernel
     // within 2-3 minutes by short drinks).
     inline bool RelapseContinuesEpisode(RecoveryReason r) { return r != RecoveryReason::PersistentWait; }
 
+    // Whether an open recovery is closed while the controller may not judge it (combat, pause,
+    // death, travelling). An ordinary wait is: its clock would be past the abort mark when a long
+    // fight ends (Mana-Tombs, 1e2cf6e); it starts afresh after the fight if still needed. Every
+    // other recovery keeps its clocks running, bounded by its own episode cap.
+    inline bool RecoveryClosesWhenIneligible(RecoveryReason r) { return r == RecoveryReason::PersistentWait; }
+
     // Feed one observation (only while the controller is eligible to judge - in combat an open
     // recovery is simply kept). Returns true if the reason changed (a new recovery started); a
     // relapse of the recovery that cleared less than kRecoveryRelapseMs ago (same reason, same
@@ -1334,6 +1340,23 @@ namespace DungeonLeadKernel
     // After a wipe, a route with path anchors is walked again from its first anchor when the resume
     // step is farther than this from where the party respawns.
     constexpr float kWalkBackFromEntranceYd = 150.0f;
+
+    // Whether the walk restarts from the first path anchor after a wipe (Slave Pens: the resume
+    // step 630 yd from the entrance had no path). Only on a route with anchors, past step 0, with
+    // a resume position farther than kWalkBackFromEntranceYd.
+    inline bool WalkBackFromEntrance(bool routeHasAnchors, uint32_t resumeStep, bool resumeHasPosition, float distYd)
+    {
+        return routeHasAnchors && resumeStep > 0 && resumeHasPosition && distYd > kWalkBackFromEntranceYd;
+    }
+
+    // ... and what that reopens: the path anchors before the resume step, nothing else - a cleared
+    // pack or a killed boss stays visited and is not a fresh requirement again.
+    inline void ReopenPathAnchors(std::vector<uint8_t>& visited, std::vector<bool> const& isAnchor, uint32_t before)
+    {
+        for (uint32_t i = 0; i < before && i < visited.size() && i < isAnchor.size(); ++i)
+            if (isAnchor[i])
+                visited[i] = 0;
+    }
 
     // Step index to resume from after a wipe: the step after the checkpoint (-1 = none yet),
     // never ahead of where the route already is.

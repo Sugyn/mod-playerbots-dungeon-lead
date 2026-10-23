@@ -1401,6 +1401,50 @@ namespace
         Check(DecideQueuedLeaderChange(f) == Q::RejectSuperseded, "superseded wins over already-done");
     }
 
+    // DLN-003: the recovery changes through 1e2cf6e. An ordinary wait closes while the controller
+    // cannot judge it and starts with fresh clocks after the fight; other recoveries keep running.
+    // After a wipe, an anchor route walks back from the first anchor only past 150 yd, and that
+    // reopens anchors only - cleared packs and killed bosses stay done.
+    void TestRecoveryDelta()
+    {
+        Check(RecoveryClosesWhenIneligible(RecoveryReason::PersistentWait), "ordinary wait closes in combat");
+        Check(!RecoveryClosesWhenIneligible(RecoveryReason::PartyFragmented) &&
+                  !RecoveryClosesWhenIneligible(RecoveryReason::None),
+              "a straggler recovery is kept through combat");
+
+        RecoveryPolicy policy;  // 60 s act + 60 s escalate
+        RecoveryTimers t;
+        ObserveRecovery(t, RecoveryReason::PersistentWait, 1000);
+        // a 150 s fight: closed at the fight's start (controller ineligible)
+        ObserveRecovery(t, RecoveryReason::None, 2000);
+        // after the fight the drink starts again: its clocks are new, nothing is near abort
+        ObserveRecovery(t, RecoveryReason::PersistentWait, 152000);
+        Check(t.reasonSince == 152000 && t.episodeSince == 152000, "post-combat wait: fresh clocks (no relapse)");
+        Check(DecideRecovery(t.reason, 152500 - t.reasonSince, 152500 - t.episodeSince, policy) == RecoveryStep::Act,
+              "post-combat wait acts, not aborts");
+        // the old behavior (kept open through the fight) would have aborted
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 152500 - 1000, 152500 - 1000, policy) == RecoveryStep::Abort,
+              "control: a wait kept open through the fight is past the abort mark");
+
+        Check(!WalkBackFromEntrance(true, 5, true, 150.0f), "150 yd exactly -> resume directly");
+        Check(WalkBackFromEntrance(true, 5, true, 150.5f), "past 150 yd on an anchor route -> walk back");
+        Check(!WalkBackFromEntrance(false, 5, true, 630.0f), "no anchors -> resume directly however far");
+        Check(!WalkBackFromEntrance(true, 0, true, 630.0f), "resume step 0 -> nothing to walk back");
+        Check(!WalkBackFromEntrance(true, 5, false, 630.0f), "resume step without a position -> no walk back");
+
+        // steps: anchor, pack (cleared), anchor, boss (killed), anchor, resume
+        std::vector<uint8_t> visited = {1, 1, 1, 1, 1, 0};
+        std::vector<bool> const isAnchor = {true, false, true, false, true, false};
+        ReopenPathAnchors(visited, isAnchor, 5);
+        Check(visited == std::vector<uint8_t>({0, 1, 0, 1, 0, 0}), "only anchors reopen; pack and boss stay done");
+        std::vector<uint8_t> v2 = {1, 1, 1};
+        ReopenPathAnchors(v2, {true, true, true}, 1);
+        Check(v2 == std::vector<uint8_t>({0, 1, 1}), "anchors at or after the resume step are untouched");
+
+        Check(ResumeStepAfterWipe(-1, 7) == 0 && ResumeStepAfterWipe(3, 7) == 4 && ResumeStepAfterWipe(9, 7) == 7,
+              "resume: no checkpoint -> 0, after the checkpoint, never ahead of the route");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1506,6 +1550,7 @@ int main()
     TestKeyUser();
     TestPauseGates();
     TestQueuedLeaderChange();
+    TestRecoveryDelta();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -2520,12 +2520,13 @@ void DungeonLead::RestoreCheckpoint(PlayerbotAI* botAI, DungeonLeadState& st)
             anchors = anchors || r.IsPathAnchor();
         DungeonRouteStep const& resume = route->steps[st.stepIndex];
         Player* leader = botAI->GetBot();
-        if (anchors && resume.HasPosition() &&
-            leader->GetExactDist(resume.x, resume.y, resume.z) > DungeonLeadKernel::kWalkBackFromEntranceYd)
+        if (DungeonLeadKernel::WalkBackFromEntrance(anchors, st.stepIndex, resume.HasPosition(),
+                                                    leader->GetExactDist(resume.x, resume.y, resume.z)))
         {
-            for (uint32 i = 0; i < st.stepIndex && i < route->steps.size(); ++i)
-                if (route->steps[i].IsPathAnchor() && i < st.visited.size())
-                    st.visited[i] = 0;
+            std::vector<bool> isAnchor;
+            for (DungeonRouteStep const& r : route->steps)
+                isAnchor.push_back(r.IsPathAnchor());
+            DungeonLeadKernel::ReopenPathAnchors(st.visited, isAnchor, st.stepIndex);
             DungeonLead::RecordEvent(botAI, "checkpoint_walk_back",
                                      "step " + std::to_string(st.stepIndex) + " -> 0, resume " +
                                          std::to_string(int(leader->GetExactDist(resume.x, resume.y, resume.z))) +

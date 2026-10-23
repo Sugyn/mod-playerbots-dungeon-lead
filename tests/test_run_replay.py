@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools.run_replay import analyze_run, model, report, schema  # noqa: E402
+from tools.run_replay import analyze_run, campaign, model, report, schema  # noqa: E402
 
 RUN = "42"
 
@@ -288,6 +288,65 @@ class SchemaTest(unittest.TestCase):
                 schema.load_events(f.name, RUN)
         finally:
             os.unlink(f.name)
+
+
+
+class DeltaEventsTest(unittest.TestCase):
+    """DLN-003: events added through 1e2cf6e and the DLN fixes are carried or ignored safely - the
+    reconstruction of the same run does not change, and heartbeat records are not campaigns."""
+
+    def with_new_events(self):
+        evs = synthetic()
+        extra = [
+            ("dead_member_state", {"detail": "Heal ghost=1 map=33 dist=40"}),
+            ("checkpoint_walk_back", {"detail": "step 5 -> 0, resume 630 yd away"}),
+            ("use_needs_player", {"detail": "Troll Cage key=8444 observable=1"}),
+            ("door_needs_player", {"detail": "Cell Door key=1"}),
+            ("leadership_request_rejected", {"detail": "leader_changed generation=7"}),
+            ("pause", {"detail": "travelling"}),
+            ("continue", {"detail": "waiting_ready"}),
+            ("reset_rejected", {"detail": "run finished outcome=complete"}),
+        ]
+        last = evs[-1]
+        out = list(evs[:-1])
+        seq = max(e["event_seq"] for e in evs)
+        for i, (etype, payload) in enumerate(extra):
+            seq += 1
+            out.append(dict(evs[1], event_seq=seq, event_type=etype, run_ms=evs[1]["run_ms"] + i, payload=payload))
+        out.append(dict(last, event_seq=seq + 1))
+        return out
+
+    def test_reconstruction_unchanged(self):
+        base = model.reconstruct(synthetic())
+        new = model.reconstruct(self.with_new_events())
+        for key in ("pulls", "wipes", "recoveries", "interactions", "bosses", "result"):
+            self.assertEqual(json.dumps(base[key], sort_keys=True), json.dumps(new[key], sort_keys=True), key)
+        self.assertEqual(base["metrics"]["wipes"], new["metrics"]["wipes"])
+
+    def test_heartbeat_is_not_a_campaign(self):
+        with tempfile.TemporaryDirectory() as d:
+            ev_path = os.path.join(d, "events.jsonl")
+            with open(ev_path, "w") as f:
+                for e in synthetic():
+                    f.write(json.dumps(e, separators=(",", ":")) + "\n")
+            camp_path = os.path.join(d, "campaigns.jsonl")
+            hb = {"schema_version": 2, "record": "heartbeat", "time": "2026-10-23 02:10:38",
+                  "active_sessions": 2, "queued_lines": 1}
+            recs = [hb,
+                    {"schema_version": 2, "record": "campaign_started", "campaign_id": "verify-test",
+                     "commit_sha": "abc1234", "dungeons": [8]},
+                    hb,
+                    {"schema_version": 2, "record": "run_result", "campaign_id": "verify-test", "lfg_id": 8,
+                     "tank": "Tank", "started": True, "ended": True, "minutes": 1},
+                    hb,
+                    {"schema_version": 2, "record": "campaign_finished", "campaign_id": "verify-test", "runs": 1}]
+            with open(camp_path, "w") as f:
+                for r in recs:
+                    f.write(json.dumps(r) + "\n")
+            campaign.build(ev_path, camp_path, "verify-test", d)
+            with open(os.path.join(d, "campaigns", "verify-test", "campaign.json")) as f:
+                written = json.load(f)
+            self.assertEqual([r["record"] for r in written], ["campaign_started", "run_result", "campaign_finished"])
 
 
 if __name__ == "__main__":

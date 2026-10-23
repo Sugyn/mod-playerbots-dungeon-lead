@@ -13,7 +13,7 @@ Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available test
 |---|---|---|---|---|
 | DLN-001 baseline manifest | 0 | P1 | IMPLEMENTED | manifest in testing-status; open: route-table hash and mmap identity as part of run context (DLN-022) |
 | DLN-002 integration build | 0 | P1 | IN_PROGRESS | worldserver builds clean on acore-clean `build/` (f19a18799 / 037c0141) for every DLN commit; open: all-class registration probe, start/status/stop smoke, AddClass login classification check (ADR-003) |
-| DLN-003 recovery delta coverage | 0 | P1 | TODO | |
+| DLN-003 recovery delta coverage | 0 | P1 | IMPLEMENTED | kernels `RecoveryClosesWhenIneligible`, `WalkBackFromEntrance`, `ReopenPathAnchors` + boundary tests; replay: new events leave the reconstruction unchanged, heartbeat is not a campaign record; open: live Slave Pens wipe before/after Rokmar, Mana-Tombs wait interrupted by combat |
 | DLN-004 no actions through human characters | 1 | P1 | IMPLEMENTED | `180c93b`, kernel tests, build clean; open: live human-key scenarios |
 | DLN-005 SkipOptional keeps required trash | 1 | P1 | IMPLEMENTED | `fa2c41b`, kernel tests, build clean; open: ZF with SkipOptional=0/1 |
 | DLN-006 missing mandatory door | 1 | P1 | IMPLEMENTED | `57b20d0`, kernel tests, build clean; open: SFK/Deadmines door runs, invalid door entry |
