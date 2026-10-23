@@ -55,6 +55,33 @@ deep with zero errors throughout; none has had a live start/stop smoke test or i
 - see docs/project-state.md for the current open-gate ledger. Phase 8 (live validation with a real
 human player plus bots) is the only remaining work in DUNGEON_LEAD_IMPLEMENTATION_PLAN_1.md.
 
+## Baseline manifest (audit 2026-10-23, DLN-001)
+
+Read-only snapshot of `acore-clean` taken before the DLN-004..010 fixes, against audit baseline
+`1e2cf6e`. Values are what was found on the host, not what the repository documents.
+
+| Item | Value |
+|---|---|
+| Reviewed module source | `main` @ `1e2cf6e79ef8aa9a5409a3ec36f7b7da841d38bc`, clean |
+| Core | `/home/prgadm/azerothcore`, branch `Playerbot` @ `f19a18799a35` (`AzerothCore rev. f19a18799a35 2026-10-02 (Playerbot branch) (Unix, RelWithDebInfo, Static)`); untracked only (`env/dist-asan/`, `logs/`) |
+| mod-playerbots | `master` @ `037c01418b5d`, clean |
+| Installed module source | `modules/mod-dungeon-lead` (not a git checkout): `src/` and `conf/` identical to `1e2cf6e` except `src/DungeonLeadModule.cpp`, which carried a server-only line starting a validation campaign (`StartValidation({140, 148, 140, 148})`) 120 s after every boot. Removed 2026-10-23 when the DLN sources were synced (copy kept as `~/DungeonLeadModule.cpp.temp-autostart-20261010.bak`) |
+| Running binary | `env/dist/bin/worldserver`, installed 2026-10-10 10:41, sha256 `dcae7e97...ebad22a`; its telemetry reports `commit_sha` `ee47658` - the `1e2cf6e` build in `build/` (2026-10-10 11:48) was never installed |
+| Build | `build/`, clang++ 18.1.3, `MODULES=static`, `SCRIPTS=static`, `TOOLS_BUILD=all`, `CMAKE_BUILD_TYPE` empty (RelWithDebInfo per the version string), `WITH_WARNINGS=0`, cmake 3.28.3; local unit tests g++ 13.3.0 |
+| Route table | `acore_playerbots.playerbots_dungeon_route`: 497 rows, schema `id, lfg_id, map_id, difficulty, name, wing, step, kind, boss, entry, x, y, z, note`. Differs from `data/dungeon_routes.csv` in exactly the 11 rows of `sql/updates/2026_10_10_00_unresolved_doors.sql` (not applied) |
+| World DB | `ACDB 335.17-dev`, last applied updates are module SQL |
+| mmaps / vmaps | `env/dist/bin/data/mmaps`: 3780 files, newest Slave Pens tile 2026-10-10 08:53; digest of name+size list `09d9fd2d...` (mmaps), `b9fe7fc0...` (vmaps) |
+| Effective config | `etc/modules/playerbots.conf` sets 14 `AiPlayerbot.DungeonLead.*` keys (HealerManaPct 20, Leash 60, ArriveDistance 8, StuckSeconds 45, CcTimeoutSeconds 10, CcAbsoluteTimeoutSeconds 45, SkipOptional 0, MarkCc 1, DebugDefault 1, CanaryEnabled 1, CanaryAllowedLfgIds 1, CanaryMaxConcurrent 100, CanaryTimeoutMinutes 110, ValidationParallel 4; sorted-lines sha256 `fadef2fc...`); `mod-dungeon-lead.conf.dist` defaults otherwise, no `mod-dungeon-lead.conf` |
+| Campaign at snapshot time | `verify-20261023-0114-ee47658` (started by the autostart above after the 01:11 reboot), Slave Pens/Mana-Tombs x2 |
+
+Fast suite on `1e2cf6e`: `bash tools/run_tests.sh` 357 kernel checks / 30 Python tests, all
+passing; `python3 tools/validate_routes.py` 497 rows / 96 LFG / 0 errors / 29 warnings. CI run
+39827400868 reported success for `1e2cf6e`.
+
+Evidence from runs on `fcdda84` and `ee47658` (the "Current status" table below) is historical:
+bot-only profile, older binaries. The DLN candidate is unqualified until its own runs exist;
+mixed human+bot runs have not been made on any build.
+
 ## Live validation (2026-10-04/05)
 
 Best run per dungeon (25 to 70 min runs, 2026-10-04/05). Event steps (use/talk) and door opening

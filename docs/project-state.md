@@ -1,45 +1,34 @@
 # Dungeon Lead current state
-Plan edition: batch-oriented 2026-10-07 (DUNGEON_LEAD_IMPLEMENTATION_PLAN_1.md)
-Updated: 2026-10-08, Europe/Prague session
-Authorized scope: full hardening pass (Phases 0-8), user-authorized commit/build/test on acore-clean (not push, not install/restart production without separate confirmation)
-Module branch / integration SHA / dirty files: main @ 6e96f92, working tree clean
-Core / playerbots / compiler / build / SQL / config / maps: acore-clean, /home/prgadm/azerothcore, build/ (CMakeCache 2026-10-02), g++13/clang - see docs/testing-status.md "Real module build" section for manifest detail. build-asan tree is stale (CMakeCache 2026-09-16, predates patch-to-module migration) - do not use it.
-Audit baseline: e1c9f8a6fd92e798ed966fe1dfb00cfb2ebc3e23
+Plan edition: implementation contract from the 2026-10-23 audit (tasks DLN-001..DLN-026, audit baseline `1e2cf6e`)
+Updated: 2026-10-23, Europe/Prague session
+Authorized scope: implementation, build, install, restart and live runs on acore-clean; push to `main`
+Module branch: `main`; audit baseline `1e2cf6e79ef8aa9a5409a3ec36f7b7da841d38bc`
+Core / playerbots / compiler / build / SQL / config / maps: see docs/testing-status.md "Baseline manifest (audit 2026-10-23, DLN-001)"
+Historical plans (DL-001..DL-011, 2026-10-07/08; Observability V2): history only, superseded by this ledger
 
-| Phase | Status | Accepted artifact/evidence | Open required gates |
-|---|---|---|---|
-| 0 | implementation_ready_live_pending | fb3e734, 92ddf1b - CI expanded, fast baseline recorded, real build verified clean | start/stop smoke test on a real server not performed |
-| 1 (DL-001) | implementation_ready_live_pending | 0094fa2 - kernel test, real build clean | Deadmines/SFK live pack-identity scenario |
-| 2 (DL-002) | implementation_ready_live_pending | caf16e4 - real build clean, manual review (no kernel test possible - AzerothCore-dependent) | live disconnect/kick/disband/late-join scenarios |
-| 3 (DL-003) | implementation_ready_live_pending | 842ef50 (merged 7d10fea) - kernel tests, real build clean | live master-death/70yd/persistent-wait scenarios |
-| 4 (DL-004) | implementation_ready_live_pending | 06249de (same merge) - manual review, real build clean | live offline-healer/offline-master scenario |
-| 5 (DL-008) | implementation_ready_live_pending | a1f4921 (merged 4e6fcea) - 17 new kernel+Python tests, real build clean, validator now 11 errors/29 warnings (honest, undispatched) | 11 unresolved door rows need DB-verified positions or explicit unsupported reclassification (separate from this fix) |
-| 6 (DL-006) | implementation_ready_live_pending | 8c497be - real build clean; no new kernel test (adapter-only fix, documented why) | live refusal/delayed-effect scenario on the 6 confirmed rows; Weegli intentionally left at dispatch-confirm (documented, not a gap) |
-| 7 (DL-010) | implementation_ready_live_pending | 6e96f92 - 2 new replay tests, real build clean; no new kernel test (adapter+replay fix, documented why) | live held-complete-then-stop, early-stop, disconnect-mid-handback, disband scenarios |
-| 8 | not_started | - | needs a live human+bot session on acore-clean; depends on 1-7 (all now implementation_ready_live_pending) |
+Status vocabulary: TODO, IN_PROGRESS, IMPLEMENTED (code, docs and available tests done), VERIFIED
+(every task-specific live/integration check executed), BLOCKED (named missing gate).
 
-Active phase: none. All of Phases 0-7 (every technical finding DL-001 through DL-010, plus the Phase 0 CI/baseline work) are implemented, locally fast-tested, and real-build-verified against acore-clean. Only Phase 8 (live validation) remains, and it requires an actual human+bot session - genuinely live runtime work, not something to simulate or claim from this environment.
-
-Current tasks: none in flight.
-
-Blockers: Phase 8 needs a live human player plus bots on acore-clean (two autonomous mixed-player runs each in RFC/Deadmines/SFK, one controlled interruption/recovery and clean stop in each, plus the eight-dungeon bot-only regression set) - this is real gameplay time, not something I can execute unattended without the user actually playing a character. Flag this to the user before attempting Phase 8.
-
-Current decisions:
-- Delegation via spawned background agents proved unreliable in this session: a DL-006 agent was dispatched, ran silently for many hours across a date rollover with no completion notification ever arriving, and turned out to have been stopped (by the environment/user) with zero committed or uncommitted work. I implemented DL-006 and DL-010 directly instead of redelegating, which also turned out faster overall given each finding's small, well-understood scope once DB/source evidence was gathered. **Lesson for Phase 8 or any future project: verify a long-running background agent's actual state directly rather than trusting the absence of a notification as "still working."**
-- Used manually-created git worktrees (/home/code/wt-dl00X, all now removed/merged) instead of Agent tool's built-in isolation, because the session's primary cwd (/home/code/ops) is not a git repo.
-- Real-build verification done against acore-clean's `build/` (current, matches the running production binary's source lineage) rather than `build-asan` (stale, unrelated to this module). Five passes total, all clean, no install/restart performed, running production binary never touched.
-- DL-010: removed the premature `ResetState()`+partial-rebuild inside `Stop()` entirely rather than trying to enumerate every field to carry over - `Stop()` now mutates the existing state in place for the Stopping wait, since `ReconcileLeadership()` already owns the real final erase. Added `RecordRunSummary()` idempotency and Running->Aborted finalization, and a replay-side duplicate/out-of-order lineage check (tools/run_replay/schema.py) as a defensive second layer.
-- DL-006: verified all 7 shipped use/talk rows against the real world DB/scripts on acore-clean rather than guessing from route note text. 6 of 7 got a real DB-grounded confirmation contract; Weegli Blastfuse (ZF) intentionally kept at dispatch-confirmation (documented, plan-permitted).
-- DL-008's validator hardening intentionally introduces 11 CI errors against the shipped CSV (previously-silent unresolved door rows). Not fixed with guessed coordinates - left as honest open data gate, named in CHANGELOG.
-- CHANGELOG entries kept in the existing `[Unreleased]` section/categories throughout, per user instruction - no new version header created.
-- Commits: English only (code, commit messages, CHANGELOG). Chat/status replies to the user: Czech, per user instruction.
+| Task | Phase | Priority | Status | Evidence / open gate |
+|---|---|---|---|---|
+| DLN-001 baseline manifest | 0 | P1 | IMPLEMENTED | manifest in testing-status; open: route-table hash and mmap identity as part of run context (DLN-022) |
+| DLN-002 integration build | 0 | P1 | IN_PROGRESS | worldserver builds clean on acore-clean `build/` (f19a18799 / 037c0141) for every DLN commit; open: all-class registration probe, start/status/stop smoke, AddClass login classification check (ADR-003) |
+| DLN-003 recovery delta coverage | 0 | P1 | TODO | |
+| DLN-004 no actions through human characters | 1 | P1 | IMPLEMENTED | `180c93b`, kernel tests, build clean; open: live human-key scenarios |
+| DLN-005 SkipOptional keeps required trash | 1 | P1 | IMPLEMENTED | `fa2c41b`, kernel tests, build clean; open: ZF with SkipOptional=0/1 |
+| DLN-006 missing mandatory door | 1 | P1 | IMPLEMENTED | `57b20d0`, kernel tests, build clean; open: SFK/Deadmines door runs, invalid door entry |
+| DLN-007 pause stops motion and door actions | 1 | P1 | IMPLEMENTED | `78cfb57`, kernel tests, build clean; open: pause mid-leg and at a closed door |
+| DLN-008 finished run not reopened | 1 | P1 | IMPLEMENTED | `5f21c83`, build clean; owner checkpoint H2 taken as the plan's minimal option (refuse reset); open: held-complete reset/stop live |
+| DLN-009 stale queued leadership | 1 | P1 | IMPLEMENTED | `d84caea`, kernel tests, build clean; open: delayed-queue/cancel/group-change scenarios |
+| DLN-010 unknown-dungeon override scoped | 1 | P2 | IMPLEMENTED | `285b6f8`, build clean; open: no-session grinding bot control |
+| DLN-011 .. DLN-026 | 2-7 | - | TODO | |
 
 Validation:
-- Fast suite (`bash tools/run_tests.sh`): 349 kernel checks, 30 Python tests, green at 6e96f92.
-- `python3 tools/validate_routes.py`: 438 rows/96 LFG/11 errors/29 warnings (11 errors are DL-008's intended, honest effect).
-- Real module build: five passes against acore-clean `build/`, covering every commit from DL-001 through DL-010 - all `[100%] Built target worldserver`, zero errors, no install/restart.
-- No live server/bot/human scenario executed yet for any finding - this is the one category of evidence genuinely missing across the whole plan.
+- Fast suite (`bash tools/run_tests.sh`) after DLN-010: 394 kernel checks, 30 Python tests, all passing.
+- Worldserver build (`cmake --build build --target worldserver`, acore-clean, clang 18) after each
+  DLN commit: clean, no install between them.
+- No live run has been made on a DLN build yet.
 
-Next action: Phase 8 - live validation. Requires the user (or someone) to actually play a character alongside bots on acore-clean; cannot be simulated. Before attempting: confirm with the user whether/when they want to do this, since it's real play time on their server, not a background task. If/when ready: follow DUNGEON_LEAD_IMPLEMENTATION_PLAN_1.md section 9.6's Phase 8 ("Execution batch P8") and section 9.9's full runtime validation matrix.
-
-Completion: not complete. Phase 8 (live validation) is the sole remaining gate (section 9.12 requires it for every finding).
+Next action: install the DLN build on acore-clean (snapshot VM 107 first, apply
+`2026_10_10_00_unresolved_doors.sql`), smoke start/status/stop, then the Phase 1 live scenarios and
+DLN-003.
