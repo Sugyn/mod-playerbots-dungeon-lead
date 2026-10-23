@@ -1645,6 +1645,38 @@ namespace
         Check(w.Summarize().count == 0, "reset starts a new window");
     }
 
+    // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; the
+    // 80-minute Slave Pens oscillation (16 s walks every 18 s) reaches 600 s in ~11 minutes.
+    // Only "on" strategies the class can create are owned (warriors have no "cc").
+    void TestStepWalkAndAvailability()
+    {
+        uint32_t ms = 0;
+        for (int i = 0; i < 8; ++i)
+            ms = AdvanceStepWalkClock(ms, 2000);
+        Check(ms == 16000, "consecutive 2 s ticks add up");
+        Check(AdvanceStepWalkClock(ms, 20000) == 16000, "a 20 s gap is not walking");
+        uint32_t cycle = 0;
+        int cycles = 0;
+        while (cycle < 600000)
+        {
+            for (int i = 0; i < 8; ++i)
+                cycle = AdvanceStepWalkClock(cycle, 2000);
+            cycle = AdvanceStepWalkClock(cycle, 2000);  // the 2 s WaitingReady blip is still a tick
+            ++cycles;
+        }
+        Check(cycles * 18 < 12 * 60, "oscillation reaches the limit within 12 minutes");
+
+        auto warrior = [](char const* n) { return std::string(n) != "cc"; };
+        std::vector<OwnedStrategy> const own = AvailableStrategies(FollowerCombatStrategies(), warrior);
+        Check(own.empty(), "warrior: no cc to own -> nothing to repair in combat");
+        Check(StrategyDelta(AvailableStrategies(LeaderCombatStrategies(), warrior),
+                            [](char const* n) { return std::string(n) == "dungeon lead" || std::string(n) == "mark rti"; })
+                  .empty(),
+              "warrior leader with dungeon lead + mark rti -> stable, no +cc every pass");
+        std::vector<OwnedStrategy> const offStays = AvailableStrategies(FollowerNonCombatStrategies(), [](char const*) { return false; });
+        Check(offStays.size() == FollowerNonCombatStrategies().size() - 1, "off entries always apply; only 'on' ones filtered");
+    }
+
     void TestInteraction()
     {
         uint32_t const timeout = 120000;
@@ -1758,6 +1790,7 @@ int main()
     TestRouteScope();
     TestEventCreature();
     TestDurationWindow();
+    TestStepWalkAndAvailability();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

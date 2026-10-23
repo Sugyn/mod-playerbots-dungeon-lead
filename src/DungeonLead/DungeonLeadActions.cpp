@@ -544,13 +544,16 @@ namespace
             auto has = [memberAI](BotState state) {
                 return [memberAI, state](char const* n) { return memberAI->HasStrategy(n, state); };
             };
+            auto canCreate = [memberAI](char const* n) { return memberAI->GetAiObjectContext()->GetStrategy(n) != nullptr; };
+            std::vector<OwnedStrategy> const followerNonCombat = AvailableStrategies(FollowerNonCombatStrategies(), canCreate);
+            std::vector<OwnedStrategy> const followerCombat = AvailableStrategies(FollowerCombatStrategies(), canCreate);
             bool const formationWiped = fv && fv->Save() != "leader";
             std::string const nonCombat = logWipeDetection
-                ? StrategyDelta(FollowerNonCombatStrategies(), has(BOT_STATE_NON_COMBAT))
-                : StrategyAll(FollowerNonCombatStrategies());
+                ? StrategyDelta(followerNonCombat, has(BOT_STATE_NON_COMBAT))
+                : StrategyAll(followerNonCombat);
             std::string const combat = logWipeDetection
-                ? StrategyDelta(FollowerCombatStrategies(), has(BOT_STATE_COMBAT))
-                : StrategyAll(FollowerCombatStrategies());
+                ? StrategyDelta(followerCombat, has(BOT_STATE_COMBAT))
+                : StrategyAll(followerCombat);
             if (logWipeDetection && (formationWiped || !nonCombat.empty() || !combat.empty()))
             {
                 LOG_INFO("playerbots.dungeonlead",
@@ -580,12 +583,15 @@ namespace
         auto leaderHas = [botAI](BotState state) {
             return [botAI, state](char const* n) { return botAI->HasStrategy(n, state); };
         };
+        auto leaderCanCreate = [botAI](char const* n) { return botAI->GetAiObjectContext()->GetStrategy(n) != nullptr; };
+        std::vector<OwnedStrategy> const ownNonCombat = AvailableStrategies(LeaderNonCombatStrategies(), leaderCanCreate);
+        std::vector<OwnedStrategy> const ownCombat = AvailableStrategies(LeaderCombatStrategies(), leaderCanCreate);
         std::string const leaderNonCombat = logWipeDetection
-            ? StrategyDelta(LeaderNonCombatStrategies(), leaderHas(BOT_STATE_NON_COMBAT))
-            : StrategyAll(LeaderNonCombatStrategies());
+            ? StrategyDelta(ownNonCombat, leaderHas(BOT_STATE_NON_COMBAT))
+            : StrategyAll(ownNonCombat);
         std::string const leaderCombat = logWipeDetection
-            ? StrategyDelta(LeaderCombatStrategies(), leaderHas(BOT_STATE_COMBAT))
-            : StrategyAll(LeaderCombatStrategies());
+            ? StrategyDelta(ownCombat, leaderHas(BOT_STATE_COMBAT))
+            : StrategyAll(ownCombat);
         if (logWipeDetection && (!leaderNonCombat.empty() || !leaderCombat.empty()))
         {
             LOG_INFO("playerbots.dungeonlead",
@@ -2889,6 +2895,34 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     }
 
     DungeonRouteStep const& step = route->steps[st.stepIndex];
+
+    // Walking time on this step (AdvanceStepWalkClock): past StepWalkLimitSeconds it fails, so no
+    // walk that keeps "making progress" in a circle holds the run forever. Walked steps only -
+    // doors and use/talk steps have their own bounds (DoorWaitSeconds, EventWaitSeconds).
+    if (step.NodeType() == DungeonRouteNodeType::Travel || step.NodeType() == DungeonRouteNodeType::Pull ||
+        step.NodeType() == DungeonRouteNodeType::Boss)
+    {
+        uint32 const nowTs = getMSTime();
+        if (st.walkStep != st.stepIndex)
+        {
+            st.walkStep = st.stepIndex;
+            st.walkStepMs = 0;
+        }
+        else if (st.walkStepLastTs)
+            st.walkStepMs = DungeonLeadKernel::AdvanceStepWalkClock(st.walkStepMs, getMSTimeDiff(st.walkStepLastTs, nowTs));
+        st.walkStepLastTs = nowTs;
+        if (st.walkStepMs >= sDungeonLeadConfig.dungeonLeadStepWalkLimitSeconds * IN_MILLISECONDS)
+        {
+            LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} step {} '{}': walked {} s without finishing it",
+                     bot->GetName(), step.step, step.boss, st.walkStepMs / IN_MILLISECONDS);
+            DungeonLead::RecordEvent(botAI, "step_walk_limit",
+                                     step.boss + " walked_ms=" + std::to_string(st.walkStepMs));
+            st.walkStepMs = 0;  // a retry round gets its own budget
+            DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Navigation,
+                                       DungeonFailureReason::ObjectiveTimeout, "step_walk_limit");
+            return true;
+        }
+    }
 
     // DL-008: the skip loop above only lets a mandatory-by-kind row through unwalkable (no
     // resolved position) - never an optional one, which it already skipped silently. Do NOT

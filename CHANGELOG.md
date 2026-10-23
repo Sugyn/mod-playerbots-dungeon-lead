@@ -90,6 +90,17 @@ the MAJOR bar above is met.
   from one servitor in Shadowfang Keep. Falls back to running in; bosses are still attacked.
 
 ### Fixed
+- Strategy repair no longer re-adds a strategy the bot's class does not have (regression of
+  DLN-015). "cc" exists for mage, priest, druid, hunter and rogue, not for a warrior: "+cc" was a
+  no-op there, the next pass found it missing again, and every warrior leader and follower got
+  two ChangeStrategy calls and a `strategy_restored` per guard pass (campaign 1623-dbea4d4: 14908
+  each). Only "on" entries the bot's own context can create are owned now (`AvailableStrategies`).
+- A route step can no longer be walked forever. Slave Pens run 1879858194939912 walked step 24 for
+  80 minutes after a wipe: every walk made progress (no stuck), then "master too far" stopped it
+  and a recovery reopened as a new episode each cycle (more than 90 s apart). Walking time per
+  travel/trash/boss step now has a limit (`AiPlayerbot.DungeonLead.StepWalkLimitSeconds`, 600,
+  only consecutive walking counts); past it the step fails through the objective policy
+  (`step_walk_limit`).
 - A new pull waits for a healer that can heal the tank (DLN-017). Readiness checked the healer's
   map, life and mana, not whether it could reach the tank: a healer behind a wall or 50 yd back
   still authorized the pull. Pull readiness now needs a living healer (by spec) in line of sight of

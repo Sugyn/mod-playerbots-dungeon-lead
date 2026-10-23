@@ -1660,6 +1660,16 @@ namespace DungeonLeadKernel
         }
     };
 
+    // A bound on one route step: walking time spent on it (consecutive route-walk ticks, gaps over
+    // 15 s - a fight, a wait, a pause - not counted). Slave Pens run 1879858194939912 walked step 24
+    // for 80 minutes: each walk made progress, so the stuck check never fired, and a master_too_far
+    // recovery reopened as a new episode every cycle. Past the limit the step fails through the
+    // objective policy (optional: skipped; mandatory: retried, then partial).
+    inline uint32_t AdvanceStepWalkClock(uint32_t walkedMs, uint32_t deltaMs)
+    {
+        return deltaMs < 15000 ? walkedMs + deltaMs : walkedMs;
+    }
+
     // DLN-025: run-time cost of a periodic controller pass, summarised once a minute (heartbeat).
     // Samples in microseconds; Summary() sorts a copy, Reset() starts the next window.
     struct DurationWindow
@@ -1713,6 +1723,20 @@ namespace DungeonLeadKernel
                 out += (o.on ? "+" : "-");
                 out += o.name;
             }
+        return out;
+    }
+
+    // Only what the bot's class can have: "cc" exists for mage, priest, druid, hunter, rogue and a
+    // few more, not for a warrior - an "on" entry its context cannot create is not owned for that
+    // bot (campaign 1623-dbea4d4: "+cc" re-added to every warrior on every guard pass, 14908
+    // times). "Off" entries always apply.
+    template <class CanCreateFn>
+    inline std::vector<OwnedStrategy> AvailableStrategies(std::vector<OwnedStrategy> const& owned, CanCreateFn canCreate)
+    {
+        std::vector<OwnedStrategy> out;
+        for (OwnedStrategy const& o : owned)
+            if (!o.on || canCreate(o.name))
+                out.push_back(o);
         return out;
     }
 

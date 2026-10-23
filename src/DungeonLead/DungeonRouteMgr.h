@@ -371,6 +371,10 @@ struct DungeonLeadState
     // and each handback (Stop), kept across retries; a queued request of another generation, or of
     // a session that is gone, is rejected when the world thread runs it.
     uint32 leadershipGeneration = 0;
+    // Walking time on the current step (AdvanceStepWalkClock): which step, how long, last tick.
+    uint32 walkStep = UINT32_MAX;
+    uint32 walkStepMs = 0;
+    uint32 walkStepLastTs = 0;
     // Leader out of the world (GuardActiveSessions): since when, and whether that was logged.
     uint32 notInWorldSince = 0;
     bool notInWorldLogged = false;

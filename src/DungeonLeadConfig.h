@@ -48,6 +48,7 @@ public:
     uint32 dungeonLeadCanaryTimeoutMinutes;
     std::string dungeonLeadCanaryAllowedLfgIds;
     std::string dungeonLeadValidationAutostart;
+    uint32 dungeonLeadStepWalkLimitSeconds;
     uint32 dungeonLeadMaxPartiesPerRun;
     // Leadership transfer at session start / stop - how long one request may stay unobserved
     // before it is retried, and how many requests are made before giving up.
@@ -162,6 +163,7 @@ private:
         dungeonLeadValidationParallel = Bounded("AiPlayerbot.DungeonLead.ValidationParallel", 3, 1, 10);
         dungeonLeadValidationAutostart =
             sConfigMgr->GetOption<std::string>("AiPlayerbot.DungeonLead.ValidationAutostart", "");
+        dungeonLeadStepWalkLimitSeconds = Bounded("AiPlayerbot.DungeonLead.StepWalkLimitSeconds", 600, 60, 3600);
         if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
         {
             LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "
