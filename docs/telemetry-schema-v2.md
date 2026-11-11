@@ -137,6 +137,7 @@ increments, each with its own entry here.
 | combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid (per-instance counter), spawn (world DB creature.guid), entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |
 | mob_died | `mob_died` (v2 only) | `fight_id`, `unit` |
 | mob_fleeing | `mob_fleeing` (v2 only) | `name`, `entry`, `spawn`, `health_pct`, `x`, `y`, `z`, `fight_id` - a fight member started running for help (flee for assistance) or fleeing; once per unit and fight |
+| pack_killed_elsewhere | `pack_killed_elsewhere` (v2 only) | `pack_id`, `name`, `entry` - the current step's pack counts as done because a unit of its entry spawned at its spot died in an earlier fight and nothing alive is there |
 | recovery_walk_stopped | `recovery_walk_stopped` (v2 only) | `reason` - the recovery ended while the leader was still on its walk back to a straggler; the walk was stopped |
 | boss_killed | `boss_killed` (v2 only) | `name`, `step`, `entry`, `current_step` - a route boss died (also while another step was worked on: the step is then skipped as done) |
 | member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers`; died: `party[]` - each other member's `name`, `role`, `dist`, `los`, `alive`, `health_pct`, `mana_pct`, `casting`, `attackers` |

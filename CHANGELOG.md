@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Fixed
+
+- A route target that died away from its spot in an earlier fight (it ran for help, or joined a fight as an add) no longer keeps the leader waiting at the empty spot.
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added

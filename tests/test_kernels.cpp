@@ -509,6 +509,11 @@ namespace
         Check(DecidePackState(PackState::Engaged, Seen(0, 0, 0)) == PackState::Engaged,
               "engaged pack pulled out of probe range stays Engaged");
         Check(DecidePackState(PackState::Available, Seen(0, 0, 0)) == PackState::Unknown, "available pack gone -> Unknown");
+        Check(RememberedKillClears(true, false, 0, 40.0f), "killed away from its spot, nothing alive there, near -> done");
+        Check(!RememberedKillClears(true, false, 1, 40.0f), "a remembered kill never clears a pack with a living member");
+        Check(!RememberedKillClears(true, true, 0, 40.0f), "a pack being fought is not settled by memory");
+        Check(!RememberedKillClears(true, false, 0, 140.0f), "too far for the probe to have seen the living members");
+        Check(!RememberedKillClears(false, false, 0, 10.0f), "no remembered kill at the spot");
         PackObservation remembered = Seen(0, 0, 0);
         remembered.rememberedKilled = true;
         Check(DecidePackState(PackState::Unknown, remembered) == PackState::Cleared, "instance kill memory -> Cleared");

@@ -785,6 +785,19 @@ namespace DungeonLeadKernel
         return prev == PackState::Engaged ? PackState::Engaged : PackState::Unknown;
     }
 
+    // A route creature that died away from its spot (it ran for help into another fight, or joined
+    // one as an add) leaves nothing at the spot once its corpse is gone, and the step would wait
+    // for a target that no longer exists. A remembered kill of an expected-entry unit spawned at
+    // the pack's spot settles it - only when nothing alive of the pack was seen, the pack is not
+    // being fought, and the leader is close enough for the probe to have seen living members, so
+    // a partly killed pack is never skipped.
+    constexpr float kRememberedKillTrustRange = 100.0f;
+
+    inline bool RememberedKillClears(bool killedAtSpot, bool packEngaged, uint32_t aliveSeen, float leaderDistToPack)
+    {
+        return killedAtSpot && !packEngaged && aliveSeen == 0 && leaderDistToPack <= kRememberedKillTrustRange;
+    }
+
     // ---------------------------------------------------------------------------------------
     // Combat anchor and leash
     // ---------------------------------------------------------------------------------------

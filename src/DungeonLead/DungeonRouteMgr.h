@@ -521,6 +521,12 @@ public:
     // for as long as the process runs. Harmless to call for an instance id that was never marked.
     void ClearInstance(uint32 instanceId);
 
+    // Deaths of route creatures in the party's fights, by spawn (home) position, per instance -
+    // a unit that died away from its spot still settles its step (DungeonLeadKernel::
+    // RememberedKillClears). Bounded per instance.
+    void RememberKill(uint32 instanceId, uint32 entry, float x, float y, float z);
+    bool KilledNear(uint32 instanceId, uint32 entry, float x, float y, float z, float radius);
+
 private:
     void EnsureLoaded();
 
@@ -531,6 +537,12 @@ private:
     uint32 routeRows = 0;
     std::unordered_map<ObjectGuid, DungeonLeadState> states;
     std::unordered_map<uint32, std::unordered_set<uint32>> killedByInstance;
+    struct RememberedKill
+    {
+        uint32 entry;
+        float x, y, z;
+    };
+    std::unordered_map<uint32, std::vector<RememberedKill>> killsByInstance;
     std::unordered_map<uint32, Entrance> entranceByLfg;
 };
 
