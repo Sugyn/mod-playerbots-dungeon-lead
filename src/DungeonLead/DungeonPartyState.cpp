@@ -8,6 +8,7 @@
 
 #include "DungeonPartyState.h"
 
+#include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonRouteMgr.h"
 #include "Timer.h"
@@ -62,8 +63,11 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
     DungeonLeadState* st = haveSession ? &sDungeonRouteMgr.State(bot->GetGUID()) : nullptr;
 
     Player* master = leaderAI->GetMaster();
+    bool const requestedByPlayer = !st || st->origin == DungeonLeadSessionOrigin::Manual;
+    if (master && (master == bot || !DungeonLeadKernel::MasterGatesParty(requestedByPlayer, DungeonLead::IsBotActor(master))))
+        master = nullptr;
     ObjectGuid masterGuid;
-    if (master && master != bot)
+    if (master)
     {
         f.master.assigned = true;
         f.master.online = master->IsInWorld() && master->GetSession();
@@ -76,7 +80,7 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
         if (st)
             st->masterGuid = masterGuid;
     }
-    else if (st && st->masterGuid)
+    else if (st && st->masterGuid && requestedByPlayer)
     {
         // PlayerbotAI::GetMaster() returns null once mod-playerbots' own
         // RandomPlayerbotMgr::OnPlayerLogout clears it on a full logout - by then the Player object

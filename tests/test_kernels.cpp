@@ -1635,9 +1635,6 @@ namespace
         Check(w.Summarize().count == 0, "reset starts a new window");
     }
 
-    // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
-    // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
-    // Only "on" strategies the class can create are owned (warriors have no "cc").
     void TestMoonRelease()
     {
         Check(!ReleaseUnlandedMoon(false, false, false), "inside the grace window the moon stays");
@@ -1647,6 +1644,16 @@ namespace
         Check(ReleaseUnlandedMoon(false, true, false), "the absolute ceiling alone ends it");
     }
 
+    void TestMasterGate()
+    {
+        Check(MasterGatesParty(true, false), "a player who asked for the session is waited for");
+        Check(!MasterGatesParty(true, true), "a bot that mod-playerbots made master is not");
+        Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
+    }
+
+    // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
+    // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
+    // Only "on" strategies the class can create are owned (warriors have no "cc").
     void TestStepWalkAndAvailability()
     {
         uint32_t ms = 0;
@@ -1791,6 +1798,7 @@ int main()
     TestDurationWindow();
     TestStepWalkAndAvailability();
     TestMoonRelease();
+    TestMasterGate();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
