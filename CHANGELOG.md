@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Fixed
+
+- A leader walking where the map height lookup finds no ground (some tunnels) is no longer taken for stuck inside the rock and teleported back during a regroup.
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added

@@ -244,7 +244,16 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
             // for it to be put back on its feet (MoveRouteTo's last-good-spot move) and escalate
             // then.
             float const ground = bot->GetMapHeight(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ() + 2.0f);
-            bool const offGround = ground <= INVALID_HEIGHT + 1.0f || std::fabs(bot->GetPositionZ() - ground) > 5.0f;
+            bool const heightSaysOff = ground <= INVALID_HEIGHT + 1.0f || std::fabs(bot->GetPositionZ() - ground) > 5.0f;
+            bool onNavmesh = false;
+            if (heightSaysOff)
+            {
+                // a one-yard probe: a start position far from any navmesh polygon is flagged
+                PathGenerator probe(bot);
+                probe.CalculatePath(bot->GetPositionX() + 1.0f, bot->GetPositionY(), bot->GetPositionZ());
+                onNavmesh = !(probe.GetPathType() & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH));
+            }
+            bool const offGround = DungeonLeadKernel::LeaderOffGround(heightSaysOff, onNavmesh);
             if (offGround && !st.escalationDeferSince)
                 st.escalationDeferSince = getMSTime();
             uint32 const deferred = offGround ? GetMSTimeDiffToNow(st.escalationDeferSince) : 0;
