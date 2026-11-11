@@ -2887,7 +2887,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             {
                 st.spotIndex = uint8(i);
                 st.arrivedTold = false;
-                RecordEventV2(botAI, "spawn_spot",
+                DungeonLead::RecordEventV2(botAI, "spawn_spot",
                               DungeonLeadKernel::JsonLine()
                                   .Str("name", step.boss)
                                   .Num("step", uint32_t(st.stepIndex))
@@ -2950,7 +2950,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         {
             ++st.spotIndex;
             st.arrivedTold = false;
-            RecordEventV2(botAI, "spawn_spot",
+            DungeonLead::RecordEventV2(botAI, "spawn_spot",
                           DungeonLeadKernel::JsonLine()
                               .Str("name", step.boss)
                               .Num("step", uint32_t(st.stepIndex))
