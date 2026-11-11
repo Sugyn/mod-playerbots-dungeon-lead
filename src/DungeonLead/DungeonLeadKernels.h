@@ -785,6 +785,14 @@ namespace DungeonLeadKernel
         return foundAtSpot == 0 && spotIndex + 1 < spotCount;
     }
 
+    // An optional named mob none of whose spawn points has a living creature in the instance is
+    // skipped at once (the instance holds all its creatures from the start). A mandatory one is
+    // never skipped this way; nor a mob whose spawn points are unknown.
+    inline bool SkipAbsentOptional(bool optional, bool spawnPointsKnown, bool aliveInInstance)
+    {
+        return optional && spawnPointsKnown && !aliveInInstance;
+    }
+
     inline PackState DecidePackState(PackState prev, PackObservation const& o)
     {
         if (prev == PackState::Cleared || prev == PackState::Skipped)

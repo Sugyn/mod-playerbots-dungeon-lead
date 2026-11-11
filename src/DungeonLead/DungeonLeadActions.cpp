@@ -2939,6 +2939,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
 
     // A boss with several spawn points: go to the one whose spawn is alive in this instance, when
     // the map has it loaded; otherwise the walk visits the points nearest first (below).
+    bool spawnLive = false;
     if (!step.spawnSpots.empty())
     {
         Map::CreatureBySpawnIdContainer& store = bot->GetMap()->GetCreatureBySpawnIdStore();
@@ -2947,6 +2948,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             auto const range = store.equal_range(step.spawnSpots[i].spawnId);
             bool const live = std::any_of(range.first, range.second,
                                           [](auto const& kv) { return kv.second && kv.second->IsAlive(); });
+            spawnLive = spawnLive || live;
             if (live && i != st.spotIndex)
             {
                 st.spotIndex = uint8(i);
@@ -2989,6 +2991,23 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         if (step.entry && EntryKillMemoryEligible(step.NodeType()))
             sDungeonRouteMgr.MarkStepKilled(st.instanceId, step.entry);
         DungeonLead::AdvanceStep(st, /*confirmed*/ true);
+        return true;
+    }
+
+    // An optional named mob that is not alive anywhere in this instance (a rare that did not spawn,
+    // or one that died out of the party's sight): nothing to walk to or wait for. Instances load all
+    // their grids, so the spawn store holds every creature the instance has.
+    if (DungeonLeadKernel::SkipAbsentOptional(!step.IsMandatory(), !step.spawnSpots.empty(), spawnLive))
+    {
+        DungeonLead::RecordEventV2(botAI, "objective_absent",
+                                   DungeonLeadKernel::JsonLine()
+                                       .Str("name", step.boss)
+                                       .Num("step", uint32_t(st.stepIndex))
+                                       .Num("entry", uint32_t(step.entry))
+                                       .Num("spots", uint32_t(step.spawnSpots.size()))
+                                       .Done());
+        DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter, DungeonFailureReason::ObjectiveTimeout,
+                                   "absent");
         return true;
     }
 

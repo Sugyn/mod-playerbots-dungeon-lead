@@ -33,9 +33,10 @@ struct DungeonRouteStep
     // Door rows: the world gameobject spawn at (x, y, z), resolved once at load; 0 = none found.
     // Lets a door that is gone be told apart from bad data (WalkDoorStep).
     uint32 doorSpawnId = 0;
-    // Boss rows whose creature has several spawn points on the map (a pooled spawn: one of them is
-    // alive per instance): every spawn point, the row's own first and the rest nearest first,
-    // resolved once at load. Empty for a creature with a single spawn point.
+    // Spawn points of the row's creature, the row's own first and the rest nearest first, resolved
+    // once at load: for a boss with several (a pooled spawn, one alive per instance), and for an
+    // optional named mob with at most a few (to tell whether it is in the instance at all).
+    // Empty otherwise.
     struct SpawnSpot
     {
         uint32 spawnId;

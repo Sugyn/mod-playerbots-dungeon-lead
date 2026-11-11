@@ -1669,6 +1669,10 @@ namespace
         Check(!NextSpawnSpot(1, 0, 4), "found there (alive or a corpse): stay");
         Check(!NextSpawnSpot(0, 3, 4), "the last point: no further point, the normal timeout applies");
         Check(!NextSpawnSpot(0, 0, 0), "a single-spawn boss has no points to walk");
+        Check(SkipAbsentOptional(true, true, false), "an optional rare that did not spawn is skipped at once");
+        Check(!SkipAbsentOptional(true, true, true), "alive somewhere in the instance: go for it");
+        Check(!SkipAbsentOptional(false, true, false), "a boss is never skipped this way");
+        Check(!SkipAbsentOptional(true, false, false), "spawn points unknown (a trash entry): the normal walk");
     }
 
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
