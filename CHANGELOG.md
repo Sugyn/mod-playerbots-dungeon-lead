@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Fixed
+
+- A bot that mod-playerbots made the leader's master no longer stops the run with "waiting for you, master too far"; sessions nobody asked for (validation, canary) have no master to wait for.
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added

@@ -262,6 +262,15 @@ namespace DungeonLeadKernel
         int offender = -1;  // index into PartyFacts::members for MemberDead/MemberLost/Fragmented/PartySpread
     };
 
+    // Whether the leader's master is someone the party waits for: a real player (or a player's
+    // self-bot) who asked for the session. mod-playerbots can make another bot of the group a
+    // bot's master (it picks a new master when it thinks the old one left); that bot is party,
+    // not master, and a session nobody asked for (validation, canary) has no master at all.
+    inline bool MasterGatesParty(bool sessionRequestedByPlayer, bool masterIsBot)
+    {
+        return sessionRequestedByPlayer && !masterIsBot;
+    }
+
     inline bool MasterUnavailable(PartyFacts const& f)
     {
         MasterFacts const& m = f.master;

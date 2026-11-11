@@ -1638,6 +1638,13 @@ namespace
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
     // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
     // Only "on" strategies the class can create are owned (warriors have no "cc").
+    void TestMasterGate()
+    {
+        Check(MasterGatesParty(true, false), "a player who asked for the session is waited for");
+        Check(!MasterGatesParty(true, true), "a bot that mod-playerbots made master is not");
+        Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
+    }
+
     void TestStepWalkAndAvailability()
     {
         uint32_t ms = 0;
@@ -1781,6 +1788,7 @@ int main()
     TestEventCreature();
     TestDurationWindow();
     TestStepWalkAndAvailability();
+    TestMasterGate();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
