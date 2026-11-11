@@ -1334,6 +1334,16 @@ namespace DungeonLeadKernel
     constexpr uint32_t kEscalationDeferMaxMs = 30000;
     enum class EscalationGate : uint8_t { Escalate, Defer, LeaderToLastGood };
 
+    // The walk's "no path" fallback to an earlier route stop: only a stop at least this far away.
+    // Next to the stop the walk came from, going back there loops (the path onward is missing, not
+    // the way back); the forward probe search runs instead.
+    constexpr float kRouteWaypointFallbackMinDistance = 40.0f;
+
+    inline bool RouteWaypointFallbackUsable(float distToStop)
+    {
+        return distToStop >= kRouteWaypointFallbackMinDistance;
+    }
+
     inline EscalationGate DecideEscalationGate(bool leaderOffGround, uint32_t msDeferred, bool haveLastGood)
     {
         if (!leaderOffGround)

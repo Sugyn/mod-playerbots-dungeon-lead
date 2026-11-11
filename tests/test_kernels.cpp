@@ -1635,6 +1635,12 @@ namespace
         Check(w.Summarize().count == 0, "reset starts a new window");
     }
 
+    void TestRouteWaypointFallback()
+    {
+        Check(!RouteWaypointFallbackUsable(20.0f), "the stop the walk just came from is not a fallback");
+        Check(RouteWaypointFallbackUsable(120.0f), "an earlier stop far away (after a wipe) is");
+    }
+
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
     // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
     // Only "on" strategies the class can create are owned (warriors have no "cc").
@@ -1781,6 +1787,7 @@ int main()
     TestEventCreature();
     TestDurationWindow();
     TestStepWalkAndAvailability();
+    TestRouteWaypointFallback();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

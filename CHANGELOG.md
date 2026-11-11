@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Fixed
+
+- When the navmesh has no path onward, the leader no longer walks back to the route stop it just came from (it looped there, e.g. at Roogug in Razorfen Kraul); it searches forward instead.
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added
