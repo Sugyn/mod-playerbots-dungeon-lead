@@ -1638,6 +1638,15 @@ namespace
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
     // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
     // Only "on" strategies the class can create are owned (warriors have no "cc").
+    void TestMoonRelease()
+    {
+        Check(!ReleaseUnlandedMoon(false, false, false), "inside the grace window the moon stays");
+        Check(ReleaseUnlandedMoon(true, false, false), "grace over, nobody casting: release");
+        Check(!ReleaseUnlandedMoon(true, false, true), "grace over but a CC cast is on the way: keep");
+        Check(ReleaseUnlandedMoon(true, true, true), "the absolute ceiling ends it even mid-cast");
+        Check(ReleaseUnlandedMoon(false, true, false), "the absolute ceiling alone ends it");
+    }
+
     void TestStepWalkAndAvailability()
     {
         uint32_t ms = 0;
@@ -1781,6 +1790,7 @@ int main()
     TestEventCreature();
     TestDurationWindow();
     TestStepWalkAndAvailability();
+    TestMoonRelease();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

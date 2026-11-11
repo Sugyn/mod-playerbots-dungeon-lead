@@ -1169,6 +1169,30 @@ Creature* DungeonLead::FindBossNear(PlayerbotAI* botAI, float range)
     return best;
 }
 
+namespace
+{
+    // A party bot is casting a crowd control spell (one that applies the aura types
+    // Unit::HasBreakableByDamageCrowdControlAura() looks for) at `target` right now.
+    bool CcCastInProgress(Group* group, Creature* target)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || !m->IsInWorld() || !m->IsAlive() || m->GetMap() != target->GetMap() || !DungeonLead::IsBotActor(m))
+                continue;
+            Spell const* spell = m->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+            if (!spell || spell->m_targets.GetUnitTargetGUID() != target->GetGUID())
+                continue;
+            SpellInfo const* info = spell->m_spellInfo;
+            if (info->HasAura(SPELL_AURA_MOD_CONFUSE) || info->HasAura(SPELL_AURA_MOD_FEAR) ||
+                info->HasAura(SPELL_AURA_MOD_STUN) || info->HasAura(SPELL_AURA_MOD_ROOT) ||
+                info->HasAura(SPELL_AURA_TRANSFORM))
+                return true;
+        }
+        return false;
+    }
+}
+
 void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
@@ -1220,7 +1244,9 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     // never aggros onto anyone (picked by proximity to the boss, not confirmed to actually be part
     // of the pull) would hold the grace window open forever under the combat-aware wait below,
     // permanently excluding it from normal DPS targeting.
-    if (GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS)
+    bool const absoluteExpired =
+        GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS;
+    if (absoluteExpired)
     {
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed within the absolute ceiling ({}s since marked), releasing mark",
                  bot->GetName(), c->GetName(), sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds);
@@ -1249,8 +1275,10 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         return;
     }
 
-    if (getMSTime() - st.ccMarkedTs < sDungeonLeadConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS)
-        return;  // still within the grace window, give the CC class a chance to act
+    bool const graceExpired =
+        getMSTime() - st.ccMarkedTs >= sDungeonLeadConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS;
+    if (!DungeonLeadKernel::ReleaseUnlandedMoon(graceExpired, absoluteExpired, CcCastInProgress(group, c)))
+        return;  // still within the grace window, or a CC cast at it is under way
 
     // nobody managed to land CC on it (no CC-capable class in the group, spell unusable on this
     // creature, on cooldown, ...): stop excluding it from normal DPS targeting
@@ -1651,6 +1679,10 @@ void DungeonLead::GuardActiveSessions()
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
+        // The moon's lifecycle runs here, every pass: as an action of the leader's own AI it
+        // competes with the tank's combat actions and in a fight rarely gets a turn, so landings
+        // went unseen and releases came late or early.
+        DungeonLead::CheckCcMark(botAI);
         DungeonTargetManager::Update(botAI);
         DungeonPullController::Update(botAI, party);
         // The pull controller can end the session (out of attempts -> FailObjective -> Stop). The

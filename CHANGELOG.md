@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Fixed
+
+- Crowd control marks are checked every session pass: a landed crowd control is seen, and the moon is no longer taken off while a party member is casting crowd control at the target.
+
 ### Added
 
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.

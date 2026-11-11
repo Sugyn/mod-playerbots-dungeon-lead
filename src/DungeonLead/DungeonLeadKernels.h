@@ -996,6 +996,14 @@ namespace DungeonLeadKernel
     // half killed only stops the party from finishing it.
     constexpr uint8_t kCcMinHealthPct = 70;
 
+    // Whether a moon that has not been crowd controlled is taken off now. The absolute ceiling
+    // always ends it; the shorter grace window does not while a party bot is casting a crowd
+    // control spell at the target - releasing then turns a landing CC into a kill target.
+    inline bool ReleaseUnlandedMoon(bool graceExpired, bool absoluteExpired, bool ccCastInProgress)
+    {
+        return absoluteExpired || (graceExpired && !ccCastInProgress);
+    }
+
     struct TargetPlan
     {
         uint64_t primary = 0;    // skull
