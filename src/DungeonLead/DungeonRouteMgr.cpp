@@ -276,6 +276,32 @@ void DungeonRouteMgr::ClearInstance(uint32 instanceId)
 {
     std::lock_guard<std::mutex> lock(mtx);
     killedByInstance.erase(instanceId);
+    killsByInstance.erase(instanceId);
+}
+
+void DungeonRouteMgr::RememberKill(uint32 instanceId, uint32 entry, float x, float y, float z)
+{
+    // a 5-man instance has a few hundred creatures; the cap only guards against a runaway caller
+    constexpr size_t kMaxKillsPerInstance = 2000;
+    std::lock_guard<std::mutex> lock(mtx);
+    std::vector<RememberedKill>& kills = killsByInstance[instanceId];
+    if (kills.size() < kMaxKillsPerInstance)
+        kills.push_back({entry, x, y, z});
+}
+
+bool DungeonRouteMgr::KilledNear(uint32 instanceId, uint32 entry, float x, float y, float z, float radius)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = killsByInstance.find(instanceId);
+    if (it == killsByInstance.end())
+        return false;
+    for (RememberedKill const& k : it->second)
+    {
+        float const dx = k.x - x, dy = k.y - y, dz = k.z - z;
+        if (k.entry == entry && dx * dx + dy * dy + dz * dz <= radius * radius)
+            return true;
+    }
+    return false;
 }
 
 char const* ToString(DungeonRunOutcome v)

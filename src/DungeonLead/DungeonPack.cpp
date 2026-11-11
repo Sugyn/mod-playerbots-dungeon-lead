@@ -21,9 +21,7 @@ namespace
     // How far from the bot the grid search reaches, and how far from the pack position a creature
     // may stand and still count as part of it - the same 150 yd the route walk uses.
     constexpr float kPackProbeRange = 150.0f;
-    // A unit spawned this close to the pack's spot is part of it (plus the nearest one, see
-    // DungeonLeadKernel::ResolvePack); farther ones with the same entry belong to another group.
-    constexpr float kPackMemberRadius = 12.0f;
+    constexpr float kPackMemberRadius = DungeonPacks::kMemberRadius;
 }
 
 DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)

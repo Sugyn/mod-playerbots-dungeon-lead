@@ -765,6 +765,16 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
             // "not found". Bosses only (EntryKillMemoryEligible) - trash steps share entries across
             // packs.
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+            {
+                // Any route creature, by spawn spot: a step whose unit died away from it still
+                // knows it is done (TrackPack).
+                if (std::any_of(route->steps.begin(), route->steps.end(),
+                                [&](DungeonRouteStep const& s) { return s.entry == c->GetEntry(); }))
+                {
+                    Position const& home = c->GetHomePosition();
+                    sDungeonRouteMgr.RememberKill(st.instanceId, c->GetEntry(), home.GetPositionX(), home.GetPositionY(),
+                                                  home.GetPositionZ());
+                }
                 for (uint32 i = 0; i < route->steps.size(); ++i)
                     if (EntryKillMemoryEligible(route->steps[i].NodeType()) && route->steps[i].entry == c->GetEntry() &&
                         !sDungeonRouteMgr.IsStepKilled(st.instanceId, c->GetEntry()))
@@ -774,6 +784,7 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
                                       JsonLine().Str("name", route->steps[i].boss).Num("step", i)
                                           .Num("entry", uint32_t(c->GetEntry())).Bool("current_step", i == st.stepIndex).Done());
                     }
+            }
         }
     }
     if (attackers.empty() && !partyInCombat && !st.fightUnits.empty())
@@ -2425,6 +2436,26 @@ DungeonPackSighting DungeonLead::TrackPack(PlayerbotAI* botAI, DungeonLeadState&
     DungeonPackSighting sighting =
         DungeonPacks::Observe(botAI->GetBot(), pack, st.instanceId, samePack ? st.packLocked : noLock);
     DungeonLeadKernel::PackState const prev = samePack ? st.packState : DungeonLeadKernel::PackState::Unknown;
+    if (!sighting.observation.rememberedKilled && prev != DungeonLeadKernel::PackState::Cleared &&
+        prev != DungeonLeadKernel::PackState::Skipped)
+    {
+        bool killedAtSpot = false;
+        for (uint32 entry : pack.expectedEntries)
+            killedAtSpot = killedAtSpot ||
+                           sDungeonRouteMgr.KilledNear(st.instanceId, entry, pack.x, pack.y, pack.z, DungeonPacks::kMemberRadius);
+        if (DungeonLeadKernel::RememberedKillClears(killedAtSpot, prev == DungeonLeadKernel::PackState::Engaged,
+                                                    sighting.observation.alive,
+                                                    botAI->GetBot()->GetExactDist(pack.x, pack.y, pack.z)))
+        {
+            sighting.observation.rememberedKilled = true;
+            DungeonLead::RecordEventV2(botAI, "pack_killed_elsewhere",
+                                       DungeonLeadKernel::JsonLine()
+                                           .Num("pack_id", uint32_t(pack.id))
+                                           .Str("name", pack.name)
+                                           .Num("entry", uint32_t(pack.expectedEntries.empty() ? 0 : pack.expectedEntries.front()))
+                                           .Done());
+        }
+    }
     SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prev, sighting.observation));
 
     // Once the pack itself is fighting, its membership is fixed - a neighbouring group with the
