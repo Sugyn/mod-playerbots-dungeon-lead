@@ -1651,6 +1651,13 @@ namespace
         Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
     }
 
+    void TestLeaderOffGround()
+    {
+        Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
+        Check(!LeaderOffGround(true, true), "no height in a tunnel, but on the navmesh: on the ground");
+        Check(LeaderOffGround(true, false), "no height and off the navmesh: inside the rock");
+    }
+
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
     // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
     // Only "on" strategies the class can create are owned (warriors have no "cc").
@@ -1799,6 +1806,7 @@ int main()
     TestStepWalkAndAvailability();
     TestMoonRelease();
     TestMasterGate();
+    TestLeaderOffGround();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

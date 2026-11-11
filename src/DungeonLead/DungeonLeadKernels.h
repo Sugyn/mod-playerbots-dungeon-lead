@@ -1351,6 +1351,14 @@ namespace DungeonLeadKernel
     constexpr uint32_t kEscalationDeferMaxMs = 30000;
     enum class EscalationGate : uint8_t { Escalate, Defer, LeaderToLastGood };
 
+    // Whether the leader is off the ground (inside the rock). The map height lookup has holes - it
+    // finds no ground at all in some tunnels - so a leader that stands on the navmesh is on the
+    // ground whatever the height lookup says.
+    inline bool LeaderOffGround(bool heightSaysOff, bool onNavmesh)
+    {
+        return heightSaysOff && !onNavmesh;
+    }
+
     inline EscalationGate DecideEscalationGate(bool leaderOffGround, uint32_t msDeferred, bool haveLastGood)
     {
         if (!leaderOffGround)

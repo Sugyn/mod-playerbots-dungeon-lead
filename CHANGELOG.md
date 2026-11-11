@@ -10,6 +10,7 @@ while the module is in alpha.
 
 - A bot that mod-playerbots made the leader's master no longer stops the run with "waiting for you, master too far"; sessions nobody asked for (validation, canary) have no master to wait for.
 - Crowd control marks are checked every session pass: a landed crowd control is seen, and the moon is no longer taken off while a party member is casting crowd control at the target.
+- A leader walking where the map height lookup finds no ground (some tunnels) is no longer taken for stuck inside the rock and teleported back during a regroup.
 
 ### Added
 
