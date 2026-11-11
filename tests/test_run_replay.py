@@ -190,13 +190,20 @@ class CompareTest(unittest.TestCase):
 class GoldenTest(unittest.TestCase):
     """Real runs (tests/fixtures/run_reconstruction_v2): outputs match the goldens, and each case
     still shows what it was chosen for (plan acceptance cases A-F)."""
+    # A, D and F were clean before the run-metric warnings: their only warnings are those (a CC
+    # landed ratio under 0.5 in all three, plus the 45 s wait on the absent Velratha in D)
     EXPECT = {
-        "A_clean_full_route": ("FULL_ROUTE", "clean", []),
+        "A_clean_full_route": ("FULL_ROUTE", "warning", []),
         "B_wipe_and_checkpoint": ("FULL_ROUTE", "warning", ["PACK_IDENTITY"]),
         "C_unexpected_adds": ("PARTIAL", "unhealthy", ["PACK_IDENTITY", "ROUTE"]),
-        "D_interaction_event": ("FULL_ROUTE", "clean", []),
+        "D_interaction_event": ("FULL_ROUTE", "warning", []),
         "E_objective_failure": ("PARTIAL", "unhealthy", ["INTERACTION"]),
-        "F_record_ends_mid_run": ("UNKNOWN", "clean", []),
+        "F_record_ends_mid_run": ("UNKNOWN", "warning", []),
+    }
+    METRIC_WARNINGS = {
+        "A_clean_full_route": ["cc_landed_ratio=0.267"],
+        "D_interaction_event": ["dead_target_wait_s=45.2", "cc_landed_ratio=0.256"],
+        "F_record_ends_mid_run": ["cc_landed_ratio=0.143"],
     }
 
     def test_goldens(self):
@@ -218,6 +225,8 @@ class GoldenTest(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertEqual((v["result"], v["health"]), (result, health))
                 self.assertEqual([x["classification"] for x in f["findings"]], classes)
+                if case in self.METRIC_WARNINGS:
+                    self.assertEqual(v["warnings"], self.METRIC_WARNINGS[case])
         m = json.loads(golden.read(os.path.join(golden.ROOT, "B_wipe_and_checkpoint", "run_model.json.gz")))
         self.assertTrue(m["wipes"] and m["wipes"][0]["checkpoint"], "case B restores a checkpoint")
         m = json.loads(golden.read(os.path.join(golden.ROOT, "D_interaction_event", "run_model.json.gz")))
@@ -450,6 +459,403 @@ class ScopeTest(unittest.TestCase):
                "started_at": "t", "context_id": "c", "context_incomplete": False, "complete_record": True,
                "dungeon_support": "modeled_route_only"} for i in ("1", "2")]
         self.assertEqual(status.verified(rs), ("m", ["1", "2"], "context"))
+
+
+# -- run metrics v2 -------------------------------------------------------------------------------
+
+def transition(r, ms, frm, to, reason="x", **kw):
+    r.ev(ms, "state_transition", {"from": frm, "to": to, "reason": reason, "detail": f"{frm}->{to}"}, state=to, **kw)
+
+
+def pack(r, ms, pack_id, name, frm, to, step, state="travelling"):
+    r.ev(ms, "pack_state", {"pack_id": pack_id, "name": name, "type": "pull", "boss": False, "optional": True,
+                            "from": frm, "to": to}, state=state, step=step, pack_id=pack_id)
+
+
+def metrics_of(r):
+    return model.reconstruct(r.events)["metrics"]
+
+
+class DeadTargetWaitTest(unittest.TestCase):
+    def test_no_step_evidence_is_none(self):
+        r = Run()
+        r.ev(0, "start")
+        r.ev(5000, "position_sample", {"moving": True, "in_combat": False})
+        self.assertIsNone(model.reconstruct(r.events)["dead_target_waits"])
+        self.assertIsNone(metrics_of(r)["dead_target_waits"])
+
+    def test_found_dead_counts_until_the_step_is_left(self):
+        r = Run()
+        transition(r, 0, "none", "travelling", step=3)
+        pack(r, 10000, 7, "Worg", "unknown", "cleared", step=3)
+        r.ev(14000, "already_dead", {"detail": "Worg"}, step=3, pack_id=7)
+        r.ev(15000, "position_sample", {}, step=4)
+        (ep,) = model.reconstruct(r.events)["dead_target_waits"]
+        self.assertEqual((ep["kind"], ep["duration_ms"], ep["ended_by"], ep["name"]), ("found_dead", 4000,
+                                                                                         "already_dead", "Worg"))
+        mt = metrics_of(r)["dead_target_waits"]
+        self.assertEqual((mt["count"], mt["total_s"], mt["max_s"], mt["found_dead"]), (1, 4.0, 4.0, 1))
+
+    def test_a_pack_the_party_fought_is_not_a_dead_target(self):
+        r = Run()
+        transition(r, 0, "none", "travelling", step=3)
+        pack(r, 5000, 7, "Worg", "available", "engaged", step=3, state="combat")
+        pack(r, 9000, 7, "Worg", "engaged", "cleared", step=3, state="combat")
+        r.ev(14000, "already_dead", {"detail": "Worg"}, step=3, pack_id=7)
+        mt = metrics_of(r)["dead_target_waits"]
+        self.assertEqual((mt["count"], mt["total_s"], mt["max_s"]), (0, 0.0, 0.0), "a measured zero, not None")
+
+    def test_not_found_from_arrival_and_warning(self):
+        r = Run()
+        transition(r, 0, "none", "travelling", step=5)
+        r.ev(20000, "reached", {"detail": "Velratha"}, step=5, pack_id=9)
+        r.ev(65000, "not_found", {"detail": "Velratha"}, step=5, pack_id=9)
+        r.ev(65000, "objective_skipped", {"detail": "x", "name": "Velratha", "why": "not_found"}, step=5, pack_id=9)
+        r.ev(66000, "position_sample", {}, step=6)
+        (ep,) = model.reconstruct(r.events)["dead_target_waits"]
+        self.assertEqual((ep["kind"], ep["start_ms"], ep["duration_ms"]), ("not_found", 20000, 45000))
+        v = analyze_run.verdict(model.reconstruct(r.events))
+        self.assertIn("dead_target_wait_s=45.0", v["warnings"])
+
+    def test_overlapping_waits_are_one_episode_counted_on_the_step_only(self):
+        # found dead, then a fight elsewhere holds the leader, then nothing at the spot: one episode,
+        # and only the walking time counts (the fight has its own reason)
+        r = Run()
+        transition(r, 0, "none", "travelling", step=2)
+        pack(r, 10000, 4, "Ogre", "unknown", "cleared", step=2)
+        r.ev(10500, "reached", {"detail": "Ogre"}, step=2, pack_id=4)
+        transition(r, 11000, "travelling", "combat", step=2, pack_id=4)
+        transition(r, 30000, "combat", "travelling", step=2, pack_id=4)
+        r.ev(35000, "not_found", {"detail": "Ogre"}, step=2, pack_id=4)
+        m = model.reconstruct(r.events)
+        (ep,) = m["dead_target_waits"]
+        self.assertEqual((ep["kind"], ep["elapsed_ms"], ep["duration_ms"], ep["ended_by"]),
+                         ("found_dead", 25000, 6000, "not_found"))
+        ts = m["metrics"]["time_split"]
+        self.assertEqual(ts["waiting_by_reason_s"]["dead_target"], 6.0)
+        self.assertEqual(ts["combat_s"], 19.0)
+
+
+class TeleportTest(unittest.TestCase):
+    def test_kinds_and_leader_warning(self):
+        r = Run()
+        r.ev(0, "start")
+        r.ev(1000, "leader_unstuck", {"detail": "Worg from=(1,2,3) ground=0 to=(4,5,6)"})
+        r.ev(2000, "leader_to_floor", {"detail": "Worg z=-10 floor=-5"})
+        r.ev(3000, "recovery_escalate", {"detail": "party_fragmented member=Ogan action=brought_to_leader +Izl +Nob"})
+        r.ev(4000, "recovery_escalate", {"detail": "member_dead member=Heal action=none"})
+        r.ev(5000, "wipe_recovery_teleport", {"detail": "Heal"})
+        r.ev(6000, "unexpected_teleport", {"detail": "Ogan to map 0 (1,2,3) options=0 spell=8690 repeats_since_last=0"})
+        m = model.reconstruct(r.events)
+        tp = m["metrics"]["teleports"]
+        self.assertEqual({k: tp[k] for k in ("leader_unstuck", "leader_to_floor", "member_to_leader", "wipe_recovery",
+                                              "unexpected", "leader", "total")},
+                         {"leader_unstuck": 1, "leader_to_floor": 1, "member_to_leader": 3, "wipe_recovery": 1,
+                          "unexpected": 1, "leader": 2, "total": 7})
+        self.assertEqual([t["who"] for t in m["teleports"] if t["kind"] == "member_to_leader"], [["Ogan", "Izl", "Nob"]])
+        v = analyze_run.verdict(m)
+        self.assertIn("leader_teleports=2", v["warnings"])
+        self.assertEqual(v["health"], "unhealthy", "the unexpected teleport keeps its existing level")
+
+    def test_none_is_a_measured_zero(self):
+        tp = metrics_of_synthetic()["teleports"]
+        self.assertEqual((tp["total"], tp["leader"]), (0, 0))
+
+
+def metrics_of_synthetic():
+    return model.reconstruct(synthetic())["metrics"]
+
+
+class CcTest(unittest.TestCase):
+    def run_with_moons(self, classes=(1, 5, 8)):
+        r = Run()
+        r.ev(0, "start")
+        r.ev(100, "party_roster", {"members": [{"name": f"m{c}", "role": "dps", "class": c} for c in classes]})
+        r.ev(1000, "mark_moon", {"detail": "Evoker"}, state="combat")
+        r.ev(3000, "cc_landed", {"detail": "Evoker"}, state="combat")
+        r.ev(9000, "cc_released", {"detail": "Evoker reason=last_enemy"}, state="combat")
+        r.ev(10000, "mark_moon", {"detail": "Pirate"}, state="combat")
+        r.ev(20000, "cc_released", {"detail": "Pirate"}, state="combat")
+        r.ev(21000, "mark_moon", {"detail": "Wizard"}, state="combat")
+        r.ev(22000, "cc_target_gone", {"detail": ""}, state="combat")
+        r.ev(23000, "mark_moon", {"detail": "Squallshaper"}, state="combat")
+        return r
+
+    def test_outcomes_ratio_and_warning(self):
+        m = model.reconstruct(self.run_with_moons().events)
+        self.assertEqual([x["outcome"] for x in m["cc_marks"]], ["landed", "released", "target_gone", "unresolved"])
+        cc = m["metrics"]["cc"]
+        self.assertEqual((cc["moons"], cc["landed"], cc["released_without_cc"], cc["target_gone"], cc["unresolved"]),
+                         (4, 1, 1, 1, 1))
+        self.assertEqual(cc["landed_ratio"], 0.333, "landed / moons that ended")
+        self.assertIsNone(cc["landed_by"], "the caster is not recorded")
+        self.assertEqual((cc["party_cc_classes"], cc["moons_without_cc_class"]), (["mage"], 0))
+        self.assertIn("cc_landed_ratio=0.333", analyze_run.verdict(m)["warnings"])
+
+    def test_moon_without_a_cc_class_in_the_party(self):
+        cc = metrics_of(self.run_with_moons(classes=(1, 5)))["cc"]
+        self.assertEqual((cc["party_cc_classes"], cc["moons_without_cc_class"]), ([], 4))
+
+    def test_roster_without_classes_is_unknown(self):
+        cc = metrics_of_synthetic()["cc"]  # the synthetic roster has no class field
+        self.assertEqual((cc["moons"], cc["landed_ratio"], cc["party_cc_classes"], cc["moons_without_cc_class"]),
+                         (0, None, None, None))
+
+    def test_no_warning_below_three_moons(self):
+        r = Run()
+        r.ev(0, "start")
+        r.ev(1000, "mark_moon", {"detail": "A"})
+        r.ev(2000, "cc_released", {"detail": "A"})
+        v = analyze_run.verdict(model.reconstruct(r.events))
+        self.assertFalse(any(w.startswith("cc_landed_ratio") for w in v["warnings"]))
+
+
+class WipeToResumeTest(unittest.TestCase):
+    def test_per_wipe_and_a_wipe_without_recovery(self):
+        r = Run()
+        transition(r, 0, "none", "travelling")
+        r.ev(10000, "wipe_detected", {"detail": "wipe #1", "wipe": 1}, state="wipe_recovery")
+        transition(r, 10000, "combat", "wipe_recovery")
+        transition(r, 40000, "wipe_recovery", "waiting_ready")
+        transition(r, 52500, "waiting_ready", "travelling")
+        r.ev(90000, "wipe_detected", {"detail": "wipe #2", "wipe": 2}, state="wipe_recovery")
+        transition(r, 90000, "travelling", "wipe_recovery")
+        r.ev(120000, "position_sample", {}, state="wipe_recovery")
+        m = model.reconstruct(r.events)
+        self.assertEqual([w["resumed_ms"] for w in m["wipes"]], [52500, None])
+        wr = m["metrics"]["wipe_to_resume_s"]
+        self.assertEqual((wr["wipes"], wr["median_s"], wr["max_s"], wr["unresolved"]), ([42.5, None], 42.5, 42.5, 1))
+
+    def test_no_state_transitions_is_none(self):
+        self.assertIsNone(metrics_of_synthetic()["wipe_to_resume_s"])
+        self.assertIsNone(metrics_of_synthetic()["time_split"])
+
+
+class TimeSplitTest(unittest.TestCase):
+    def events(self):
+        r = Run()
+        transition(r, 0, "none", "waiting_ready", reason="session_start")
+        r.ev(4000, "waiting", {"detail": "healer low on mana - Heal"}, state="waiting_ready")
+        transition(r, 6000, "waiting_ready", "travelling", reason="party_ready")
+        r.ev(10000, "pull_state", {"detail": "#5 Worg approaching->waiting_patrol attempt=0 patrol=Wolf spawn=1 dist=16"})
+        r.ev(13000, "pull_state", {"detail": "#5 Worg waiting_patrol->waiting_party attempt=0 reason=group too spread (Osan)"})
+        r.ev(15000, "pull_state", {"detail": "#5 Worg waiting_party->established attempt=0"})
+        transition(r, 16000, "travelling", "combat", reason="combat_started")
+        transition(r, 30000, "combat", "post_combat", reason="combat_ended")
+        r.ev(34000, "post_combat_decision", {"detail": "travelling readiness=ready lowest_health=90 healer_mana=80 "
+                                                       "waited_ms=4000"}, state="post_combat")
+        transition(r, 34000, "post_combat", "travelling", reason="party_ready")
+        r.ev(39000, "recovery_start", {"reason": "party_fragmented", "member": "Osan", "detail": "x"},
+             state="travelling")
+        transition(r, 40000, "travelling", "recovery", reason="recovery_needed")
+        r.ev(45000, "recovery_complete", {"detail": "party_fragmented ms=5000"}, state="recovery")
+        transition(r, 45000, "recovery", "boss_prep", reason="pull_preparing")
+        transition(r, 47000, "boss_prep", "boss_combat", reason="boss_engaged")
+        r.ev(50000, "route_complete", {"detail": "0 skipped"}, state="boss_combat", outcome="complete")
+        return r.events
+
+    def test_categories_reasons_and_cover_exactly_once(self):
+        m = model.reconstruct(self.events())
+        spans = m["time_spans"]
+        self.assertEqual(spans[0]["start_ms"], 0)
+        self.assertEqual(spans[-1]["end_ms"], 50000)
+        self.assertTrue(all(a["end_ms"] == b["start_ms"] for a, b in zip(spans, spans[1:])), "no gap, no overlap")
+        ts = m["metrics"]["time_split"]
+        self.assertEqual(ts["total_s"], 50.0)
+        # walking 6-10, 15-16, 34-40 s; waiting 0-6, 10-15 (pull held), 30-34 s
+        self.assertEqual((ts["walking_s"], ts["combat_s"], ts["waiting_s"], ts["recovery_s"], ts["boss_prep_s"]),
+                         (11.0, 17.0, 15.0, 5.0, 2.0))
+        w = ts["waiting_by_reason_s"]
+        # waiting_ready 0-6 s: the throttled waiting line at 4 s explains it from the start
+        self.assertEqual(w["healer_mana"], 6.0)
+        self.assertEqual((w["patrol"], w["party_range"], w["post_combat_check"]), (3.0, 2.0, 4.0))
+        # the recovery_start comes just before the switch to the recovery state
+        self.assertEqual(ts["recovery_by_reason_s"], {"party_fragmented": 5.0})
+
+    def test_overlapping_hold_and_dead_target_count_once(self):
+        r = Run()
+        transition(r, 0, "none", "travelling", step=1)
+        pack(r, 2000, 3, "Ogre", "unknown", "cleared", step=1)
+        r.ev(3000, "pull_state", {"detail": "#3 Ogre approaching->waiting_party attempt=0 reason=group too spread"},
+             step=1, pack_id=3)
+        r.ev(8000, "pull_state", {"detail": "#3 Ogre waiting_party->none attempt=0"}, step=1, pack_id=3)
+        r.ev(9000, "already_dead", {"detail": "Ogre"}, step=1, pack_id=3)
+        r.ev(10000, "position_sample", {}, step=2)
+        ts = metrics_of(r)["time_split"]
+        w = ts["waiting_by_reason_s"]
+        self.assertEqual((w["dead_target"], w["party_range"], ts["walking_s"], ts["total_s"]), (7.0, 0.0, 3.0, 10.0))
+
+
+class BacktrackTest(unittest.TestCase):
+    @staticmethod
+    def walk(points, path, dest):
+        r = Run()
+        transition(r, 0, "none", "travelling", step=1)
+        r.ev(500, "path_decision", {"kind": "direct", "objective": "Boss", "dest_x": dest[0], "dest_y": dest[1],
+                                    "dest_z": 0.0, "path": [[x, y, 0.0] for x, y in path]}, step=1)
+        for i, (x, y) in enumerate(points):
+            r.ev(1000 + 2000 * i, "position_sample", {"moving": True, "in_combat": False}, step=1, x=x, y=y)
+        return metrics_of(r)["backtrack_ratio"]
+
+    def test_away_along_the_path(self):
+        bt = self.walk([(0, 0), (10, 0), (20, 0), (10, 0)], [(0, 0), (100, 0)], (100, 0))
+        self.assertEqual((bt["walked_yd"], bt["away_yd"], bt["ratio"]), (30.0, 10.0, 0.333))
+
+    def test_a_bend_is_not_backwards(self):
+        # the path turns back toward the start: straight-line distance to the end grows, the way
+        # left along the path does not
+        u = [(0, 0), (50, 0), (50, 50), (0, 50)]
+        bt = self.walk([(0, 0), (25, 0), (50, 0), (50, 25)], u, (0, 50))
+        self.assertEqual((bt["away_yd"], bt["ratio"]), (0.0, 0.0))
+
+    def test_no_recorded_path_is_none(self):
+        self.assertIsNone(metrics_of_synthetic()["backtrack_ratio"])
+
+
+# -- summary and campaign comparison --------------------------------------------------------------
+
+CTX = {"context_id": "c1", "module_sha": "abc1234", "core_sha": "core1", "playerbots_sha": "pb1",
+       "route_digest": "r1", "config_digest": "k1", "mmap_digest": "m1", "incomplete": False}
+
+
+def campaign_run(run_id, campaign_id, lfg=8, minutes=30, full=True, unstuck=False, wipes=0, ctx=None):
+    r = Run()
+    r.ev(0, "start", {"detail": "tank=yes", "context": dict(ctx or CTX)})
+    transition(r, 0, "none", "travelling")
+    for i in range(wipes):
+        r.ev(60000 * (i + 1), "wipe_detected", {"detail": f"wipe #{i + 1}", "wipe": i + 1}, state="wipe_recovery")
+        transition(r, 60000 * (i + 1), "travelling", "wipe_recovery")
+        transition(r, 60000 * (i + 1) + 20000, "wipe_recovery", "travelling")
+    if unstuck:
+        r.ev(70000, "leader_unstuck", {"detail": "x from=(1,1,1) ground=0 to=(2,2,2)"})
+    r.ev(minutes * 60000, "route_complete" if full else "stop", {"detail": "0 skipped"},
+         outcome="complete" if full else "failed", step=3 if not full else 0)
+    for e in r.events:
+        e["run_id"], e["campaign_id"] = run_id, campaign_id
+        e["scenario_id"] = f"lfg{lfg}-lvl20-prof"
+        e["dungeon"] = dict(e["dungeon"], lfg_id=lfg, name={8: "Shadowfang Keep", 4: "Ragefire Chasm"}[lfg])
+    return r.events
+
+
+def write_campaign(root, campaign_id, runs):
+    ev_path = os.path.join(root, f"{campaign_id}.events.jsonl")
+    with open(ev_path, "w") as f:
+        for evs in runs:
+            for e in evs:
+                f.write(json.dumps(e, separators=(",", ":")) + "\n")
+    camp_path = os.path.join(root, f"{campaign_id}.campaigns.jsonl")
+    with open(camp_path, "w") as f:
+        f.write(json.dumps({"schema_version": 2, "record": "campaign_started", "campaign_id": campaign_id,
+                            "commit_sha": "abc1234", "validation_profile": "prof", "dungeons": [8, 4]}) + "\n")
+        f.write(json.dumps({"schema_version": 2, "record": "campaign_finished", "campaign_id": campaign_id}) + "\n")
+    campaign.build(ev_path, camp_path, campaign_id, root)
+    return os.path.join(root, "campaigns", campaign_id)
+
+
+class SummaryTest(unittest.TestCase):
+    def test_groups_rates_and_inputs(self):
+        from tools.run_replay import summary
+        with tempfile.TemporaryDirectory() as d:
+            a = write_campaign(d, "camp-a", [campaign_run("1", "camp-a", minutes=30),
+                                             campaign_run("2", "camp-a", minutes=40, wipes=1),
+                                             campaign_run("3", "camp-a", lfg=4, minutes=20, full=False)])
+            s = summary.build([a, os.path.join(a, "runs", "1")])  # a run reached twice counts once
+            self.assertEqual(len(s["runs"]), 3)
+            self.assertEqual({r["evidence"] for r in s["runs"]}, {"raw"})
+            sfk = next(g for g in s["groups"] if g["lfg_id"] == 8)
+            self.assertEqual((sfk["runs"], sfk["full_route"], sfk["full_route_rate"]), (2, 2, 1.0))
+            self.assertEqual(sfk["duration_min"], {"median": 35.0, "p90": 40.0})
+            self.assertEqual((sfk["wipes_per_run"], sfk["wipe_to_resume_s"]["median"]), (0.5, 20.0))
+            self.assertEqual(sfk["context_id"], "c1")
+            self.assertEqual(s["overall"]["runs"], 3)
+            md = summary.summary_md(s)
+            self.assertIn("| Shadowfang Keep | c1 |", md)
+            # the whole validation_runs directory reads the same runs
+            self.assertEqual(len(summary.build([d])["runs"]), 3)
+
+    def test_older_artifacts_without_raw_events(self):
+        # a run directory with only a version 1 run model: read as it is, new metrics None
+        from tools.run_replay import summary
+        import shutil
+        with tempfile.TemporaryDirectory() as d:
+            a = write_campaign(d, "camp-a", [campaign_run("1", "camp-a")])
+            rdir = os.path.join(a, "runs", "1")
+            shutil.rmtree(os.path.join(rdir, "raw"))
+            path = os.path.join(rdir, "derived", "run_model.json")
+            with open(path) as f:
+                m = json.load(f)
+            m["model_version"] = 1
+            m["metrics"] = {k: v for k, v in m["metrics"].items() if not isinstance(v, dict) and k != "metrics_version"}
+            with open(path, "w") as f:
+                json.dump(m, f)
+            (row,) = summary.build([rdir])["runs"]
+            self.assertEqual((row["evidence"], row["result"], row["teleports"], row["time_split"]),
+                             ("run_model_v1", "FULL_ROUTE", None, None))
+            g = summary.build([rdir])["groups"][0]
+            self.assertEqual((g["full_route"], g["teleports"], g["time_share"]), (1, None, None))
+
+    def test_not_an_input(self):
+        from tools.run_replay import summary
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(SystemExit):
+                summary.build([d])
+
+
+class CompareCampaignsTest(unittest.TestCase):
+    def sides(self, b_runs, b_ctx=None):
+        from tools.run_replay import compare_campaigns, summary
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        d = tmp.name
+        a = write_campaign(d, "camp-a", [campaign_run(str(i), "camp-a", minutes=30) for i in range(1, 6)])
+        b = write_campaign(d, "camp-b", [campaign_run(str(10 + i), "camp-b", ctx=b_ctx, **kw)
+                                         for i, kw in enumerate(b_runs)])
+        sa = summary.build([a])
+        path = os.path.join(d, "a.json")
+        with open(path, "w") as f:
+            json.dump(sa, f)
+        return compare_campaigns.load_side(path), compare_campaigns.load_side(b)
+
+    def test_same(self):
+        from tools.run_replay import compare_campaigns
+        c = compare_campaigns.compare(*self.sides([{"minutes": 31}] * 5))
+        self.assertEqual(c["verdict"], "same")
+        self.assertFalse(c["dungeons"][0]["low_sample"])
+
+    def test_worse_on_full_route_rate_duration_and_a_new_teleport(self):
+        from tools.run_replay import compare_campaigns
+        c = compare_campaigns.compare(*self.sides([{"full": False}] + [{"minutes": 30}] * 4))
+        (d,) = c["dungeons"]
+        self.assertEqual((d["verdict"], d["worse"]), ("worse", ["full_route_rate"]))
+        c = compare_campaigns.compare(*self.sides([{"minutes": 34}] * 5))
+        self.assertEqual(c["dungeons"][0]["worse"], ["full_route_median_min"])
+        c = compare_campaigns.compare(*self.sides([{"unstuck": True}] + [{}] * 4))
+        self.assertEqual((c["verdict"], c["dungeons"][0]["worse"]), ("worse", ["teleports_leader_unstuck"]))
+        self.assertIn("WORSE", compare_campaigns.comparison_md(c))
+
+    def test_better(self):
+        from tools.run_replay import compare_campaigns
+        c = compare_campaigns.compare(*self.sides([{"minutes": 25}] * 5))
+        self.assertEqual((c["verdict"], c["dungeons"][0]["better"]), ("better", ["full_route_median_min"]))
+
+    def test_context_blocks_unless_accepted_and_module_never_blocks(self):
+        from tools.run_replay import compare_campaigns
+        a, b = self.sides([{}] * 5, b_ctx=dict(CTX, context_id="c2", route_digest="r2"))
+        c = compare_campaigns.compare(a, b)
+        self.assertEqual(c["verdict"], "not comparable")
+        self.assertTrue(any("route_digest" in w for w in c["dungeons"][0]["why"]))
+        self.assertEqual(compare_campaigns.compare(a, b, accept=["route_digest"])["verdict"], "same")
+        a, b = self.sides([{}] * 5, b_ctx=dict(CTX, context_id="c3", module_sha="def5678"))
+        c = compare_campaigns.compare(a, b)
+        self.assertEqual(c["verdict"], "same")
+        self.assertTrue(any(x.startswith("module_sha") for x in c["dungeons"][0]["differences"]))
+
+    def test_dungeon_on_one_side_only(self):
+        from tools.run_replay import compare_campaigns
+        c = compare_campaigns.compare(*self.sides([{"lfg": 4}]))
+        self.assertEqual(c["verdict"], "not comparable")
+        self.assertEqual({d["verdict"] for d in c["dungeons"]}, {"not comparable"})
+
 
 if __name__ == "__main__":
     unittest.main()

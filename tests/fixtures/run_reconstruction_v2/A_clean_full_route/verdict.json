@@ -1,14 +1,16 @@
 {
- "analysis_version": 2,
+ "analysis_version": 3,
  "campaign_id": "campaign-0002",
  "commit_sha": "d1f1ddf",
  "dungeon_support": "unknown",
- "health": "clean",
+ "health": "warning",
  "result": "FULL_ROUTE",
  "result_reason": "route end reached, no mandatory objective failed",
  "run_id": "100012",
  "scenario_id": "lfg163-lvl36-bot5-wtank-phealer-wmr-dps-lfg-target-level",
  "unhealthy": [],
  "unmodeled": null,
- "warnings": []
+ "warnings": [
+  "cc_landed_ratio=0.267"
+ ]
 }
