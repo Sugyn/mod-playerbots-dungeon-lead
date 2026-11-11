@@ -14,6 +14,10 @@ while the module is in alpha.
 - A route target that died away from its spot in an earlier fight (it ran for help, or joined a fight as an add) no longer keeps the leader waiting at the empty spot.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 
+### Changed
+
+- Wailing Caverns: two waypoints on the lower level lead from the Pythas approach to Lord Pythas, so the leader no longer walks off the navmesh along the upper ledge (route update 0001).
+
 ### Added
 
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
