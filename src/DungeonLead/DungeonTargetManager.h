@@ -17,10 +17,18 @@
 #ifndef MOD_DUNGEONLEAD_TARGETMANAGER_H
 #define MOD_DUNGEONLEAD_TARGETMANAGER_H
 
+#include <cstdint>
+
+class Creature;
 class PlayerbotAI;
 
 namespace DungeonTargetManager
 {
+    // Records how one moon ended ("cc_outcome"): the breakable crowd control aura on the target
+    // and its caster, or, for each party bot that can crowd control, why it did not (range, line
+    // of sight, spell not castable, busy casting). Called once per moon outcome, never per tick.
+    void RecordCcOutcome(PlayerbotAI* botAI, Creature* target, char const* outcome, uint32_t markedMs);
+
     // Rebuilds the plan and syncs the marks. Called from GuardActiveSessions() before the pull
     // controller, and on demand by the "dungeon lead mark" action when a boss comes into range.
     // Returns true if any mark changed.

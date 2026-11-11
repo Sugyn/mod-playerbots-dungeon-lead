@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Added
+
+- A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added

@@ -1206,6 +1206,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         {
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC landed on {}", bot->GetName(), c->GetName());
             DungeonLead::RecordEvent(botAI, "cc_landed", c->GetName());
+            DungeonTargetManager::RecordCcOutcome(botAI, c, "landed", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
             st.ccLandedTold = true;
         }
         st.ccMarkedTs = getMSTime();
@@ -1224,6 +1225,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed within the absolute ceiling ({}s since marked), releasing mark",
                  bot->GetName(), c->GetName(), sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds);
         DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
+        DungeonTargetManager::RecordCcOutcome(botAI, c, "released_absolute", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
         if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
             group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
         st.ccFailed.push_back(st.ccGuid);
@@ -1254,6 +1256,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     // creature, on cooldown, ...): stop excluding it from normal DPS targeting
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed, releasing mark", bot->GetName(), c->GetName());
     DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
+    DungeonTargetManager::RecordCcOutcome(botAI, c, "released_timeout", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
     if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
         group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
     st.ccFailed.push_back(st.ccGuid);

@@ -18,10 +18,14 @@
 #include "Group.h"
 #include "Log.h"
 #include "MotionMaster.h"
+#include "ObjectAccessor.h"
 #include "DungeonTelemetryV2.h"
 #include "Player.h"
 #include "Playerbots.h"
 #include "RtiTargetValue.h"
+#include "Spell.h"
+#include "SpellAuraEffects.h"
+#include "SpellInfo.h"
 #include "Timer.h"
 
 namespace
@@ -228,6 +232,8 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} released - last enemy left", bot->GetName(),
                  NameOf(botAI, st.ccGuid));
         DungeonLead::RecordEvent(botAI, "cc_released", NameOf(botAI, st.ccGuid) + " reason=last_enemy");
+        RecordCcOutcome(botAI, botAI->GetCreature(st.ccGuid), "released_last_enemy",
+                        GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
         st.ccGuid.Clear();
     }
     if (primary != st.targetPrimary || secondary != st.targetSecondary || cc != st.targetCc)
@@ -269,4 +275,78 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
         }
     }
     return changed;
+}
+
+void DungeonTargetManager::RecordCcOutcome(PlayerbotAI* botAI, Creature* c, char const* outcome, uint32_t markedMs)
+{
+    Player* bot = botAI ? botAI->GetBot() : nullptr;
+    Group* group = bot ? bot->GetGroup() : nullptr;
+    if (!c || !group)
+        return;
+
+    DungeonLeadKernel::JsonLine j;
+    j.Str("outcome", outcome)
+        .Str("name", c->GetName())
+        .Num("entry", uint32_t(c->GetEntry()))
+        .Num("spawn", uint32_t(c->GetSpawnId()))
+        .Num("marked_ms", markedMs)
+        .Bool("in_combat", c->IsInCombat())
+        .Num("health_pct", uint32_t(c->GetHealthPct()));
+
+    // The aura that makes Unit::HasBreakableByDamageCrowdControlAura() true (same aura types),
+    // so a frost nova root is told apart from a polymorph.
+    AuraEffect const* control = nullptr;
+    for (AuraType type : {SPELL_AURA_MOD_CONFUSE, SPELL_AURA_MOD_FEAR, SPELL_AURA_MOD_STUN, SPELL_AURA_MOD_ROOT,
+                          SPELL_AURA_TRANSFORM})
+    {
+        for (AuraEffect const* eff : c->GetAuraEffectsByType(type))
+            if (eff->GetSpellInfo()->AuraInterruptFlags & AURA_INTERRUPT_FLAG_TAKE_DAMAGE)
+            {
+                control = eff;
+                break;
+            }
+        if (control)
+            break;
+    }
+    if (control)
+    {
+        Unit* caster = ObjectAccessor::GetUnit(*bot, control->GetCasterGUID());
+        j.Num("spell_id", uint32_t(control->GetSpellInfo()->Id))
+            .Str("spell", control->GetSpellInfo()->SpellName[0] ? control->GetSpellInfo()->SpellName[0] : "")
+            .Str("caster", caster ? caster->GetName() : "-");
+    }
+
+    std::string casters;
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* m = ref->GetSource();
+        if (!m || !m->IsInWorld() || m->GetMap() != c->GetMap() || !DungeonLead::IsBotActor(m))
+            continue;
+        PlayerbotAI* ai = GET_PLAYERBOT_AI(m);
+        if (!ai || !ai->HasStrategy("cc", BOT_STATE_COMBAT))
+            continue;
+        bool canCast = false;
+        if (m->IsAlive())
+            for (char const* spell : kCcSpells)
+                if (ai->CanCastSpell(spell, c))
+                {
+                    canCast = true;
+                    break;
+                }
+        Spell const* current = m->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        casters += (casters.empty() ? "" : ",") +
+                   DungeonLeadKernel::JsonLine()
+                       .Str("name", m->GetName())
+                       .Num("class", uint32_t(m->getClass()))
+                       .Bool("alive", m->IsAlive())
+                       .Num("dist", m->GetDistance(c))
+                       .Bool("los", m->IsWithinLOSInMap(c))
+                       .Bool("can_cast", canCast)
+                       .Num("casting", uint32_t(current ? current->m_spellInfo->Id : 0))
+                       .Bool("targets_it", m->GetTarget() == c->GetGUID())
+                       .Bool("moving", m->isMoving())
+                       .Done();
+    }
+    j.Raw("casters", "[" + casters + "]");
+    DungeonLead::RecordEventV2(botAI, "cc_outcome", j.Done());
 }
