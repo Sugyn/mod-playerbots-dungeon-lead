@@ -12,6 +12,6 @@
  "unmodeled": null,
  "warnings": [
   "dead_target_wait_s=45.2",
-  "cc_landed_ratio=0.256"
+  "cc_landed_ratio=0.25"
  ]
 }

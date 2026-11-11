@@ -87,11 +87,18 @@ def _structured_rows(mt):
     elif not cc["moons"]:
         cct = "no moon placed"
     else:
-        cct = (f"{cc['moons']} moons: {cc['landed']} landed, {cc['released_without_cc']} released without CC "
-               f"({cc['released_last_enemy']} as the last enemy), {cc['target_gone']} target gone, "
-               f"{cc['unresolved']} open; landed ratio "
-               f"{cc['landed_ratio'] if cc['landed_ratio'] is not None else '-'}; CC classes in the party: "
-               f"{_cc_classes(cc['party_cc_classes'])}")
+        ends = [f"{cc['landed']} landed", f"{cc['released_without_cc']} released without CC "
+                f"({cc['released_last_enemy']} as the last enemy)", f"{cc['target_gone']} target gone"]
+        if cc.get("replaced"):
+            ends.append(f"{cc['replaced']} replaced by a new moon before an outcome")
+        if cc["unresolved"]:
+            ends.append(f"{cc['unresolved']} still marked at the end of the record")
+        by = cc.get("landed_by")
+        landed = "not recorded" if by is None else ", ".join(
+            f"{x['caster'] or '?'} ({x['spell'] or '?'}) {x['moons']}" for x in by) or "-"
+        cct = (f"{cc['moons']} moons: {', '.join(ends)}; landed ratio "
+               f"{cc['landed_ratio'] if cc['landed_ratio'] is not None else '-'}; landed by: {landed}; "
+               f"CC classes in the party: {_cc_classes(cc['party_cc_classes'])}")
     wr = mt.get("wipe_to_resume_s")
     if wr is None:
         wipe = unknown
@@ -103,6 +110,7 @@ def _structured_rows(mt):
     back = unknown if bt is None else f"{bt['ratio']:.0%} of {bt['walked_yd']:.0f} yd walked moved away from the step's destination"
     return [("Time", time), ("Waits on dead / absent targets", dead), ("Teleports", tele), ("Crowd control", cct),
             ("Wipe to moving on", wipe), ("Backtracking", back)]
+
 
 def timeline_md(m):
     md, res, mt = m["metadata"], m["result"], m["metrics"]

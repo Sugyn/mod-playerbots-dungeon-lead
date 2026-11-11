@@ -10,10 +10,15 @@ import statistics
 
 METRICS_VERSION = 2  # 2: dead_target_waits, teleports, cc, wipe_to_resume_s, time_split, backtrack_ratio
 
-# Classes whose mod-playerbots AI casts a crowd-control spell on the moon target (Polymorph, Sap,
-# Freezing Trap / Scare Beast, Fear / Banish, Hibernate / Entangling Roots / Cyclone, Turn Undead).
-# By class only: spell rank, talents and the target's creature type are not checked.
-CC_CLASSES = {2: "paladin", 3: "hunter", 4: "rogue", 8: "mage", 9: "warlock", 11: "druid"}
+# Classes that can cast one of the spells the module plans crowd control with (kCcSpells in
+# DungeonTargetManager.cpp: Polymorph, Banish / Fear, Hibernate / Entangling Roots / Cyclone,
+# Freezing Trap / Scare Beast). By class only: spell rank, talents and the target's creature type
+# are not checked.
+CC_CLASSES = {3: "hunter", 8: "mage", 9: "warlock", 11: "druid"}
+
+# A dead-target episode shorter than this is the normal latency of moving on (the next guard
+# pass), not a wait: it adds to the seconds, not to the count.
+DEAD_TARGET_MIN_MS = 1000
 
 TELEPORT_KINDS = ("leader_unstuck", "leader_to_floor", "member_to_leader", "wipe_recovery", "unexpected")
 LEADER_TELEPORT_KINDS = ("leader_unstuck", "leader_to_floor")
@@ -41,11 +46,12 @@ def dead_target_waits(m):
     if eps is None:
         return None
     ms = [e["duration_ms"] for e in eps]
+    counted = [e for e in eps if e["duration_ms"] >= DEAD_TARGET_MIN_MS]
     return {"source": "pack_state, reached, not_found, already_dead, objective_skipped, objective_failed, "
                       "skip_stuck, step_walk_limit",
-            "count": len(eps),
-            "found_dead": sum(1 for e in eps if e["kind"] == "found_dead"),
-            "not_found": sum(1 for e in eps if e["kind"] == "not_found"),
+            "count": len(counted),
+            "found_dead": sum(1 for e in counted if e["kind"] == "found_dead"),
+            "not_found": sum(1 for e in counted if e["kind"] == "not_found"),
             "total_s": _s(sum(ms)),
             "max_s": _s(max(ms)) if ms else 0.0}
 
@@ -76,22 +82,38 @@ def cc(m):
     marks = m.get("cc_marks")
     if marks is None:
         return None
-    n = {o: sum(1 for x in marks if x["outcome"] == o) for o in ("landed", "released", "target_gone")}
-    resolved = sum(n.values())
+    n = {o: sum(1 for x in marks if x["outcome"] == o)
+         for o in ("landed", "released", "target_gone", "replaced", "unresolved")}
     classes = party_cc_classes(m)
-    return {"source": "mark_moon, cc_landed, cc_released, cc_target_gone, party_roster",
+    return {"source": "mark_moon, cc_landed, cc_released, cc_target_gone, cc_outcome, party_roster",
             "moons": len(marks),
             "landed": n["landed"],
             "released_without_cc": n["released"],
             "released_last_enemy": sum(1 for x in marks if x["outcome"] == "released"
                                        and x["release_reason"] == "last_enemy"),
             "target_gone": n["target_gone"],
-            "unresolved": len(marks) - resolved,
-            # landed / moons that ended (landed, released or target gone)
-            "landed_ratio": round(n["landed"] / resolved, 3) if resolved else None,
-            "landed_by": None,  # the caster and spell are not recorded
+            "replaced": n["replaced"],
+            "unresolved": n["unresolved"],
+            # landed / moons placed
+            "landed_ratio": round(n["landed"] / len(marks), 3) if marks else None,
+            "landed_by": landed_by(m, marks),
             "party_cc_classes": classes,
             "moons_without_cc_class": (len(marks) if classes == [] else 0) if classes is not None else None}
+
+
+def landed_by(m, marks):
+    """Who landed the CC and with which spell, from cc_outcome: [{caster, spell, spell_id, moons}].
+    None when no moon has a cc_outcome (a run recorded before it existed, or no moon placed)."""
+    if not any(x.get("cc_outcome") for x in marks):
+        return None
+    out = {}
+    for x in marks:
+        if x["outcome"] == "landed":
+            by = x["by"] or {}
+            key = (by.get("caster"), by.get("spell"), by.get("spell_id"))
+            out[key] = out.get(key, 0) + 1
+    return [{"caster": c, "spell": s, "spell_id": i, "moons": n}
+            for (c, s, i), n in sorted(out.items(), key=lambda kv: (-kv[1], str(kv[0])))]
 
 
 def wipe_to_resume(m):

@@ -202,7 +202,7 @@ class GoldenTest(unittest.TestCase):
     }
     METRIC_WARNINGS = {
         "A_clean_full_route": ["cc_landed_ratio=0.267"],
-        "D_interaction_event": ["dead_target_wait_s=45.2", "cc_landed_ratio=0.256"],
+        "D_interaction_event": ["dead_target_wait_s=45.2", "cc_landed_ratio=0.25"],
         "F_record_ends_mid_run": ["cc_landed_ratio=0.143"],
     }
 
@@ -517,6 +517,15 @@ class DeadTargetWaitTest(unittest.TestCase):
         v = analyze_run.verdict(model.reconstruct(r.events))
         self.assertIn("dead_target_wait_s=45.0", v["warnings"])
 
+    def test_under_a_second_adds_seconds_not_count(self):
+        r = Run()
+        transition(r, 0, "none", "travelling", step=3)
+        pack(r, 10000, 7, "Worg", "unknown", "cleared", step=3)
+        r.ev(10400, "already_dead", {"detail": "Worg"}, step=3, pack_id=7)
+        r.ev(11000, "position_sample", {}, step=4)
+        mt = metrics_of(r)["dead_target_waits"]
+        self.assertEqual((mt["count"], mt["found_dead"], mt["total_s"], mt["max_s"]), (0, 0, 0.4, 0.4))
+
     def test_overlapping_waits_are_one_episode_counted_on_the_step_only(self):
         # found dead, then a fight elsewhere holds the leader, then nothing at the spot: one episode,
         # and only the walking time counts (the fight has its own reason)
@@ -585,12 +594,47 @@ class CcTest(unittest.TestCase):
         m = model.reconstruct(self.run_with_moons().events)
         self.assertEqual([x["outcome"] for x in m["cc_marks"]], ["landed", "released", "target_gone", "unresolved"])
         cc = m["metrics"]["cc"]
-        self.assertEqual((cc["moons"], cc["landed"], cc["released_without_cc"], cc["target_gone"], cc["unresolved"]),
-                         (4, 1, 1, 1, 1))
-        self.assertEqual(cc["landed_ratio"], 0.333, "landed / moons that ended")
-        self.assertIsNone(cc["landed_by"], "the caster is not recorded")
+        self.assertEqual((cc["moons"], cc["landed"], cc["released_without_cc"], cc["target_gone"], cc["unresolved"],
+                          cc["replaced"]), (4, 1, 1, 1, 1, 0))
+        self.assertEqual(cc["landed_ratio"], 0.25, "landed / moons placed")
+        self.assertIsNone(cc["landed_by"], "no cc_outcome: the caster is not recorded")
         self.assertEqual((cc["party_cc_classes"], cc["moons_without_cc_class"]), (["mage"], 0))
-        self.assertIn("cc_landed_ratio=0.333", analyze_run.verdict(m)["warnings"])
+        self.assertIn("cc_landed_ratio=0.25", analyze_run.verdict(m)["warnings"])
+
+    def test_replaced_is_not_unresolved(self):
+        r = Run()
+        r.ev(0, "start")
+        r.ev(1000, "mark_moon", {"detail": "A"})
+        r.ev(2000, "mark_moon", {"detail": "B"})
+        r.ev(3000, "cc_released", {"detail": "B"})
+        m = model.reconstruct(r.events)
+        cc = m["metrics"]["cc"]
+        self.assertEqual((cc["replaced"], cc["unresolved"], cc["released_without_cc"]), (1, 0, 1))
+        md = report.timeline_md(m)
+        self.assertIn("1 replaced by a new moon", md)
+        self.assertNotIn("still marked", md)
+
+    def test_landed_by_from_cc_outcome(self):
+        r = Run()
+        r.ev(0, "start")
+        r.ev(1000, "mark_moon", {"detail": "Evoker"})
+        r.ev(2000, "cc_landed", {"detail": "Evoker"})
+        r.ev(2000, "cc_outcome", {"outcome": "landed", "name": "Evoker", "spell_id": 118, "spell": "Polymorph",
+                                  "caster": "Mage", "casters": []})
+        r.ev(5000, "cc_released", {"detail": "Evoker reason=last_enemy"})
+        r.ev(6000, "mark_moon", {"detail": "Pirate"})
+        r.ev(9000, "cc_released", {"detail": "Pirate"})
+        r.ev(9000, "cc_outcome", {"outcome": "released_timeout", "name": "Pirate", "casters": []})
+        m = model.reconstruct(r.events)
+        self.assertEqual([x["cc_outcome"] for x in m["cc_marks"]], ["landed", "released_timeout"])
+        self.assertEqual(m["cc_marks"][0]["by"], {"caster": "Mage", "spell": "Polymorph", "spell_id": 118})
+        self.assertEqual(m["metrics"]["cc"]["landed_by"],
+                         [{"caster": "Mage", "spell": "Polymorph", "spell_id": 118, "moons": 1}])
+
+    def test_rogue_and_paladin_are_not_cc_classes(self):
+        # the module plans crowd control only with mage, warlock, druid and hunter spells
+        cc = metrics_of(self.run_with_moons(classes=(2, 4)))["cc"]
+        self.assertEqual((cc["party_cc_classes"], cc["moons_without_cc_class"]), ([], 4))
 
     def test_moon_without_a_cc_class_in_the_party(self):
         cc = metrics_of(self.run_with_moons(classes=(1, 5)))["cc"]
@@ -671,6 +715,17 @@ class TimeSplitTest(unittest.TestCase):
         self.assertEqual((w["patrol"], w["party_range"], w["post_combat_check"]), (3.0, 2.0, 4.0))
         # the recovery_start comes just before the switch to the recovery state
         self.assertEqual(ts["recovery_by_reason_s"], {"party_fragmented": 5.0})
+
+    def test_an_old_finished_recovery_does_not_name_a_later_one(self):
+        r = Run()
+        transition(r, 0, "none", "travelling")
+        r.ev(1000, "recovery_start", {"reason": "member_dead", "member": "Heal", "detail": "x"})
+        r.ev(3000, "recovery_complete", {"detail": "member_dead ms=2000"})
+        transition(r, 20000, "travelling", "recovery", reason="recovery_needed")
+        transition(r, 25000, "recovery", "travelling", reason="party_ready")
+        r.ev(30000, "position_sample", {})
+        ts = metrics_of(r)["time_split"]
+        self.assertEqual(ts["recovery_by_reason_s"], {"unattributed": 5.0})
 
     def test_overlapping_hold_and_dead_target_count_once(self):
         r = Run()
@@ -819,8 +874,27 @@ class CompareCampaignsTest(unittest.TestCase):
     def test_same(self):
         from tools.run_replay import compare_campaigns
         c = compare_campaigns.compare(*self.sides([{"minutes": 31}] * 5))
-        self.assertEqual(c["verdict"], "same")
+        self.assertEqual((c["verdict"], c["low_sample"], c["not_comparable"]), ("same", False, []))
         self.assertFalse(c["dungeons"][0]["low_sample"])
+
+    def test_overall_low_sample(self):
+        from tools.run_replay import compare_campaigns
+        c = compare_campaigns.compare(*self.sides([{"minutes": 31}] * 2))
+        self.assertEqual((c["verdict"], c["low_sample"]), ("same", True))
+        self.assertIn("(low sample)", compare_campaigns.comparison_md(c).splitlines()[0])
+
+    def test_runs_without_lfg_id_stay_apart_by_dungeon(self):
+        from tools.run_replay import compare_campaigns, summary
+        a, b = self.sides([{}] * 5)
+        for side, name in ((a, "Shadowfang Keep"), (b, "Other Dungeon")):
+            for r in side["runs"]:
+                r["lfg_id"], r["dungeon"] = None, name
+        c = compare_campaigns.compare(a, b)
+        self.assertEqual(sorted((d["dungeon"], d["runs_a"], d["runs_b"]) for d in c["dungeons"]),
+                         [("Other Dungeon", 0, 5), ("Shadowfang Keep", 5, 0)])
+        self.assertEqual((c["verdict"], sorted(c["not_comparable"])),
+                         ("not comparable", ["Other Dungeon", "Shadowfang Keep"]))
+        self.assertEqual(summary.dungeon_key(a["runs"][0]), (0, "Shadowfang Keep"))
 
     def test_worse_on_full_route_rate_duration_and_a_new_teleport(self):
         from tools.run_replay import compare_campaigns

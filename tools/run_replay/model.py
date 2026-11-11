@@ -43,6 +43,11 @@ _READY_REASON = {
 }
 
 
+# A recovery_start this close before the switch to the recovery state names its reason even if
+# that episode is already recorded as over.
+_RECOVERY_PRIOR_MS = 5000
+
+
 def _wait_reason(text):
     if not text:
         return "unattributed"
@@ -421,7 +426,9 @@ class _Builder:
     def cc_marks(self):
         """Each moon (crowd-control mark) and how it ended: landed (CC seen on the target before the
         mark ended), released (taken off without CC), target_gone (died or despawned without CC),
-        replaced (a new moon while this one had no outcome) or unresolved (record ended)."""
+        replaced (a new moon while this one had no outcome) or unresolved (record ended).
+        `cc_outcome` (newer runs) adds its own outcome and, for a landed one, `by`: the caster and
+        spell of the control aura; `by` stays None where it is not recorded."""
         out, cur = [], None
         for e in self.events:
             t, d = e["event_type"], e["payload"].get("detail", "")
@@ -431,10 +438,24 @@ class _Builder:
                                outcome="landed" if cur["landed_ms"] is not None else "replaced")
                 cur = {"placed_ms": e["run_ms"], "target": d or None, "step": e.get("step"),
                        "pack_id": e.get("pack_id"), "landed_ms": None, "end_ms": None, "end_event": None,
-                       "release_reason": None, "outcome": "unresolved",
-                       # who cast the CC is not recorded (cc_landed names only the target)
+                       "release_reason": None, "outcome": "unresolved", "cc_outcome": None,
                        "by": None, "source": "detail"}
                 out.append(cur)
+            elif t == "cc_outcome":
+                # written right after cc_landed (moon still open) or cc_released (just closed)
+                mark = cur if cur is not None else (out[-1] if out and out[-1]["cc_outcome"] is None else None)
+                if mark is None:
+                    continue
+                p = e["payload"]
+                mark["cc_outcome"] = p.get("outcome")
+                if p.get("outcome") == "landed":
+                    if mark["landed_ms"] is None:
+                        mark["landed_ms"] = e["run_ms"]
+                        if mark is not cur:
+                            mark["outcome"] = "landed"
+                    if p.get("spell_id") or p.get("caster"):
+                        mark["by"] = {"caster": p.get("caster") if p.get("caster") not in (None, "", "-") else None,
+                                      "spell": p.get("spell") or None, "spell_id": p.get("spell_id")}
             elif cur is None:
                 continue
             elif t == "cc_landed":
@@ -570,7 +591,13 @@ class _Builder:
                 if state == "wipe_recovery":
                     segs = [(a, b, "wipe")]
                 else:
-                    prior = next((r for ms, r in reversed(rec_ev) if ms <= a), None)
+                    # the reason of the episode still open when the state began, or of one that
+                    # started just before it - an older, finished episode says nothing about this one
+                    last = next((r for r in reversed(recoveries) if r["start_ms"] <= a), None)
+                    prior = None
+                    if last and (last.get("end_ms") is None or last["end_ms"] > a
+                                 or a - last["start_ms"] <= _RECOVERY_PRIOR_MS):
+                        prior = last["reason"] or "unattributed"
                     segs = _split(a, b, [(ms, r) for ms, r in rec_ev if a < ms < b], prior)
             elif cat in ("walking", "pulling"):
                 segs = _carve(a, b, overrides)

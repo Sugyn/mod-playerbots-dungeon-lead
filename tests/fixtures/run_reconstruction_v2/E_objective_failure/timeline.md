@@ -40,9 +40,9 @@
 | | |
 |---|---|
 | Time | walking 08:10 (48%); combat 07:21 (44%); boss prep 00:04 (0%); waiting 01:07 (7%): eating drinking 00:23, post combat check 00:22, party range 00:20, dead target 00:00; recovery 00:10 (1%): party fragmented 00:10 |
-| Waits on dead / absent targets | 2 (2 found dead, 0 not found), 00:00 in all, longest 00:00 |
+| Waits on dead / absent targets | none |
 | Teleports | none |
-| Crowd control | 6 moons: 1 landed, 5 released without CC (2 as the last enemy), 0 target gone, 0 open; landed ratio 0.167; CC classes in the party: mage, rogue |
+| Crowd control | 6 moons: 1 landed, 5 released without CC (2 as the last enemy), 0 target gone; landed ratio 0.167; landed by: not recorded; CC classes in the party: mage |
 | Wipe to moving on | no wipe |
 | Backtracking | unknown (not in this record) |
 

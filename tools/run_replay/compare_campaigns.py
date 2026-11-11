@@ -30,8 +30,8 @@ DURATION_REL_DELTA = 0.10        # median full-route duration: more than 10 %
 WIPES_PER_RUN_DELTA = 0.5        # wipes per run
 DEATHS_PER_RUN_DELTA = 1.0       # deaths per run
 DEAD_TARGET_S_PER_RUN_DELTA = 10.0  # seconds per run spent on dead or absent targets
-CC_RATIO_DELTA = 0.1             # CC landed ratio ...
-CC_MIN_ENDED = 3                 # ... when both sides have at least this many ended moons
+CC_RATIO_DELTA = 0.1             # CC landed ratio (landed / moons placed) ...
+CC_MIN_MOONS = 3                 # ... when both sides placed at least this many moons
 # Teleports the module decides on. A new kind (none in A, some in B) is worse, a kind gone is
 # better. Wipe-recovery teleports follow deaths and are judged by the deaths rule.
 DECIDED_TELEPORTS = ("leader_unstuck", "leader_to_floor", "member_to_leader", "unexpected")
@@ -101,7 +101,7 @@ def _rules(a, b):
         rows.append((f"teleports_{kind}", oa, ob, _delta(oa, ob, 0), v))
     ca, cb = a["cc"], b["cc"]
     ra, rb = (ca or {}).get("landed_ratio"), (cb or {}).get("landed_ratio")
-    enough = ca and cb and ca["ended"] >= CC_MIN_ENDED and cb["ended"] >= CC_MIN_ENDED
+    enough = ca and cb and ca["moons"] >= CC_MIN_MOONS and cb["moons"] >= CC_MIN_MOONS
     rows.append(("cc_landed_ratio", ra, rb, _delta(ra, rb),
                  _by_threshold(ra, rb, CC_RATIO_DELTA, True) if enough else "n/a"))
     # reported, no rule
@@ -159,12 +159,13 @@ def _differences(rows_a, rows_b, accept):
 
 def compare(a, b, accept=()):
     rows_a, rows_b = a["runs"], b["runs"]
-    keys = sorted({(r["lfg_id"], r["dungeon"]) for r in rows_a + rows_b}, key=lambda k: (k[0] or 0, k[1] or ""))
+    keys = sorted({summary.dungeon_key(r) for r in rows_a + rows_b})
     dungeons, compared_a, compared_b = [], [], []
-    for lfg, name in keys:
-        ra = [r for r in rows_a if r["lfg_id"] == lfg]
-        rb = [r for r in rows_b if r["lfg_id"] == lfg]
-        entry = {"dungeon": name, "lfg_id": lfg, "runs_a": len(ra), "runs_b": len(rb)}
+    for key in keys:
+        ra = [r for r in rows_a if summary.dungeon_key(r) == key]
+        rb = [r for r in rows_b if summary.dungeon_key(r) == key]
+        lfg, name = key
+        entry = {"dungeon": name, "lfg_id": lfg or None, "runs_a": len(ra), "runs_b": len(rb)}
         if not summary.finished(ra) or not summary.finished(rb):
             lacking = [side for side, rs in (("A", ra), ("B", rb)) if not summary.finished(rs)]
             entry.update(verdict="not comparable", why=["no finished run in " + " and ".join(lacking)],
@@ -186,6 +187,9 @@ def compare(a, b, accept=()):
             compared_b += rb
         dungeons.append(entry)
     judged = [d["verdict"] for d in dungeons if d["verdict"] != "not comparable"]
+    not_comparable = [d["dungeon"] for d in dungeons if d["verdict"] == "not comparable"]
+    # every judged dungeon a low sample: the overall verdict is no stronger than they are
+    low_sample = bool(judged) and all(d["low_sample"] for d in dungeons if d["verdict"] != "not comparable")
     if not judged:
         overall = "not comparable"
     elif "worse" in judged:
@@ -200,9 +204,9 @@ def compare(a, b, accept=()):
             "thresholds": {"full_route_rate": FULL_ROUTE_RATE_DELTA, "full_route_median_duration_rel": DURATION_REL_DELTA,
                            "wipes_per_run": WIPES_PER_RUN_DELTA, "deaths_per_run": DEATHS_PER_RUN_DELTA,
                            "dead_target_s_per_run": DEAD_TARGET_S_PER_RUN_DELTA, "cc_landed_ratio": CC_RATIO_DELTA,
-                           "cc_min_ended_moons": CC_MIN_ENDED, "new_teleport_kinds": list(DECIDED_TELEPORTS),
+                           "cc_min_moons": CC_MIN_MOONS, "new_teleport_kinds": list(DECIDED_TELEPORTS),
                            "low_sample_runs": LOW_SAMPLE_RUNS},
-            "verdict": overall, "dungeons": dungeons,
+            "verdict": overall, "low_sample": low_sample, "not_comparable": not_comparable, "dungeons": dungeons,
             # the comparable dungeons pooled - for orientation; the verdict comes from the dungeons
             "pooled": pooled}
 
@@ -214,7 +218,10 @@ def _cell(v):
 
 
 def comparison_md(c):
-    out = [f"# Campaign {', '.join(c['b'])} (B) vs {', '.join(c['a'])} (A): **{c['verdict'].upper()}**", ""]
+    out = [f"# Campaign {', '.join(c['b'])} (B) vs {', '.join(c['a'])} (A): **{c['verdict'].upper()}**"
+           + (" (low sample)" if c.get("low_sample") else ""), ""]
+    if c.get("not_comparable"):
+        out += ["Not comparable: " + ", ".join(c["not_comparable"]), ""]
     if c["accepted_differences"]:
         out += ["Accepted context differences: " + ", ".join(c["accepted_differences"]), ""]
     out += ["| Dungeon | Runs A / B | Verdict | Better | Worse | Why / differences |", "|---|---|---|---|---|---|"]

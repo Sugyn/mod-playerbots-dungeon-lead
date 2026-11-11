@@ -157,7 +157,9 @@ def main(argv=None):
                 if d.get("low_sample"):
                     notes.append("low sample")
                 print(f"{d['dungeon'] or '?':32} {d['verdict']:15} {'; '.join(notes)}")
-            print(f"{'overall':32} {c['verdict']}")
+            notes = (["low sample"] if c["low_sample"] else []) + \
+                ([f"not comparable: {', '.join(c['not_comparable'])}"] if c["not_comparable"] else [])
+            print(f"{'overall':32} {c['verdict']:15} {'; '.join(notes)}")
     except schema.SchemaError as e:
         sys.exit(f"error: {e}")
 

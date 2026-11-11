@@ -196,10 +196,11 @@ def aggregate(rows):
 
     cc = [r["cc"] for r in done if r["cc"] is not None]
     if cc:
-        landed = sum(x["landed"] for x in cc)
-        ended = sum(x["landed"] + x["released_without_cc"] + x["target_gone"] for x in cc)
-        out["cc"] = {"runs_with_evidence": len(cc), "moons": sum(x["moons"] for x in cc), "landed": landed,
-                     "ended": ended, "landed_ratio": round(landed / ended, 3) if ended else None}
+        landed, moons = sum(x["landed"] for x in cc), sum(x["moons"] for x in cc)
+        out["cc"] = {"runs_with_evidence": len(cc), "moons": moons, "landed": landed,
+                     "released_last_enemy": sum(x["released_last_enemy"] for x in cc),
+                     # landed / moons placed, as per run
+                     "landed_ratio": round(landed / moons, 3) if moons else None}
     else:
         out["cc"] = None
 
@@ -232,8 +233,13 @@ def aggregate(rows):
     return out
 
 
+def dungeon_key(r):
+    """A dungeon is its LFG id and name together: runs without an LFG id stay apart by name."""
+    return (r["lfg_id"] or 0, r["dungeon"] or "?")
+
+
 def _group_key(r):
-    return (r["lfg_id"] or 0, r["dungeon"] or "?", r["context_id"] or "")
+    return dungeon_key(r) + (r["context_id"] or "",)
 
 
 def build(inputs):
@@ -275,7 +281,7 @@ def _line(g):
             f"{_f(g['wipes_per_run'])} | {_f(g['deaths_per_run'])} | "
             f"{'-' if not dw else _f(dw['per_run']) + ' (' + _f(dw['seconds_per_run']) + ' s)'} | "
             f"{'-' if not tp else _f(tp['per_run'])} | "
-            f"{'-' if not cc else _f(cc['landed_ratio']) + ' of ' + str(cc['ended'])} | "
+            f"{'-' if not cc else _f(cc['landed_ratio']) + ' of ' + str(cc['moons'])} | "
             f"{'-' if not wr else _f(wr['median'])} | {time} | {'-' if not bt else _pct(bt['ratio'])} |")
 
 
