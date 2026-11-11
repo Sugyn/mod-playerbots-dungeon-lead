@@ -766,15 +766,13 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
             // packs.
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
             {
-                // Any route creature, by spawn spot: a step whose unit died away from it still
-                // knows it is done (TrackPack).
-                if (std::any_of(route->steps.begin(), route->steps.end(),
-                                [&](DungeonRouteStep const& s) { return s.entry == c->GetEntry(); }))
-                {
-                    Position const& home = c->GetHomePosition();
-                    sDungeonRouteMgr.RememberKill(st.instanceId, c->GetEntry(), home.GetPositionX(), home.GetPositionY(),
-                                                  home.GetPositionZ());
-                }
+                // Any route creature, by its spawn spot (the static spawn data - the home position
+                // moves with patrols and pulls): a step whose unit died away from it still knows it
+                // is done (TrackPack). A summoned unit has no spawn spot.
+                CreatureData const* spawn = c->GetSpawnId() ? sObjectMgr->GetCreatureData(c->GetSpawnId()) : nullptr;
+                if (spawn && std::any_of(route->steps.begin(), route->steps.end(),
+                                         [&](DungeonRouteStep const& s) { return s.entry == c->GetEntry(); }))
+                    sDungeonRouteMgr.RememberKill(st.instanceId, c->GetEntry(), spawn->posX, spawn->posY, spawn->posZ);
                 for (uint32 i = 0; i < route->steps.size(); ++i)
                     if (EntryKillMemoryEligible(route->steps[i].NodeType()) && route->steps[i].entry == c->GetEntry() &&
                         !sDungeonRouteMgr.IsStepKilled(st.instanceId, c->GetEntry()))
