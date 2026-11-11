@@ -1663,6 +1663,14 @@ namespace
         Check(LeaderOffGround(true, false), "no height and off the navmesh: inside the rock");
     }
 
+    void TestSpawnSpots()
+    {
+        Check(NextSpawnSpot(0, 0, 4), "nothing at the first of four points: go on");
+        Check(!NextSpawnSpot(1, 0, 4), "found there (alive or a corpse): stay");
+        Check(!NextSpawnSpot(0, 3, 4), "the last point: no further point, the normal timeout applies");
+        Check(!NextSpawnSpot(0, 0, 0), "a single-spawn boss has no points to walk");
+    }
+
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
     // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
     // Only "on" strategies the class can create are owned (warriors have no "cc").
@@ -1812,6 +1820,7 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestSpawnSpots();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

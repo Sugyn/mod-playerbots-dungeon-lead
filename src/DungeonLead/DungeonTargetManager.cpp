@@ -130,7 +130,7 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
     }
     else if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
     {
-        DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+        DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
         if (pack.Exists() && (pack.type == DungeonRouteNodeType::Pull || pack.type == DungeonRouteNodeType::Boss))
             if (Creature* lead = DungeonPacks::Observe(bot, pack, st.instanceId).firstAlive)
             {

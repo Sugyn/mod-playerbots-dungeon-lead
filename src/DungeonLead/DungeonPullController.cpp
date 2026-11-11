@@ -101,7 +101,7 @@ bool DungeonPullController::StopForPull(PlayerbotAI* botAI, DungeonLeadState& st
 
     Player* bot = botAI->GetBot();
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
-    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex) : DungeonPack();
+    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex) : DungeonPack();
     if (!pack.Exists() || (pack.type != DungeonRouteNodeType::Pull && pack.type != DungeonRouteNodeType::Boss))
         return false;
 
@@ -139,7 +139,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                          st.state != LeadState::Completing && !st.paused && bot->IsAlive() && group &&
                          DungeonLead::InFiveMan(bot);
     DungeonRoute const* route = working && st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
-    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex) : DungeonPack();
+    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex) : DungeonPack();
     bool const pullType = pack.Exists() && (pack.type == DungeonRouteNodeType::Pull ||
                                             pack.type == DungeonRouteNodeType::Boss);
     if (!pullType)

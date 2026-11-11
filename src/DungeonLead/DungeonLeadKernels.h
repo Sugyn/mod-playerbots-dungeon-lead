@@ -778,6 +778,13 @@ namespace DungeonLeadKernel
         return r;
     }
 
+    // A boss with several spawn points (one alive per instance): arrived at one where nothing of it
+    // is seen, alive or dead, the walk moves on to the next point instead of waiting there.
+    inline bool NextSpawnSpot(uint32_t foundAtSpot, size_t spotIndex, size_t spotCount)
+    {
+        return foundAtSpot == 0 && spotIndex + 1 < spotCount;
+    }
+
     inline PackState DecidePackState(PackState prev, PackObservation const& o)
     {
         if (prev == PackState::Cleared || prev == PackState::Skipped)
