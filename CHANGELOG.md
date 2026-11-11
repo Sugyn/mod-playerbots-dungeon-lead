@@ -12,6 +12,7 @@ while the module is in alpha.
 - Crowd control marks are checked every session pass: a landed crowd control is seen, and the moon is no longer taken off while a party member is casting crowd control at the target.
 - A leader walking where the map height lookup finds no ground (some tunnels) is no longer taken for stuck inside the rock and teleported back during a regroup.
 - A route target that died away from its spot in an earlier fight (it ran for help, or joined a fight as an add) no longer keeps the leader waiting at the empty spot.
+- A named route creature that patrols away from its spot (Kresh in Wailing Caverns) is walked to where it is, instead of the leader waiting at the empty spot.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 
 ### Changed
