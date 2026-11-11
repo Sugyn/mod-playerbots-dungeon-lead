@@ -21,15 +21,14 @@ Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `sc
 7. **Verdan the Everliving** *(optional)* — entry 5775 @ (-81.9, 32.3, -31) — Fanglord 2/4.
 8. **Lord Serpentis** — entry 3673 @ (-120.2, -24.6, -28.6) — Fanglord 3/4. Reachable directly from Verdan
 9. **Pythas approach (bridge)** *(optional)* `derived` — entry 1 @ (-101.333, -42.6667, -22.0857) — path bridge: the direct Serpentis->Pythas path ends here; Pythas is reachable from here
-10. **Pythas ledge edge (bridge)** *(optional)* — entry 1 @ (-87, -64, -28) — edge of the upper ledge where the drop to the lower level starts
-11. **Pythas descent (bridge)** *(optional)* — entry 1 @ (-74, -61, -62) — lower level below the Pythas approach; the direct path along the upper ledge leaves the navmesh
-12. **Pythas lower path (bridge)** *(optional)* — entry 1 @ (-38, -41, -65) — lower level path towards Lord Pythas
-13. **Lord Pythas** — entry 3670 @ (36.8, -241.1, -79.5) — Fanglord 4/4 - all 4 Fanglords dead after this Naralex escort can spawn.
-14. **Skum** *(optional)* — entry 3674 @ (-285.6, -313, -69.2) — reachable directly from Pythas; dead end - return via Pythas
-15. **Pythas return (bridge)** *(optional)* `derived` — entry 1 @ (36.8, -241.1, -79.5) — same point as step 13; entry=1 waypoint (a boss entry would be skipped once that boss is dead); no direct path Skum->Naralex
-16. **Naralex approach (bridge)** *(optional)* `derived` — entry 1 @ (-162.133, 92.2667, -76.0141) — path bridge: the direct Pythas->Naralex path ends here; Naralex is reachable from here
-17. **Disciple of Naralex** **[event]** — entry 3678 @ (-135, 125.4, -78.1) — escort from entrance after 4 Fanglords -> spawns Mutanus
-18. **Mutanus the Devourer** **[event]** `script` — entry 3654 (no static spawn) — script-spawned by escort
+10. **Pythas descent (bridge)** *(optional)* — entry 1 @ (-74, -61, -62) — lower level below the Pythas approach; the direct path along the upper ledge leaves the navmesh
+11. **Pythas lower path (bridge)** *(optional)* — entry 1 @ (-38, -41, -65) — lower level path towards Lord Pythas
+12. **Lord Pythas** — entry 3670 @ (36.8, -241.1, -79.5) — Fanglord 4/4 - all 4 Fanglords dead after this Naralex escort can spawn.
+13. **Skum** *(optional)* — entry 3674 @ (-285.6, -313, -69.2) — reachable directly from Pythas; dead end - return via Pythas
+14. **Pythas return (bridge)** *(optional)* `derived` — entry 1 @ (36.8, -241.1, -79.5) — same point as step 12; entry=1 waypoint (a boss entry would be skipped once that boss is dead); no direct path Skum->Naralex
+15. **Naralex approach (bridge)** *(optional)* `derived` — entry 1 @ (-162.133, 92.2667, -76.0141) — path bridge: the direct Pythas->Naralex path ends here; Naralex is reachable from here
+16. **Disciple of Naralex** **[event]** — entry 3678 @ (-135, 125.4, -78.1) — escort from entrance after 4 Fanglords -> spawns Mutanus
+17. **Mutanus the Devourer** **[event]** `script` — entry 3654 (no static spawn) — script-spawned by escort
 ### Deadmines (LFD 6, map 36)
 
 1. **Rhahk'Zor** — entry 644 @ (-192.9, -448.2, 54.4)
