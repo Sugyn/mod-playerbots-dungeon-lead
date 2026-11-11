@@ -10,6 +10,10 @@ while the module is in alpha.
 
 - `AiPlayerbot.DungeonLead.ValidationParallel` accepts up to 30 parallel validation parties (was 10).
 
+### Fixed
+
+- Validation campaigns with more than 20 parallel parties no longer run out of test bots while most of the bot pool is idle.
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added
