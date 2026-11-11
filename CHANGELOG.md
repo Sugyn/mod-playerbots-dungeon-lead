@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Changed
+
+- `AiPlayerbot.DungeonLead.ValidationParallel` accepts up to 30 parallel validation parties (was 10).
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added
