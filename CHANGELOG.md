@@ -8,6 +8,7 @@ while the module is in alpha.
 
 ### Fixed
 
+- An optional named mob that is not alive in the instance (a rare that did not spawn, or one that already died elsewhere) is skipped at once instead of the leader walking to its spot and waiting there.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 
 ## [0.15.0-alpha] - 2026-11-10

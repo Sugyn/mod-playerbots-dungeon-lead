@@ -138,6 +138,7 @@ increments, each with its own entry here.
 | mob_died | `mob_died` (v2 only) | `fight_id`, `unit` |
 | mob_fleeing | `mob_fleeing` (v2 only) | `name`, `entry`, `spawn`, `health_pct`, `x`, `y`, `z`, `fight_id` - a fight member started running for help (flee for assistance) or fleeing; once per unit and fight |
 | spawn_spot | `spawn_spot` (v2 only) | `name`, `step`, `spot`, `spots`, `how` (`live`: the spawn alive in this instance, `next`: nothing at the previous point) - the walk to a boss with several spawn points moved to another of them |
+| objective_absent | `objective_absent` (v2 only) | `name`, `step`, `entry`, `spots` - an optional named mob has no living creature at any of its spawn points in the instance; the step is skipped at once (followed by `objective_skipped` with `why=absent`) |
 | recovery_walk_stopped | `recovery_walk_stopped` (v2 only) | `reason` - the recovery ended while the leader was still on its walk back to a straggler; the walk was stopped |
 | boss_killed | `boss_killed` (v2 only) | `name`, `step`, `entry`, `current_step` - a route boss died (also while another step was worked on: the step is then skipped as done) |
 | member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers`; died: `party[]` - each other member's `name`, `role`, `dist`, `los`, `alive`, `health_pct`, `mana_pct`, `casting`, `attackers` |
