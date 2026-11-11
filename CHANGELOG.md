@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Changed
+
+- Wailing Caverns: two waypoints on the lower level lead from the Pythas approach to Lord Pythas, so the leader no longer walks off the navmesh along the upper ledge (route update 0001).
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added
