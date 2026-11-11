@@ -1641,6 +1641,8 @@ namespace
         Check(!NextSpawnSpot(1, 0, 4), "found there (alive or a corpse): stay");
         Check(!NextSpawnSpot(0, 3, 4), "the last point: no further point, the normal timeout applies");
         Check(!NextSpawnSpot(0, 0, 0), "a single-spawn boss has no points to walk");
+        Check(FollowMovedSpawn(60.0f), "a patroller 60 yd from its spot: walk to it");
+        Check(!FollowMovedSpawn(10.0f), "near its spot: the route spot is the destination");
     }
 
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an

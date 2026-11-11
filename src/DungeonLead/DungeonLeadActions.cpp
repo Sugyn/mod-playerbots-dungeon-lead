@@ -2873,35 +2873,47 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     if (step.kind == DungeonRouteKind::Talk)
         return WalkTalkStep(st, dest, step);
 
-    // A boss with several spawn points: go to the one whose spawn is alive in this instance, when
-    // the map has it loaded; otherwise the walk visits the points nearest first (below).
+    // A unique route creature (one spawn point, or a pooled boss with a few) is looked up by its
+    // spawn id in this instance. A pooled boss: walk to the point whose spawn is alive; a creature
+    // that patrols away from its spot (a swimming turtle): walk to where it is now. Without a live
+    // spawn the walk visits the points nearest first (below).
+    Creature* liveSpawn = nullptr;
     if (!step.spawnSpots.empty())
     {
         Map::CreatureBySpawnIdContainer& store = bot->GetMap()->GetCreatureBySpawnIdStore();
-        for (uint32 i = 0; i < step.spawnSpots.size(); ++i)
+        uint32 liveIndex = 0;
+        for (uint32 i = 0; i < step.spawnSpots.size() && !liveSpawn; ++i)
         {
             auto const range = store.equal_range(step.spawnSpots[i].spawnId);
-            bool const live = std::any_of(range.first, range.second,
-                                          [](auto const& kv) { return kv.second && kv.second->IsAlive(); });
-            if (live && i != st.spotIndex)
-            {
-                st.spotIndex = uint8(i);
-                st.arrivedTold = false;
-                DungeonLead::RecordEventV2(botAI, "spawn_spot",
-                              DungeonLeadKernel::JsonLine()
-                                  .Str("name", step.boss)
-                                  .Num("step", uint32_t(st.stepIndex))
-                                  .Num("spot", uint32_t(i))
-                                  .Num("spots", uint32_t(step.spawnSpots.size()))
-                                  .Str("how", "live")
-                                  .Done());
-                break;
-            }
+            for (auto it = range.first; it != range.second; ++it)
+                if (it->second && it->second->IsInWorld() && it->second->IsAlive())
+                {
+                    liveSpawn = it->second;
+                    liveIndex = i;
+                    break;
+                }
+        }
+        if (liveSpawn && liveIndex != st.spotIndex)
+        {
+            st.spotIndex = uint8(liveIndex);
+            st.arrivedTold = false;
+            DungeonLead::RecordEventV2(botAI, "spawn_spot",
+                                       DungeonLeadKernel::JsonLine()
+                                           .Str("name", step.boss)
+                                           .Num("step", uint32_t(st.stepIndex))
+                                           .Num("spot", uint32_t(liveIndex))
+                                           .Num("spots", uint32_t(step.spawnSpots.size()))
+                                           .Str("how", "live")
+                                           .Done());
         }
     }
     if (st.spotIndex < step.spawnSpots.size())
-        dest = WorldPosition(bot->GetMapId(), step.spawnSpots[st.spotIndex].x, step.spawnSpots[st.spotIndex].y,
-                             step.spawnSpots[st.spotIndex].z, 0.f);
+    {
+        DungeonRouteStep::SpawnSpot const& spot = step.spawnSpots[st.spotIndex];
+        dest = WorldPosition(bot->GetMapId(), spot.x, spot.y, spot.z, 0.f);
+        if (liveSpawn && DungeonLeadKernel::FollowMovedSpawn(liveSpawn->GetExactDist(spot.x, spot.y, spot.z)))
+            dest = WorldPosition(liveSpawn);
+    }
 
     // Pack nodes (pull/boss/interaction) advance only once their pack is Cleared (or Skipped
     // below) - never just because the tank reached the coordinate. Travel nodes have no pack.

@@ -776,6 +776,15 @@ namespace DungeonLeadKernel
         return foundAtSpot == 0 && spotIndex + 1 < spotCount;
     }
 
+    // A unique route creature found alive this far from its spawn spot has moved on (a patrol, a
+    // swimmer): the walk goes to where it is instead of waiting at the empty spot.
+    constexpr float kSpawnMovedDistance = 30.0f;
+
+    inline bool FollowMovedSpawn(float distFromSpawn)
+    {
+        return distFromSpawn > kSpawnMovedDistance;
+    }
+
     inline PackState DecidePackState(PackState prev, PackObservation const& o)
     {
         if (prev == PackState::Cleared || prev == PackState::Skipped)

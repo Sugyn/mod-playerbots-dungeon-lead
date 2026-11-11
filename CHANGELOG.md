@@ -8,6 +8,7 @@ while the module is in alpha.
 
 ### Fixed
 
+- A named route creature that patrols away from its spot (Kresh in Wailing Caverns) is walked to where it is, instead of the leader waiting at the empty spot.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 
 ## [0.15.0-alpha] - 2026-11-10
