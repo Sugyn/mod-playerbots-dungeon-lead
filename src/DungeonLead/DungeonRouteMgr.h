@@ -33,6 +33,15 @@ struct DungeonRouteStep
     // Door rows: the world gameobject spawn at (x, y, z), resolved once at load; 0 = none found.
     // Lets a door that is gone be told apart from bad data (WalkDoorStep).
     uint32 doorSpawnId = 0;
+    // Boss rows whose creature has several spawn points on the map (a pooled spawn: one of them is
+    // alive per instance): every spawn point, the row's own first and the rest nearest first,
+    // resolved once at load. Empty for a creature with a single spawn point.
+    struct SpawnSpot
+    {
+        uint32 spawnId;
+        float x, y, z;
+    };
+    std::vector<SpawnSpot> spawnSpots;
 
     bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
     bool IsWalkable() const
@@ -233,6 +242,7 @@ struct DungeonLeadState
     bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
     std::string spreadOffenderTold;  // name of the last bot we pinged about for a too-spread group, "" if none
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
+    uint8 spotIndex = 0;             // which of the step's spawnSpots the walk is on (0 = the row's)
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
     uint32 packId = 0;               // DungeonPack::id of the pack being worked on (0 = none)

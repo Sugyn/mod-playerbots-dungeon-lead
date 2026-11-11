@@ -2504,6 +2504,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.anchorSet = false;
     st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
     st.arrivedTold = false;
+    st.spotIndex = 0;
     st.bestDist = 0.f;
     st.stuckTs = 0;
     st.stuckAttempts = 0;
@@ -2543,7 +2544,7 @@ bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, Dungeo
         {
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
             {
-                DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+                DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
                 if (pack.Exists())
                     SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
             }
@@ -2872,9 +2873,39 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     if (step.kind == DungeonRouteKind::Talk)
         return WalkTalkStep(st, dest, step);
 
+    // A boss with several spawn points: go to the one whose spawn is alive in this instance, when
+    // the map has it loaded; otherwise the walk visits the points nearest first (below).
+    if (!step.spawnSpots.empty())
+    {
+        Map::CreatureBySpawnIdContainer& store = bot->GetMap()->GetCreatureBySpawnIdStore();
+        for (uint32 i = 0; i < step.spawnSpots.size(); ++i)
+        {
+            auto const range = store.equal_range(step.spawnSpots[i].spawnId);
+            bool const live = std::any_of(range.first, range.second,
+                                          [](auto const& kv) { return kv.second && kv.second->IsAlive(); });
+            if (live && i != st.spotIndex)
+            {
+                st.spotIndex = uint8(i);
+                st.arrivedTold = false;
+                RecordEventV2(botAI, "spawn_spot",
+                              DungeonLeadKernel::JsonLine()
+                                  .Str("name", step.boss)
+                                  .Num("step", uint32_t(st.stepIndex))
+                                  .Num("spot", uint32_t(i))
+                                  .Num("spots", uint32_t(step.spawnSpots.size()))
+                                  .Str("how", "live")
+                                  .Done());
+                break;
+            }
+        }
+    }
+    if (st.spotIndex < step.spawnSpots.size())
+        dest = WorldPosition(bot->GetMapId(), step.spawnSpots[st.spotIndex].x, step.spawnSpots[st.spotIndex].y,
+                             step.spawnSpots[st.spotIndex].z, 0.f);
+
     // Pack nodes (pull/boss/interaction) advance only once their pack is Cleared (or Skipped
     // below) - never just because the tank reached the coordinate. Travel nodes have no pack.
-    DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+    DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
     DungeonPackSighting sighting;
     if (pack.Exists())
     {
@@ -2915,6 +2946,20 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // above confirms an actual kill on a later tick. The one exception: if nothing at all shows
         // up here (not even a corpse) after a while, there is nothing left to confirm a kill on, so
         // give up and move on rather than parking here forever.
+        if (DungeonLeadKernel::NextSpawnSpot(sighting.observation.found, st.spotIndex, step.spawnSpots.size()))
+        {
+            ++st.spotIndex;
+            st.arrivedTold = false;
+            RecordEventV2(botAI, "spawn_spot",
+                          DungeonLeadKernel::JsonLine()
+                              .Str("name", step.boss)
+                              .Num("step", uint32_t(st.stepIndex))
+                              .Num("spot", uint32_t(st.spotIndex))
+                              .Num("spots", uint32_t(step.spawnSpots.size()))
+                              .Str("how", "next")
+                              .Done());
+            return true;
+        }
         if (!st.arrivedTold)
         {
             st.arrivedTold = true;

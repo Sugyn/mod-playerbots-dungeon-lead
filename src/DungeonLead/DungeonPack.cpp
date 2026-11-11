@@ -26,7 +26,7 @@ namespace
     constexpr float kPackMemberRadius = 12.0f;
 }
 
-DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)
+DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex, uint32_t spotIndex)
 {
     DungeonPack pack;
     if (stepIndex >= route.steps.size())
@@ -44,6 +44,12 @@ DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)
     pack.x = step.x;
     pack.y = step.y;
     pack.z = step.z;
+    if (spotIndex < step.spawnSpots.size())
+    {
+        pack.x = step.spawnSpots[spotIndex].x;
+        pack.y = step.spawnSpots[spotIndex].y;
+        pack.z = step.spawnSpots[spotIndex].z;
+    }
     pack.probeRadius = kPackProbeRange;
     pack.bossPack = type == DungeonRouteNodeType::Boss;
     pack.optional = !step.IsMandatory();

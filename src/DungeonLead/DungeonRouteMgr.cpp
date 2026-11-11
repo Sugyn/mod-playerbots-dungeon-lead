@@ -118,10 +118,51 @@ void DungeonRouteMgr::Load()
         doorsResolved = uint32(bestDist2.size());
     }
 
+    // Every spawn point of each boss row's creature on its map: a pooled boss is alive at one of
+    // several points per instance, and the row names only one of them. One pass over the loaded
+    // creature spawns, at load time only.
+    std::unordered_map<uint32, std::vector<std::pair<DungeonRouteStep*, uint32>>> bossesByEntry;
+    for (auto& kv : routes)
+        for (DungeonRouteStep& s : kv.second.steps)
+            if (s.kind == DungeonRouteKind::Boss && s.HasPosition())
+                bossesByEntry[s.entry].push_back({&s, kv.second.mapId});
+    uint32 pooledBosses = 0;
+    if (!bossesByEntry.empty())
+    {
+        for (auto const& kv : sObjectMgr->GetAllCreatureData())
+        {
+            auto it = bossesByEntry.find(kv.second.id);
+            if (it == bossesByEntry.end())
+                continue;
+            for (auto const& [s, mapId] : it->second)
+                if (kv.second.mapid == mapId)
+                    s->spawnSpots.push_back({kv.first, kv.second.posX, kv.second.posY, kv.second.posZ});
+        }
+        for (auto& kv : bossesByEntry)
+            for (auto const& [s, mapId] : kv.second)
+            {
+                if (s->spawnSpots.size() <= 1)
+                {
+                    s->spawnSpots.clear();
+                    continue;
+                }
+                auto dist2 = [s = s](DungeonRouteStep::SpawnSpot const& p)
+                {
+                    float const dx = p.x - s->x, dy = p.y - s->y, dz = p.z - s->z;
+                    return dx * dx + dy * dy + dz * dz;
+                };
+                std::sort(s->spawnSpots.begin(), s->spawnSpots.end(),
+                          [&](DungeonRouteStep::SpawnSpot const& a, DungeonRouteStep::SpawnSpot const& b)
+                          { return dist2(a) < dist2(b); });
+                ++pooledBosses;
+            }
+    }
+
     routeRows = count;
     routeDigest = result ? DungeonLeadKernel::Hex64(digest) : std::string("unknown");
     LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind, {}/{} door spawns, "
-             "digest {})", count, routes.size(), unknownKinds, doorsResolved, uint32(doorMap.size()), routeDigest);
+             "{} bosses with several spawn points, digest {})", count, routes.size(), unknownKinds, doorsResolved,
+             uint32(doorMap.size()), pooledBosses, routeDigest);
 }
 
 void DungeonRouteMgr::EnsureLoaded()
