@@ -118,15 +118,13 @@ void DungeonRouteMgr::Load()
         doorsResolved = uint32(bestDist2.size());
     }
 
-    // Every spawn point of each boss or optional row's creature on its map, for creatures with a
-    // few spawn points at most (named mobs; a pooled boss is alive at one of several points per
-    // instance, and the row names only one of them). One pass over the loaded creature spawns, at
-    // load time only.
-    constexpr size_t kMaxUniqueSpawnPoints = 4;
+    // Every spawn point of each boss row's creature on its map: a pooled boss is alive at one of
+    // several points per instance, and the row names only one of them. One pass over the loaded
+    // creature spawns, at load time only.
     std::unordered_map<uint32, std::vector<std::pair<DungeonRouteStep*, uint32>>> bossesByEntry;
     for (auto& kv : routes)
         for (DungeonRouteStep& s : kv.second.steps)
-            if ((s.kind == DungeonRouteKind::Boss || s.kind == DungeonRouteKind::Optional) && s.HasPosition())
+            if (s.kind == DungeonRouteKind::Boss && s.HasPosition())
                 bossesByEntry[s.entry].push_back({&s, kv.second.mapId});
     uint32 pooledBosses = 0;
     if (!bossesByEntry.empty())
@@ -143,8 +141,7 @@ void DungeonRouteMgr::Load()
         for (auto& kv : bossesByEntry)
             for (auto const& [s, mapId] : kv.second)
             {
-                // more spawn points than a pooled boss has: a trash entry, the pack logic handles it
-                if (s->spawnSpots.size() > kMaxUniqueSpawnPoints)
+                if (s->spawnSpots.size() <= 1)
                 {
                     s->spawnSpots.clear();
                     continue;
@@ -157,8 +154,7 @@ void DungeonRouteMgr::Load()
                 std::sort(s->spawnSpots.begin(), s->spawnSpots.end(),
                           [&](DungeonRouteStep::SpawnSpot const& a, DungeonRouteStep::SpawnSpot const& b)
                           { return dist2(a) < dist2(b); });
-                if (s->spawnSpots.size() > 1)
-                    ++pooledBosses;
+                ++pooledBosses;
             }
     }
 
