@@ -1,0 +1,422 @@
+# lfg_id	wing	step	kind	boss_name	note
+# kind: boss | optional | heroic_only | event (scripted/summoned encounter) | door | skip (unsupported, route ends here)
+# ===================== VANILLA =====================
+# Ragefire Chasm (src: warcraft.wiki.gg/Ragefire_Chasm_(Classic))
+4	-	1	boss	Oggleflint
+4	-	2	boss	Taragaman the Hungerer
+4	-	3	boss	Jergosh the Invoker
+4	-	4	boss	Bazzalan	upper walkway
+# Wailing Caverns (src: warcraft.wiki.gg/Wailing_Caverns)
+# The boss order below matches the 15-step route in dungeon_routes.csv/SQL, resolved against
+# offline path checks. This resolver cannot represent the 6 "* (bridge)" navigation-anchor rows the
+# route also has (source=derived, entry=1 stock waypoint template, fixed path-checked x/y/z, not a
+# resolvable creature spawn) - resolve_routes.py refuses to overwrite dungeon_routes.csv rather
+# than silently drop them. Do not "fix" that refusal by --force-regenerating from this file;
+# reconcile it to carry the bridge anchors first, or edit the CSV/SQL by hand.
+1	-	1	boss	Lady Anacondra	Screaming Gully
+1	-	2	optional	Kresh	river turtle
+1	-	3	boss	Lord Cobrahn	Fanglord 1/4, navmesh dead-end - see CSV note
+1	-	4	optional	Verdan the Everliving	Fanglord 2/4
+1	-	5	boss	Lord Serpentis	Fanglord 3/4
+1	-	6	boss	Lord Pythas	Fanglord 4/4
+1	-	7	optional	Skum	navmesh dead-end off Pythas - see CSV note
+1	-	8	event	Disciple of Naralex	escort from entrance after 4 Fanglords -> spawns Mutanus
+1	-	9	event	Mutanus the Devourer	script-spawned by escort
+# Deadmines (src: warcraft.wiki.gg/Deadmines_(Classic))
+6	-	1	boss	Rhahk'Zor
+6	-	2	boss	Sneed's Shredder	Sneed pops out after shredder dies (script)
+6	-	3	optional	Goblin Craftsman	goblin foundry: the ramp's goblins are pulled one by one before Gilnid, or they join him
+6	-	4	optional	Goblin Craftsman	goblin foundry: ramp 2
+6	-	5	optional	Goblin Craftsman	goblin foundry: ramp 3
+6	-	6	optional	Goblin Engineer	goblin foundry: bottom of the ramp
+6	-	7	optional	Goblin Craftsman	goblin foundry: floor west
+6	-	8	optional	Goblin Engineer	goblin foundry: floor centre
+6	-	9	optional	Goblin Engineer	goblin foundry: floor north
+6	-	10	optional	Goblin Craftsman	goblin foundry: by Gilnid north
+6	-	11	optional	Goblin Craftsman	goblin foundry: by Gilnid south
+6	-	12	boss	Gilnid
+6	-	13	use	Defias Gunpowder	powder keg - opening it brings Defias Taskmasters
+6	-	14	use	Defias Cannon	loaded with the gunpowder - blows the Iron Clad Door
+6	-	15	door	Iron door to Ironclad Cove	Defias Gunpowder on cannon / rogue lockpick
+6	-	16	boss	Mr. Smite	stealthed elites first
+6	-	17	boss	Captain Greenskin	on ship
+6	-	18	boss	Edwin VanCleef	cabin; adds
+6	-	19	optional	Cookie	after VanCleef
+# Shadowfang Keep (src: warcraft.wiki.gg/Shadowfang_Keep_(Classic))
+8	-	1	boss	Rethilgore
+8	-	2	talk	Deathstalker Adamant	Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
+8	-	3	talk	Sorcerer Ashcrombe	Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore
+8	-	4	door	Courtyard door	opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
+8	-	5	optional	Slavering Worg	courtyard: worg by the door - the courtyard packs are pulled one by one - not crossed
+8	-	6	optional	Shadowfang Moonwalker	courtyard: pair west of the fountain
+8	-	7	optional	Slavering Worg	courtyard: worg + moonwalkers east
+8	-	8	optional	Haunted Servitor	courtyard: servitor + worg patrol at the fountain
+8	-	9	optional	Shadowfang Moonwalker	courtyard: north of the fountain
+8	-	10	optional	Shadowfang Moonwalker	courtyard: moonwalker + worg north-east
+8	-	11	optional	Fel Steed	courtyard: fel steeds + moonwalker below Razorclaw
+8	-	12	boss	Razorclaw the Butcher
+8	-	13	boss	Baron Silverlaine
+8	-	14	boss	Commander Springvale
+8	-	15	boss	Odo the Blindwatcher
+8	-	16	boss	Fenrus the Devourer
+8	-	17	boss	Wolf Master Nandos	kills opens Arugal's door
+8	-	18	boss	Archmage Arugal
+# Blackfathom Deeps (src: warcraft.wiki.gg/Blackfathom_Deeps_(Classic))
+10	-	1	boss	Ghamoo-ra
+10	-	2	optional	Lady Sarevess	side cavern
+10	-	3	boss	Gelihast
+10	-	4	boss	Lorgus Jett	3 possible spawns
+10	-	5	optional	Baron Aquanis	quest summon
+10	-	6	optional	Old Serra'kis	underwater
+10	-	7	boss	Twilight Lord Kelris
+10	-	8	event	Altar candles	light 4 braziers -> waves -> spawns Aku'mai
+10	-	9	event	Aku'mai	script-spawned
+# Stormwind Stockade (src: warcraft.wiki.gg/Stormwind_Stockade_(Classic); Targorr and Kam have variable spawn locations (several cells) and the dungeon branches into east/west wings, so encounter order may vary. Listed: east wing (Hamhock, Bazil Thredd) first, then west wing (Dextren Ward).)
+12	-	1	boss	Targorr the Dread	variable cell
+12	-	2	boss	Kam Deepfury	variable cell
+12	-	3	boss	Hamhock	east/right wing
+12	-	4	boss	Bazil Thredd	beyond Hamhock, east wing
+12	-	5	boss	Dextren Ward	end of west/left wing
+12	-	6	optional	Bruegal Ironknuckle	rare
+# Gnomeregan (src: warcraft.wiki.gg/Gnomeregan_(instance))
+14	-	1	optional	Viscous Fallout	Hall of Gears
+14	-	2	event	Blastmaster Emi Shortfuse	Grubbis event (script-spawned Grubbis)
+14	-	3	event	Grubbis
+14	-	4	boss	Electrocutioner 6000
+14	-	5	boss	Crowd Pummeler 9-60
+14	-	6	optional	Dark Iron Ambassador	rare
+14	-	7	boss	Mekgineer Thermaplugg	buttons must be pressed during fight (scripted)
+# Razorfen Kraul (src: warcraft.wiki.gg/Razorfen_Kraul_(Classic))
+16	-	1	boss	Roogug
+16	-	2	boss	Aggem Thorncurse
+16	-	3	boss	Overlord Ramtusk
+16	-	4	boss	Death Speaker Jargba
+16	-	5	optional	Earthcaller Halmgar	rare
+16	-	6	boss	Agathelos the Raging
+16	-	7	optional	Blind Hunter	rare
+16	-	8	boss	Charlga Razorflank
+# Scarlet Monastery wings (src: warcraft.wiki.gg/Scarlet_Monastery_Graveyard|Library|Armory|Cathedral)
+18	Graveyard	1	boss	Interrogator Vishas
+18	Graveyard	2	optional	Ironspine	rare, Forlorn Cloister
+18	Graveyard	3	optional	Azshir the Sleepless	rare
+18	Graveyard	4	optional	Fallen Champion	rare
+18	Graveyard	5	boss	Bloodmage Thalnos
+165	Library	1	boss	Houndmaster Loksey
+165	Library	2	boss	Arcanist Doan	drops Scarlet Key
+163	Armory	1	boss	Herod	Scarlet Key door
+164	Cathedral	1	optional	High Inquisitor Fairbanks	hidden room
+164	Cathedral	2	boss	Scarlet Commander Mograine	clear whole cathedral first
+164	Cathedral	3	event	High Inquisitor Whitemane	enters + resurrects Mograine (scripted)
+# Razorfen Downs (src: warcraft.wiki.gg/Razorfen_Downs_(Classic))
+20	-	1	event	Tuten'kash	gong summons (script)
+20	-	2	boss	Mordresh Fire Eye	Bone Pile
+20	-	3	boss	Glutton
+20	-	4	optional	Ragglesnout	rare, 3 spots
+20	-	5	boss	Amnennar the Coldbringer
+20	-	6	optional	Plaguemaw the Rotting	quest event
+# Uldaman (src: icy-veins.com/wow-classic/uldaman-dungeon-guide)
+22	-	1	boss	Baelog	with Eric "The Swift" + Olaf
+22	-	2	boss	Revelosh
+22	-	3	optional	Ironaya	door needs Staff of Prehistoria
+22	-	4	boss	Ancient Stone Keeper
+22	-	5	boss	Galgann Firehammer
+22	-	6	boss	Grimlok
+22	-	7	event	Archaedas	altar click starts encounter
+# Zul'Farrak (src: warcraft.wiki.gg/Zul'Farrak)
+24	-	1	boss	Theka the Martyr
+24	-	2	boss	Antu'sul
+24	-	3	boss	Witch Doctor Zum'rah
+24	-	4	boss	Sandfury Executioner	pyramid top, drops Executioner's Key
+24	-	5	use	Troll Cage	opened with Executioner's Key - the waves come up the stairs at once
+24	-	6	talk	Weegli Blastfuse	once the crew is downstairs: he blows the End Door - first, or he turns hostile with Bly
+24	-	7	talk	Sergeant Bly	after Weegli: Bly and his crew turn hostile
+24	-	8	required	Sergeant Bly	fought where the crew waits downstairs
+24	-	9	event	Nekrum Gutchewer	wave 3
+24	-	10	event	Shadowpriest Sezz'ziz	wave 3
+24	-	11	door	End Door	blown by Weegli; Ukorz is behind it
+24	-	12	boss	Chief Ukorz Sandscalp	with Ruuzlu
+24	-	13	optional	Hydromancer Velratha
+24	-	14	optional	Gahz'rilla	Mallet summon
+# Maraudon LFD wings (src: icy-veins hub + almarsguides; patch 4.0.3a notes: Tinkerer Gizlock "moved from Earth Song Falls to the Wicked Grotto" -> in 3.3.5a he is in Earth Song Falls. Celebras the Cursed was not part of any 3.3.5 LFD wing.)
+26	Foulspore Cavern	1	boss	Noxxion	Orange Crystals
+26	Foulspore Cavern	2	boss	Razorlash
+272	Wicked Grotto	1	boss	Lord Vyletongue	Purple Crystals
+273	Earth Song Falls	1	optional	Celebras the Cursed	optional/shared, not assigned to a specific 3.3.5 LFD wing (Poison Falls, between outer wings and inner)
+273	Earth Song Falls	2	boss	Tinkerer Gizlock	Earth Song Falls in 3.3.5a (moved to Wicked Grotto only in 4.0.3a)
+273	Earth Song Falls	3	boss	Landslide
+273	Earth Song Falls	4	optional	Rotgrip	lake
+273	Earth Song Falls	5	boss	Princess Theradras
+# Sunken Temple (src: warcraft.wiki.gg/Temple_of_Atal'Hakkar_(Classic))
+28	-	1	boss	Loro	Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route
+28	-	2	boss	Gasher	Atal'ai Defender 2/6
+28	-	3	boss	Zolo	Atal'ai Defender 3/6
+28	-	4	boss	Mijan	Atal'ai Defender 4/6
+28	-	5	boss	Zul'Lor	Atal'ai Defender 5/6
+28	-	6	boss	Hukku	Atal'ai Defender 6/6 -> Jammal'an shield drops
+28	-	7	boss	Jammal'an the Prophet	with Ogom the Wretched
+28	-	8	optional	Dreamscythe
+28	-	9	optional	Weaver
+28	-	10	optional	Morphaz
+28	-	11	optional	Hazzas
+28	-	12	boss	Shade of Eranikus
+28	-	13	optional	Atal'alarion	statue puzzle, basement
+28	-	14	optional	Avatar of Hakkar	quest event
+# Blackrock Depths Prison / Detention Block (src: icy-veins.com/wow-classic/blackrock-depths-detention-block-dungeon-guide; LFD level ranges 47-57 / 51-61 come from LFGDungeons.dbc. Lower BRD is non-linear; this is a progression/content list, LFD completion is tied to High Interrogator Gerstahn (Prison) and Emperor Dagran Thaurissan (Upper City).)
+30	Prison	1	boss	High Interrogator Gerstahn	LFD completion boss for Prison
+30	Prison	2	boss	Lord Roccor
+30	Prison	3	boss	Houndmaster Grebmar
+30	Prison	4	event	Ring of Law	arena, random boss (Anub'shiah/Eviscerator/Gorosh/Grizzle/Hedrum/Ok'thor)
+30	Prison	5	optional	Fineous Darkvire	Dark Iron Legacy / Shadowforge Key
+30	Prison	6	boss	Pyromancer Loregrain
+30	Prison	7	boss	Bael'Gar
+30	Prison	8	boss	Lord Incendius
+30	Prison	9	optional	Warder Stilgiss	with Verek
+30	Prison	10	optional	Watchman Doomgrip	event: spawns when relic coffers are opened (12 keys)
+# Blackrock Depths Upper City (src: icy-veins.com/wow-classic/blackrock-depths-upper-city-dungeon-guide)
+276	Upper	1	boss	General Angerforge
+276	Upper	2	boss	Golem Lord Argelmach
+276	Upper	3	optional	Ribbly Screwspigot	Grim Guzzler
+276	Upper	4	optional	Phalanx	Grim Guzzler
+276	Upper	5	optional	Hurley Blackbreath	Grim Guzzler
+276	Upper	6	door	Grim Guzzler back door	Plugger bar fight / Rocknot event; Bar Door; lock 739 = Grim Guzzler Key (11602); opened by the Plugger bar-fight script
+276	Upper	7	boss	Ambassador Flamelash
+276	Upper	8	optional	Panzor the Invincible	rare
+276	Upper	9	event	Doom'rel	Chest of the Seven (7 dwarves sequential)
+276	Upper	10	boss	Magmus	Lyceum gauntlet before
+276	Upper	11	boss	Emperor Dagran Thaurissan	LFD completion boss for Upper City; with Princess Moira Bronzebeard; High Priestess of Thaurissan spawns
+# Lower Blackrock Spire (src: warcraft.wiki.gg/Lower_Blackrock_Spire)
+32	-	1	boss	Highlord Omokk
+32	-	2	boss	Shadow Hunter Vosh'gajin
+32	-	3	boss	War Master Voone
+32	-	4	boss	Mother Smolderweb
+32	-	5	optional	Halycon
+32	-	6	boss	Quartermaster Zigris
+32	-	7	optional	Gizrul the Slavener	spawns after Halycon
+32	-	8	boss	Overlord Wyrmthalak
+# Scholomance (src: warcraft.wiki.gg/Scholomance_(Classic))
+2	-	1	optional	Kirtonos the Herald	summon (Blood of Innocents)
+2	-	2	boss	Jandice Barov
+2	-	3	boss	Rattlegore	drops Viewing Room Key
+2	-	4	door	Viewing Room door	Rattlegore key
+2	-	5	boss	Marduk Blackpool
+2	-	6	boss	Vectus
+2	-	7	boss	The Ravenian
+2	-	8	boss	Lord Alexei Barov
+2	-	9	boss	Instructor Malicia
+2	-	10	boss	Doctor Theolen Krastinov
+2	-	11	boss	Lorekeeper Polkelt
+2	-	12	boss	Lady Illucia Barov
+2	-	13	boss	Ras Frostwhisper
+2	-	14	event	Darkmaster Gandling	spawns after all six
+# Stratholme Main Gate / Live (src: icy-veins.com/wow-classic/stratholme-live-dungeon-guide)
+40	Live	1	optional	Timmy the Cruel	script-spawned in Market Row
+40	Live	2	optional	The Unforgiven
+40	Live	3	optional	Postmaster Malown	summon via postboxes
+40	Live	4	door	Scarlet Bastion gate	Scarlet Key / Crusaders' Square; The Bastion Door; lock 299 = The Scarlet Key (7146)
+40	Live	5	boss	Cannon Master Willey
+40	Live	6	optional	Crimson Hammersmith	summon
+40	Live	7	boss	Archivist Galford
+40	Live	8	boss	Grand Crusader Dathrohan	-> Balnazzar at 50%
+# Stratholme Service Entrance / Undead (src: icy-veins.com/wow-classic/stratholme-undead-dungeon-guide)
+274	Undead	1	event	Magistrate Barthilas	flees on first contact
+274	Undead	2	optional	Stonespine	rare
+274	Undead	3	boss	Baroness Anastari	ziggurat 1
+274	Undead	4	boss	Nerub'enkan	ziggurat 2
+274	Undead	5	boss	Maleki the Pallid	ziggurat 3 -> Slaughter Square gate opens
+274	Undead	6	boss	Magistrate Barthilas	rematch
+274	Undead	7	event	Ramstein the Gorger	after abominations
+274	Undead	8	boss	Baron Rivendare	45-min timer for quest only
+# Dire Maul wings (src: warcraft.wiki.gg/Dire_Maul)
+34	East	1	event	Pusillin	chase, Crescent Key
+34	East	2	optional	Lethtendris	with Pimgib
+34	East	3	optional	Hydrospawn
+34	East	4	optional	Zevrim Thornhoof
+34	East	5	skip	Alzzin door	Old Ironbark opens after Zevrim; unsupported: Alzzin door; opened by an Old Ironbark gossip event; no verified door object
+34	East	6	boss	Alzzin the Wildshaper
+36	West	1	skip	Crescent Key door	unsupported: Crescent Key door - two candidates (177221; 179550) in this wing; which one is step 1 is unverified
+36	West	2	optional	Tendris Warpwood
+36	West	3	optional	Tsu'zee	rare
+36	West	4	optional	Magister Kalendris
+36	West	5	optional	Illyanna Ravenoak	with Ferra
+36	West	6	optional	Immol'thar	5 pylons
+36	West	7	boss	Prince Tortheldrin
+38	North	1	door	Crescent Key door	Door 179549; lock 1562 = Crescent Key (18249); the only Crescent Key door within 390 yd of this wing's route
+38	North	2	optional	Guard Mol'dar
+38	North	3	optional	Stomper Kreeg
+38	North	4	optional	Guard Fengus
+38	North	5	optional	Guard Slip'kik
+38	North	6	optional	Captain Kromcrush
+38	North	7	optional	Cho'Rush the Observer
+38	North	8	boss	King Gordok
+# Holiday bosses (type 1, level 78-82)
+285	-	1	event	Headless Horseman	Hallow's End only
+287	-	1	event	Coren Direbrew	Brewfest only
+286	-	1	event	Lord Ahune	Midsummer only
+288	-	1	event	Apothecary Hummel	Love is in the Air only
+# ===================== TBC (normal ids; heroics derived by map) =====================
+136	-	1	boss	Watchkeeper Gargolmar
+136	-	2	boss	Vazruden the Herald	Nazan lands after Vazruden dismounts (script)
+136	-	3	boss	Omor the Unscarred
+137	-	1	boss	The Maker
+137	-	2	event	Broggok	cell waves lever
+137	-	3	boss	Keli'dan the Breaker	channelers first
+138	-	1	boss	Grand Warlock Nethekurse
+138	-	2	event	Gauntlet of Flame	archers gauntlet
+138	-	3	heroic_only	Blood Guard Porung
+138	-	4	boss	Warbringer O'mrogg
+138	-	5	boss	Warchief Kargath Bladefist
+140	-	1	optional	Slave Pens path start to Mennu 1	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	2	optional	Slave Pens path start to Mennu 2	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	3	optional	Slave Pens path start to Mennu 3	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	4	optional	Slave Pens path start to Mennu 4	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	5	optional	Slave Pens path start to Mennu 5	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	6	optional	Slave Pens path start to Mennu 6	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	7	optional	Slave Pens path start to Mennu 7	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	8	optional	Slave Pens path start to Mennu 8	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	9	optional	Slave Pens path start to Mennu 9	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	10	optional	Slave Pens path start to Mennu 10	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	11	optional	Slave Pens path start to Mennu 11	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	12	optional	Slave Pens path start to Mennu 12	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	13	optional	Slave Pens path start to Mennu 13	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	14	optional	Slave Pens path start to Mennu 14	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	15	optional	Slave Pens path start to Mennu 15	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	16	optional	Slave Pens path start to Mennu 16	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	17	boss	Mennu the Betrayer
+140	-	18	optional	Slave Pens path Mennu to Rokmar 1	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	19	optional	Slave Pens path Mennu to Rokmar 2	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	20	optional	Slave Pens path Mennu to Rokmar 3	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	21	optional	Slave Pens path Mennu to Rokmar 4	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	22	optional	Slave Pens path Mennu to Rokmar 5	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	23	optional	Slave Pens path Mennu to Rokmar 6	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	24	optional	Slave Pens path Mennu to Rokmar 7	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	25	optional	Slave Pens path Mennu to Rokmar 8	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	26	optional	Slave Pens path Mennu to Rokmar 9	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	27	optional	Slave Pens path Mennu to Rokmar 10	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	28	optional	Slave Pens path Mennu to Rokmar 11	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	29	optional	Slave Pens path Mennu to Rokmar 12	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	30	optional	Slave Pens path Mennu to Rokmar 13	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	31	optional	Slave Pens path Mennu to Rokmar 14	path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+140	-	32	boss	Rokmar the Crackler
+140	-	33	optional	Slave Pens path Rokmar to Quagmirran 1	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	34	optional	Slave Pens path Rokmar to Quagmirran 2	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	35	optional	Slave Pens path Rokmar to Quagmirran 3	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	36	optional	Slave Pens path Rokmar to Quagmirran 4	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	37	optional	Slave Pens path Rokmar to Quagmirran 5	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	38	optional	Slave Pens path Rokmar to Quagmirran 6	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	39	optional	Slave Pens path Rokmar to Quagmirran 7	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	40	optional	Slave Pens path Rokmar to Quagmirran 8	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	41	optional	Slave Pens path Rokmar to Quagmirran 9	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	42	optional	Slave Pens path Rokmar to Quagmirran 10	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	43	optional	Slave Pens path Rokmar to Quagmirran 11	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	44	optional	Slave Pens path Rokmar to Quagmirran 12	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	45	optional	Slave Pens path Rokmar to Quagmirran 13	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	46	optional	Slave Pens path Rokmar to Quagmirran 14	path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+140	-	47	boss	Quagmirran
+146	-	1	boss	Hungarfen
+146	-	2	boss	Ghaz'an
+146	-	3	boss	Swamplord Musel'ek	with Claw
+146	-	4	boss	The Black Stalker
+147	-	1	boss	Hydromancer Thespia
+147	-	2	boss	Mekgineer Steamrigger
+147	-	3	skip	Control panels	2 panels behind first two bosses; unsupported: 2 access panels (184125; 184126) open the Main Chambers Door by script; not a door the leader can open
+147	-	4	boss	Warlord Kalithresh
+148	-	1	optional	Ethereal Scavenger	pack that joins Pandemonius as adds
+148	-	2	optional	Ethereal Scavenger	pack that joins Pandemonius as adds
+148	-	3	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joins him as adds
+148	-	4	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joins him as adds
+148	-	5	boss	Pandemonius
+148	-	6	optional	Mana Leech	pack on the way to Tavarok
+148	-	7	optional	Ethereal Priest	pack on the way to Tavarok
+148	-	8	optional	Ethereal Priest	pack on the way to Tavarok
+148	-	9	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joins him as adds
+148	-	10	optional	Nexus Terror	pack on the way to Tavarok
+148	-	11	optional	Ethereal Darkcaster	pack on the way to Tavarok
+148	-	12	optional	Ethereal Sorcerer	pack of 7 next to Pandemonius; joins him as adds
+148	-	13	boss	Tavarok
+148	-	15	optional	Ethereal Spellbinder	pack on the way to Shaffar
+148	-	16	optional	Nexus Stalker	pack on the way to Shaffar
+148	-	17	optional	Ethereal Spellbinder	pack on the way to Shaffar
+148	-	18	optional	Ethereal Spellbinder	pack on the way to Shaffar
+148	-	19	boss	Nexus-Prince Shaffar
+149	-	1	boss	Shirrak the Dead Watcher
+149	-	2	boss	Exarch Maladaar
+150	-	1	boss	Darkweaver Syth
+150	-	2	heroic_only	Anzu	summon, druid quest
+150	-	3	boss	Talon King Ikiss
+151	-	1	event	Ambassador Hellmaw	freed after banishers
+151	-	2	boss	Blackheart the Inciter
+151	-	3	boss	Grandmaster Vorpil
+151	-	4	boss	Murmur
+172	-	1	boss	Gatewatcher Gyro-Kill
+172	-	2	optional	Nethermancer Sepethrea
+172	-	3	optional	Mechano-Lord Capacitus
+172	-	4	boss	Gatewatcher Iron-Hand
+172	-	5	skip	Elevator	after both gatewatchers; unsupported: elevator (Doodad_FactoryElevator01; a transport) - no door object to open
+172	-	6	boss	Pathaleon the Calculator
+173	-	1	optional	Commander Sarannis
+173	-	2	boss	Warp Splinter
+173	-	3	optional	Laj
+173	-	4	optional	Thorngrin the Tender
+173	-	5	optional	High Botanist Freywinn
+174	-	1	boss	Zereketh the Unbound
+174	-	2	boss	Wrath-Scryer Soccothrates
+174	-	3	boss	Dalliah the Doomsayer
+174	-	4	event	Warden Mellichar	cell event -> Harbinger Skyriss
+174	-	5	event	Harbinger Skyriss	script-spawned
+170	-	1	skip	Escape from Durnholde	event dungeon: barrels -> Lieutenant Drake -> Captain Skarloc -> Thrall escort -> Epoch Hunter
+171	-	1	skip	The Black Morass	event dungeon: 18 waves, Chrono Lord Deja(6) / Temporus(12) / Aeonus(18), protect Medivh
+198	-	1	boss	Selin Fireheart
+198	-	2	boss	Vexallus
+198	-	3	boss	Priestess Delrissa	council
+198	-	4	boss	Kael'thas Sunstrider
+# ===================== WOTLK (normal ids; heroics derived by map) =====================
+202	-	1	boss	Prince Keleseth
+202	-	2	boss	Skarvald the Constructor	with Dalronn the Controller
+202	-	3	boss	Ingvar the Plunderer
+203	-	1	event	Svala Sorrowgrave	ritual (script-spawned)
+203	-	2	event	Gortok Palehoof	animal gauntlet
+203	-	3	event	Skadi the Ruthless	gauntlet + harpoons
+203	-	4	boss	King Ymiron
+225	-	1	heroic_only	Commander Kolurg	Horde sees Kolurg / Alliance sees Commander Stoutbeard
+225	-	2	boss	Grand Magus Telestra
+225	-	3	boss	Anomalus
+225	-	4	boss	Ormorok the Tree-Shaper
+225	-	5	boss	Keristrasza	freed after previous three
+206	-	1	boss	Drakos the Interrogator
+206	-	2	skip	The Oculus	vehicle dungeon after Drakos: Varos Cloudstrider -> Mage-Lord Urom -> Ley-Guardian Eregos on drakes
+209	-	1	skip	The Culling of Stratholme	event dungeon: Arthas escort, Meathook -> Salramm -> Chrono-Lord Epoch -> (Infinite Corruptor H) -> Mal'Ganis
+208	-	1	boss	Krystallus
+208	-	2	boss	Maiden of Grief
+208	-	3	event	Brann Bronzebeard	Tribunal of Ages escort, opens Sjonnir door
+208	-	4	boss	Sjonnir The Ironshaper
+214	-	1	boss	Trollgore
+214	-	2	event	Novos the Summoner	waves
+214	-	3	boss	King Dred
+214	-	4	boss	The Prophet Tharon'ja
+204	-	1	boss	Krik'thir the Gatewatcher	watchers Gashra/Narjil/Silthik first
+204	-	2	optional	Hadronox	web climb
+204	-	3	boss	Anub'arak
+207	-	1	boss	General Bjarngrim	patrols
+207	-	2	boss	Volkhan
+207	-	3	boss	Ionar
+207	-	4	boss	Loken
+216	-	1	boss	Slad'ran
+216	-	2	boss	Moorabi
+216	-	3	boss	Drakkari Colossus
+216	-	4	skip	Altar bridge	3 altars -> bridge to Gal'darah; unsupported: 3 altars (192518-192520) must be used to raise the bridge (193188); altars are not walked
+216	-	5	boss	Gal'darah
+216	-	6	heroic_only	Eck the Ferocious
+220	-	1	skip	The Violet Hold	event dungeon: 18 waves, 2 random of Erekem/Moragg/Ichoron/Xevozz/Lavanthor/Zuramat, Cyanigosa
+218	-	1	optional	Elder Nadox
+218	-	2	optional	Jedoga Shadowseeker
+218	-	3	boss	Prince Taldaram	2 spheres open door
+218	-	4	heroic_only	Amanitar
+218	-	5	boss	Herald Volazj
+251	-	1	boss	Bronjahm
+251	-	2	boss	Devourer of Souls
+245	-	1	skip	Trial of the Champion	event dungeon: jousting Grand Champions -> Eadric/Paletress -> The Black Knight
+253	-	1	boss	Forgemaster Garfrost
+253	-	2	boss	Ick	with Krick
+253	-	3	event	Tunnel gauntlet	cave-in, run through
+253	-	4	boss	Scourgelord Tyrannus	with Rimefang
+255	-	1	skip	Halls of Reflection	event dungeon: 10 waves, Falric(5) / Marwyn(10), Lich King escape

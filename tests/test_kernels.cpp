@@ -1,0 +1,1786 @@
+// Unit tests for src/DungeonLead/DungeonLeadKernels.h - no worldserver needed.
+// Run: tools/run_tests.sh
+
+#include "DungeonLeadKernels.h"
+#include "DungeonRouteTypes.h"
+#include "DungeonTelemetryBuffer.h"
+#include "DungeonTelemetryV2.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <string>
+
+using namespace DungeonLeadKernel;
+
+namespace
+{
+    int g_failures = 0;
+    int g_checks = 0;
+
+    void Check(bool ok, char const* what)
+    {
+        ++g_checks;
+        if (!ok)
+        {
+            ++g_failures;
+            std::printf("FAIL: %s\n", what);
+        }
+    }
+
+    LeadershipPolicy const kPolicy{5000, 3};
+
+    LeadershipObservation Obs(bool targetIsLeader, uint32_t ms, uint8_t attempts)
+    {
+        LeadershipObservation o;
+        o.targetIsLeader = targetIsLeader;
+        o.msSinceRequest = ms;
+        o.attempts = attempts;
+        return o;
+    }
+
+    void TestLeadership()
+    {
+        // tank already leader / transfer landed
+        Check(DecideLeadership(Obs(true, 0, 1), kPolicy) == LeadershipStep::Confirmed, "transfer observed -> Confirmed");
+        Check(DecideLeadership(Obs(true, 99999, 3), kPolicy) == LeadershipStep::Confirmed,
+              "observed even after timeout -> Confirmed (late success still counts)");
+
+        // queued, not yet observed
+        Check(DecideLeadership(Obs(false, 0, 1), kPolicy) == LeadershipStep::Wait, "just requested -> Wait");
+        Check(DecideLeadership(Obs(false, 4999, 1), kPolicy) == LeadershipStep::Wait, "inside timeout -> Wait");
+
+        // queued transfer never confirms (or the enqueue itself failed)
+        Check(DecideLeadership(Obs(false, 5000, 1), kPolicy) == LeadershipStep::Retry, "timeout, 1/3 -> Retry");
+        Check(DecideLeadership(Obs(false, 5000, 2), kPolicy) == LeadershipStep::Retry, "timeout, 2/3 -> Retry");
+        Check(DecideLeadership(Obs(false, 5000, 3), kPolicy) == LeadershipStep::GiveUp, "timeout, 3/3 -> GiveUp");
+
+        // retry succeeds
+        Check(DecideLeadership(Obs(true, 100, 2), kPolicy) == LeadershipStep::Confirmed, "second attempt lands -> Confirmed");
+
+        // can no longer succeed
+        LeadershipObservation gone = Obs(false, 0, 1);
+        gone.targetEligible = false;
+        Check(DecideLeadership(gone, kPolicy) == LeadershipStep::Abandon, "target left the group -> Abandon");
+        LeadershipObservation contested = Obs(false, 0, 1);
+        contested.thirdPartyIsLeader = true;
+        Check(DecideLeadership(contested, kPolicy) == LeadershipStep::Abandon, "third party took the lead -> Abandon");
+
+        // handback (same decision, target = original leader). A failed enqueue is counted as an
+        // attempt and looks exactly like a request that was never observed: wait, then retry.
+        Check(DecideLeadership(Obs(false, 100, 1), kPolicy) == LeadershipStep::Wait,
+              "handback enqueue failed -> Wait, not an immediate GiveUp");
+        Check(DecideLeadership(Obs(false, 5000, 1), kPolicy) == LeadershipStep::Retry,
+              "handback enqueue failed, timeout -> Retry");
+        Check(DecideLeadership(Obs(true, 300, 2), kPolicy) == LeadershipStep::Confirmed,
+              "handback retry succeeds -> Confirmed");
+        LeadershipObservation masterLeft = Obs(false, 0, 1);
+        masterLeft.targetEligible = false;
+        Check(DecideLeadership(masterLeft, kPolicy) == LeadershipStep::Abandon,
+              "handback target left/disconnected -> Abandon");
+
+        // bounded: a single attempt policy gives up after its first timeout
+        Check(DecideLeadership(Obs(false, 5000, 1), LeadershipPolicy{5000, 1}) == LeadershipStep::GiveUp,
+              "maxAttempts=1 -> GiveUp after first timeout");
+    }
+
+    MemberFacts M(bool isHealer, bool alive, bool sameMap)
+    {
+        MemberFacts m;
+        m.isHealer = isHealer;
+        m.alive = alive;
+        m.sameMap = sameMap;
+        return m;
+    }
+
+    void TestHealer()
+    {
+        MemberFacts const tank = M(false, true, true);
+        MemberFacts const dps = M(false, true, true);
+
+        Check(EvaluateHealer({tank, M(true, true, true), dps}) == HealerAvailability::Available,
+              "healer alive and nearby -> Available");
+        Check(EvaluateHealer({tank, M(true, false, true), dps}) == HealerAvailability::Unavailable,
+              "healer dead -> Unavailable");
+        // a ghost is DeathState::Dead in AzerothCore, i.e. alive=false - and usually on the
+        // graveyard's map too
+        Check(EvaluateHealer({tank, M(true, false, false), dps}) == HealerAvailability::Unavailable,
+              "healer ghost -> Unavailable");
+        Check(EvaluateHealer({tank, M(true, true, false), dps}) == HealerAvailability::Unavailable,
+              "healer on another map -> Unavailable");
+        // low mana is HealerManaLow()'s job, not an availability failure
+        Check(EvaluateHealer({tank, M(true, true, true), dps}) == HealerAvailability::Available,
+              "healer low mana -> still Available");
+        Check(EvaluateHealer({tank, dps, dps}) == HealerAvailability::NoHealerRole, "no healer role -> NoHealerRole");
+        Check(EvaluateHealer({}) == HealerAvailability::NoHealerRole, "empty roster -> NoHealerRole");
+        Check(EvaluateHealer({tank, M(true, false, true), M(true, true, true)}) == HealerAvailability::Available,
+              "two healers, one dead -> Available");
+        Check(EvaluateHealer({M(true, false, true), M(true, true, false)}) == HealerAvailability::Unavailable,
+              "two healers, both unusable -> Unavailable");
+    }
+}
+
+namespace
+{
+    // leader (tank) + master (player, dps) + healer + 2 dps, all alive, together, rested
+    PartyFacts Party()
+    {
+        PartyFacts f;
+        f.hasGroup = true;
+        f.master.assigned = true;
+        f.master.online = true;
+        f.master.alive = true;
+        f.master.inGroup = true;
+        f.master.sameMap = true;
+        f.master.distance = 10.0f;
+        for (int i = 0; i < 5; ++i)
+        {
+            PartyMemberFacts m;
+            m.isSelf = i == 0;
+            m.isMaster = i == 1;
+            m.isHealerBySpec = m.isHealerRole = i == 2;
+            m.alive = true;
+            m.sameMap = true;
+            m.distance = i == 0 ? 0.0f : 10.0f;
+            f.members.push_back(m);
+        }
+        return f;
+    }
+
+    ReadinessPolicy const kReady{20.0f, 60.0f, 40.0f, 90.0f};
+
+    ReadyStatus Walk(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Walk).status; }
+    ReadyStatus Pull(PartyFacts const& f) { return EvaluateReadiness(f, kReady, ReadyPurpose::Pull).status; }
+
+    // A new pull needs a healer in sight of the tank and within reach; walking does not.
+    void TestHealerReach()
+    {
+        PartyFacts f = Party();
+        Check(Pull(f) == ReadyStatus::Ready, "healer in sight at 10 yd -> ready");
+        f.members[2].lineOfSight = false;
+        Check(Pull(f) == ReadyStatus::HealerOutOfReach, "healer behind a wall -> hold the pull");
+        Check(EvaluateReadiness(f, kReady, ReadyPurpose::Pull).offender == 2, "the healer is named");
+        Check(Walk(f) == ReadyStatus::Ready, "walking is not held by it");
+        f.members[2].lineOfSight = true;
+        f.members[2].distance = 41.0f;
+        Check(Pull(f) != ReadyStatus::Ready, "healer beyond 40 yd -> not ready to pull");
+        f.members[2].distance = 39.0f;
+        Check(Pull(f) == ReadyStatus::Ready, "healer back in reach -> ready");
+        // a second healer in reach is enough
+        PartyFacts two = Party();
+        two.members[3].isHealerBySpec = true;
+        two.members[2].lineOfSight = false;
+        Check(Pull(two) == ReadyStatus::Ready, "one of two healers in reach -> ready");
+        // no healer in the party: not held here
+        PartyFacts none = Party();
+        none.members[2].isHealerBySpec = none.members[2].isHealerRole = false;
+        none.members[2].lineOfSight = false;
+        Check(Pull(none) == ReadyStatus::Ready, "healer-less party -> unchanged");
+        Check(std::string(ToString(ReadyStatus::HealerOutOfReach)).find("healer") != std::string::npos, "named");
+    }
+
+    void TestReadiness()
+    {
+        Check(CombatCounts(true, true, 999999), "fighting an enemy: in combat");
+        Check(CombatCounts(true, false, 5000), "combat flag, no enemy for a moment: still counts");
+        Check(!CombatCounts(true, false, kStaleCombatMs), "combat flag with no enemy for 20 s: stale, the walk resumes");
+        Check(!CombatCounts(false, false, 0), "not in combat");
+
+        Check(Walk(Party()) == ReadyStatus::Ready, "healthy party -> Ready");
+
+        PartyFacts f = Party();
+        f.master.alive = false;
+        Check(Walk(f) == ReadyStatus::MasterUnavailable, "master dead -> MasterUnavailable");
+        f = Party();
+        f.master.online = false;
+        Check(Pull(f) == ReadyStatus::MasterUnavailable, "master offline blocks pulls too");
+        f = Party();
+        f.master.inGroup = false;
+        Check(Walk(f) == ReadyStatus::MasterUnavailable, "master left group -> MasterUnavailable");
+
+        f = Party();
+        f.members[2].alive = false;
+        Check(Walk(f) == ReadyStatus::HealerUnavailable, "healer dead -> HealerUnavailable");
+        f = Party();
+        f.members[2].sameMap = false;
+        Check(Pull(f) == ReadyStatus::HealerUnavailable, "healer on another map blocks pulls");
+        f = Party();
+        f.members[2].manaPct = 10.0f;
+        Check(Walk(f) == ReadyStatus::LowHealerMana, "healer low mana -> LowHealerMana");
+        f.members[2].gameMaster = true;
+        Check(Walk(f) == ReadyStatus::Ready, "GM healer's mana ignored (as upstream)");
+
+        f = Party();
+        f.members[3].alive = false;
+        Readiness r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::MemberDead && r.offender == 3, "dps dead -> MemberDead, names who");
+
+        f = Party();
+        f.members[4].inCombat = true;
+        Check(Walk(f) == ReadyStatus::PartyInCombat, "member in combat stops the walk");
+        Check(Pull(f) == ReadyStatus::Ready, "member in combat does not block pulls");
+        f.members[4].sameMap = false;
+        Check(!AnyInCombat(f), "off-map member's combat is not ours");
+
+        f = Party();
+        f.members[3].sitting = true;
+        Check(Walk(f) == ReadyStatus::Drinking, "member drinking -> Drinking");
+        f = Party();
+        f.members[0].sitting = true;
+        Check(Walk(f) == ReadyStatus::Ready, "leader's own sitting is not a wait");
+
+        // post-combat health gate
+        f = Party();
+        f.members[3].healthPct = 30.0f;
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::LowHealth && r.offender == 3, "member below min health -> LowHealth, names who");
+        Check(Pull(f) == ReadyStatus::LowHealth, "low health holds pulls too");
+        f.members[3].inCombat = true;
+        Check(Pull(f) == ReadyStatus::Ready, "health doesn't gate while that member is still fighting");
+        f = Party();
+        f.members[0].healthPct = 20.0f;
+        Check(Walk(f) == ReadyStatus::LowHealth, "the leader's own health counts");
+        f = Party();
+        f.members[3].healthPct = 30.0f;
+        Check(EvaluateReadiness(f, ReadinessPolicy{20.0f, 60.0f, 40.0f, 90.0f, 0.0f}, ReadyPurpose::Walk).status ==
+                  ReadyStatus::Ready, "minHealthPct 0 turns the check off");
+
+        f = Party();
+        f.master.distance = 61.0f;
+        Check(Walk(f) == ReadyStatus::MasterTooFar, "master beyond leash -> MasterTooFar");
+        f = Party();
+        f.master.sameMap = false;
+        Check(Pull(f) == ReadyStatus::MasterTooFar, "master off-map blocks pulls");
+
+        f = Party();
+        f.members[4].distance = 95.0f;
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::Fragmented && r.offender == 4, "member beyond hard range -> Fragmented, names who");
+        f.members[4].distance = 89.0f;
+        Check(Walk(f) == ReadyStatus::Ready, "member between soft and hard range -> walking continues");
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Pull);
+        Check(r.status == ReadyStatus::PartySpread && r.offender == 4, "member beyond soft range -> no new pull, names who");
+        f.members[4].distance = 39.0f;
+        Check(Pull(f) == ReadyStatus::Ready, "everyone inside soft range -> pull allowed");
+
+        // cohesion levels
+        f = Party();
+        Check(EvaluateCohesion(f, kReady).level == Cohesion::Ok, "together -> Ok");
+        f.members[3].distance = 50.0f;
+        f.members[4].distance = 70.0f;
+        CohesionResult c = EvaluateCohesion(f, kReady);
+        Check(c.level == Cohesion::SoftWarning && c.offender == 4, "soft warning names the farthest member");
+        f.members[3].distance = 100.0f;
+        c = EvaluateCohesion(f, kReady);
+        Check(c.level == Cohesion::HardStop && c.offender == 3, "hard stop beats soft warning");
+        f.members[4].sameMap = false;
+        c = EvaluateCohesion(f, kReady);
+        Check(c.level == Cohesion::LostMember && c.offender == 4, "living member on another map -> LostMember");
+        r = EvaluateReadiness(f, kReady, ReadyPurpose::Walk);
+        Check(r.status == ReadyStatus::MemberLost && r.offender == 4, "lost member stops the walk");
+        f = Party();
+        f.members[3].online = false;
+        Check(Walk(f) == ReadyStatus::MemberLost, "offline member -> MemberLost");
+        f = Party();
+        f.members[4].alive = false;
+        f.members[4].sameMap = false;
+        Check(Walk(f) == ReadyStatus::MemberDead, "dead member elsewhere is MemberDead, not lost");
+        f = Party();
+        f.master.sameMap = false;
+        f.members[1].sameMap = false;
+        Check(Walk(f) == ReadyStatus::MasterTooFar, "master off-map is MasterTooFar, not a lost member");
+
+        // priority: the most fundamental problem is reported first
+        f = Party();
+        f.master.alive = false;
+        f.members[2].alive = false;
+        Check(Walk(f) == ReadyStatus::MasterUnavailable, "master problem reported before healer");
+
+        // bot-only (canary) party: no master assigned
+        f = Party();
+        f.master = MasterFacts();
+        f.members[1].isMaster = false;
+        Check(Walk(f) == ReadyStatus::Ready, "no master assigned -> Ready");
+
+        // no group at all
+        PartyFacts solo;
+        solo.selfInCombat = true;
+        Check(Walk(solo) == ReadyStatus::PartyInCombat, "solo in combat -> walk waits");
+        Check(Pull(solo) == ReadyStatus::Ready, "solo -> pulls allowed");
+    }
+}
+
+namespace
+{
+    ActiveFacts Active(LeadState current)
+    {
+        ActiveFacts f;
+        f.current = current;
+        f.walkReady = true;
+        return f;
+    }
+
+    void TestBrain()
+    {
+        Check(DecideActive(Active(LeadState::WaitingReady)).next == LeadState::Travelling, "ready -> Travelling");
+        ActiveFacts f = Active(LeadState::Travelling);
+        f.walkReady = false;
+        Transition t = DecideActive(f);
+        Check(t.next == LeadState::WaitingReady && t.reason == TransitionReason::PartyNotReady,
+              "not ready -> WaitingReady (party_not_ready)");
+        f = Active(LeadState::Travelling);
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "fight starts -> Combat");
+        f = Active(LeadState::Combat);
+        f.walkReady = false;
+        Check(DecideActive(f).next == LeadState::PostCombat, "fight over -> PostCombat");
+        f.current = LeadState::PostCombat;
+        Check(DecideActive(f).next == LeadState::PostCombat, "PostCombat holds while not ready");
+        f.walkReady = true;
+        f.msInState = 5000;
+        Check(DecideActive(f).next == LeadState::Travelling, "PostCombat -> Travelling once ready (after the pause)");
+        f = Active(LeadState::Combat);
+        Check(DecideActive(f).next == LeadState::PostCombat, "Combat always passes through PostCombat");
+        f = Active(LeadState::PostCombat);
+        f.msInState = 1000;
+        Check(DecideActive(f).next == LeadState::PostCombat, "PostCombat holds for its minimum pause even when ready");
+        f.msInState = 3000;
+        Check(DecideActive(f).next == LeadState::Travelling, "after the pause, ready -> Travelling");
+        f.msInState = 1000;
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "unexpected combat during the pause -> Combat");
+
+        f = Active(LeadState::Combat);
+        f.leaderAlive = false;
+        t = DecideActive(f);
+        Check(t.next == LeadState::WipeRecovery && t.reason == TransitionReason::LeaderDied, "leader dies -> WipeRecovery");
+        f.current = LeadState::WipeRecovery;
+        Check(DecideActive(f).next == LeadState::WipeRecovery, "still dead -> stays WipeRecovery");
+        f.leaderAlive = true;
+        f.anyInCombat = true;
+        t = DecideActive(f);
+        Check(t.next == LeadState::WaitingReady && t.reason == TransitionReason::LeaderRecovered,
+              "resurrected -> WaitingReady first, even if combat is around");
+
+        f = Active(LeadState::Travelling);
+        f.routeComplete = true;
+        Check(DecideActive(f).next == LeadState::Completing, "route done -> Completing");
+        f.current = LeadState::Completing;
+        f.routeComplete = false;
+        Check(DecideActive(f).next == LeadState::Travelling, "route reset -> back to walking");
+
+        f = Active(LeadState::Travelling);
+        f.paused = true;
+        t = DecideActive(f);
+        Check(t.next == LeadState::WaitingReady && t.reason == TransitionReason::Paused, "paused -> WaitingReady");
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "combat still tracked while paused");
+
+        Check(!IsActive(LeadState::Starting) && !IsActive(LeadState::Stopping) && IsActive(LeadState::Combat),
+              "Starting/Stopping are not active states");
+        Check(StateAllowsNewPull(LeadState::Travelling) && StateAllowsNewPull(LeadState::BossPrep) &&
+                  StateAllowsNewPull(LeadState::Combat),
+              "working the route or fighting -> a fight may be opened");
+        Check(!StateAllowsNewPull(LeadState::WaitingReady) && !StateAllowsNewPull(LeadState::PostCombat) &&
+                  !StateAllowsNewPull(LeadState::Recovery) && !StateAllowsNewPull(LeadState::WipeRecovery) &&
+                  !StateAllowsNewPull(LeadState::Completing) && !StateAllowsNewPull(LeadState::Starting) &&
+                  !StateAllowsNewPull(LeadState::Stopping),
+              "waiting, recovering, wiped, done or not active -> no new fight");
+
+        // boss flow: MovingToPull -> BossPrep -> BossCombat -> PostCombat
+        f = Active(LeadState::Travelling);
+        f.preparingPull = true;
+        f.bossPack = true;
+        Check(DecideActive(f).next == LeadState::BossPrep, "marking a boss -> BossPrep");
+        f.pulling = true;
+        Check(DecideActive(f).next == LeadState::BossPrep, "boss pull ordered -> still BossPrep");
+        f.anyInCombat = true;
+        Check(DecideActive(f).next == LeadState::Combat, "in combat, boss not engaged yet (its trash) -> Combat");
+        f.bossEngaged = true;
+        t = DecideActive(f);
+        Check(t.next == LeadState::BossCombat && t.reason == TransitionReason::BossEngaged, "boss engaged -> BossCombat");
+        f.current = LeadState::BossCombat;
+        f.bossEngaged = false;
+        Check(DecideActive(f).next == LeadState::BossCombat, "boss fight holds while combat lasts");
+        f.anyInCombat = false;
+        Check(DecideActive(f).next == LeadState::PostCombat, "boss fight over -> PostCombat");
+    }
+}
+
+namespace
+{
+    void TestRouteTypes()
+    {
+        Check(ParseRouteKind("boss") == DungeonRouteKind::Boss && ParseRouteKind("door") == DungeonRouteKind::Door,
+              "existing kinds still parse");
+        Check(ParseRouteKind("Boss") == DungeonRouteKind::Unknown, "typo/case -> Unknown");
+        Check(ClassifyRouteStep(DungeonRouteKind::Boss, 3653) == DungeonRouteNodeType::Boss, "boss row -> Boss");
+        Check(ClassifyRouteStep(DungeonRouteKind::HeroicOnly, 1) == DungeonRouteNodeType::Travel,
+              "anchor entry wins over kind");
+        Check(ClassifyRouteStep(DungeonRouteKind::HeroicOnly, 500) == DungeonRouteNodeType::Boss, "heroic-only boss -> Boss");
+        Check(ClassifyRouteStep(DungeonRouteKind::Optional, 1) == DungeonRouteNodeType::Travel,
+              "optional path anchor -> Travel (not skippable)");
+        Check(ClassifyRouteStep(DungeonRouteKind::Optional, 3654) == DungeonRouteNodeType::Pull, "optional mob -> Pull");
+        Check(ClassifyRouteStep(DungeonRouteKind::Event, 42) == DungeonRouteNodeType::Interaction, "event -> Interaction");
+        Check(ClassifyRouteStep(DungeonRouteKind::Door, 42) == DungeonRouteNodeType::Door, "door -> Door");
+        Check(std::string(ToString(DungeonRouteNodeType::TankPosition)) == "tank_position", "node type names");
+    }
+
+    // SkipOptional=1 skips optional trash only. ZF's Sergeant Bly (kind=required, a Pull
+    // node like optional trash) must still be fought, and nothing mandatory or navigational may
+    // fall under the option.
+    void TestSkipOptionalEligibility()
+    {
+        Check(SkipOptionalEligible(DungeonRouteKind::Optional, 3654), "optional trash -> skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Required, 7604), "required trash (Sergeant Bly) -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Boss, 3653), "boss -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::HeroicOnly, 500), "heroic-only boss -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Door, 42), "door -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Use, 42) && !SkipOptionalEligible(DungeonRouteKind::Talk, 42) &&
+                  !SkipOptionalEligible(DungeonRouteKind::Event, 42),
+              "use/talk/event -> not skippable");
+        Check(!SkipOptionalEligible(DungeonRouteKind::Optional, kPathAnchorEntry) &&
+                  !SkipOptionalEligible(DungeonRouteKind::Required, kPathAnchorEntry),
+              "path anchors (entry=1) -> not skippable");
+
+        // Optional trash, then required Bly, then a boss: the option leaves exactly the mandatory
+        // rows standing, so a route cannot reach Complete through this skip.
+        struct Row { DungeonRouteKind kind; uint32_t entry; };
+        Row const seq[] = {{DungeonRouteKind::Optional, 7789}, {DungeonRouteKind::Required, 7604},
+                           {DungeonRouteKind::Optional, kPathAnchorEntry}, {DungeonRouteKind::Boss, 7267}};
+        int kept = 0, keptMandatory = 0;
+        for (Row const& r : seq)
+            if (!SkipOptionalEligible(r.kind, r.entry))
+            {
+                ++kept;
+                if (ClassifyRequirement(r.kind, r.entry) != DungeonObjectiveRequirement::Optional)
+                    ++keptMandatory;
+            }
+        Check(kept == 3 && keptMandatory == 2, "mixed sequence keeps Bly, the anchor and the boss");
+    }
+
+    // An instance kill cache keyed only by creature entry must stay boss-only. A route commonly
+    // routes several spatially distinct trash packs through the same entry (e.g. Deadmines' six
+    // Craftsman stops, entry 1731) - if those fed the same cache as bosses, clearing the first pack
+    // would silently mark every later same-entry pack "already dead" (DungeonLeadActions::Execute's
+    // skip loop and DungeonPacks::Observe both read this cache; the "already_dead" branch and
+    // ObserveCombatEvidence's off-step boss-death handling both write it).
+    void TestRepeatedEntryObjectives()
+    {
+        Check(EntryKillMemoryEligible(DungeonRouteNodeType::Boss), "boss steps use instance-wide kill memory");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Pull),
+              "trash/pull steps (repeated entries like Deadmines' Craftsman 1731) must not");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Travel), "path anchors (entry=1) never enter kill memory");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Door), "doors are not creature kills");
+        Check(!EntryKillMemoryEligible(DungeonRouteNodeType::Interaction), "use/talk objectives are not creature kills");
+
+        // Off-step boss kill memory (a boss killed in a neighbouring fight) still works: a boss
+        // row, wherever killed, is eligible; trash rows sharing its creature entry never are.
+        Check(EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Boss, 3653)),
+              "a boss row classifies as kill-memory eligible");
+        Check(EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::HeroicOnly, 500)),
+              "heroic-only boss rows classify the same as Boss");
+        Check(!EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Required, 1731)),
+              "required trash (route-gating, still not a boss) stays out of entry-wide memory");
+        Check(!EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Optional, 1731)),
+              "Deadmines Craftsman 1731: six stops, same entry, none of them a boss");
+        Check(!EntryKillMemoryEligible(ClassifyRouteStep(DungeonRouteKind::Boss, kPathAnchorEntry)),
+              "a path anchor (entry=1) is Travel regardless of declared kind, so it never enters kill memory");
+    }
+}
+
+namespace
+{
+    PackObservation Seen(uint32_t found, uint32_t alive, uint32_t engaged)
+    {
+        PackObservation o;
+        o.found = found;
+        o.alive = alive;
+        o.engaged = engaged;
+        return o;
+    }
+
+    void TestPack()
+    {
+        Check(DecidePackState(PackState::Unknown, Seen(0, 0, 0)) == PackState::Unknown, "nothing seen -> Unknown");
+        Check(DecidePackState(PackState::Unknown, Seen(3, 3, 0)) == PackState::Available, "alive, idle -> Available");
+        Check(DecidePackState(PackState::Available, Seen(3, 3, 1)) == PackState::Engaged, "one in combat -> Engaged");
+        Check(DecidePackState(PackState::Engaged, Seen(3, 1, 1)) == PackState::Engaged, "partly dead, fighting -> Engaged");
+        Check(DecidePackState(PackState::Engaged, Seen(3, 0, 0)) == PackState::Cleared, "only corpses -> Cleared");
+        Check(DecidePackState(PackState::Engaged, Seen(0, 0, 0)) == PackState::Engaged,
+              "engaged pack pulled out of probe range stays Engaged");
+        Check(DecidePackState(PackState::Available, Seen(0, 0, 0)) == PackState::Unknown, "available pack gone -> Unknown");
+        PackObservation remembered = Seen(0, 0, 0);
+        remembered.rememberedKilled = true;
+        Check(DecidePackState(PackState::Unknown, remembered) == PackState::Cleared, "instance kill memory -> Cleared");
+        Check(DecidePackState(PackState::Cleared, Seen(3, 3, 3)) == PackState::Cleared, "Cleared is terminal (respawn ignored)");
+        Check(DecidePackState(PackState::Skipped, Seen(0, 0, 0)) == PackState::Skipped, "Skipped is terminal");
+        Check(DecidePackState(PackState::Available, Seen(1, 1, 0)) == PackState::Available,
+              "reaching the spot alone does not clear a live pack");
+    }
+}
+
+namespace
+{
+    PullFacts Pull(PullState current)
+    {
+        PullFacts f;
+        f.current = current;
+        f.pullablePack = true;
+        f.packAlive = true;
+        f.inPullRange = true;
+        f.partyReady = true;
+        return f;
+    }
+
+    PullPolicy const kPull{5000, 8000, 2};
+
+    void TestPull()
+    {
+        {
+            PullPolicy pol;
+            PullFacts f;
+            f.current = PullState::Approaching;
+            f.pullablePack = true;
+            f.packAlive = true;
+            f.inRangeNoSight = true;
+            f.msInState = 60000;
+            f.msNoSightStill = 5000;
+            Check(DecidePull(f, pol) == PullState::Approaching, "target behind a wall: keep trying for a while");
+            f.msNoSightStill = 0;
+            Check(DecidePull(f, pol) == PullState::Approaching, "long in Approaching but walking (a spiral stair): no timeout");
+            f.msNoSightStill = pol.approachNoSightTimeoutMs;
+            Check(DecidePull(f, pol) == PullState::Failed, "standing behind a wall for 15 s: a failed try, not forever");
+            f.inRangeNoSight = false;
+            Check(DecidePull(f, pol) == PullState::Approaching, "still walking toward a far target: no timeout");
+        }
+
+        PullFacts f = Pull(PullState::None);
+        f.inPullRange = false;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "pack out of range -> Approaching");
+        f = Pull(PullState::Approaching);
+        f.partyReady = false;
+        Check(DecidePull(f, kPull) == PullState::WaitingParty, "in range, party not ready -> WaitingParty");
+        f.partyReady = true;
+        Check(DecidePull(f, kPull) == PullState::Marking, "in range, ready -> Marking");
+        f.patrolNear = true;
+        Check(DecidePull(f, kPull) == PullState::WaitingPatrol, "ready, a patrol by the target -> let it pass");
+        f.current = PullState::WaitingPatrol;
+        f.msPatrolHeld = kPull.patrolHoldMaxMs;
+        Check(DecidePull(f, kPull) == PullState::Marking, "patrol never passes: pull anyway after the bound");
+        f.msPatrolHeld = 0;
+        f.patrolNear = false;
+        Check(DecidePull(f, kPull) == PullState::Marking, "patrol gone -> Marking");
+        f.current = PullState::Approaching;
+        Check(PullHoldsLeader(PullState::WaitingParty, 0), "waiting for the party holds the leader in place");
+        Check(PullHoldsLeader(PullState::WaitingPatrol, 0), "waiting for a patrol holds the leader in place");
+        // A party wait never releases the leader toward the unready pack; past the
+        // still-wait it is a regroup recovery, and the pull try fails at partyWaitMaxMs.
+        Check(PullHoldsLeader(PullState::WaitingParty, kPullHoldStillMaxMs), "an unresolved party wait still holds");
+        Check(!PullHoldsLeader(PullState::WaitingPatrol, kPullHoldStillMaxMs), "a patrol wait ends (the pull goes ahead)");
+        Check(!PullHoldExpired(PullState::WaitingParty, kPullHoldStillMaxMs - 1) &&
+                  PullHoldExpired(PullState::WaitingParty, kPullHoldStillMaxMs),
+              "19999 ms: still waiting; 20000 ms: handed to the regroup recovery");
+        Check(!PullHoldExpired(PullState::WaitingPatrol, 60000) && !PullHoldExpired(PullState::Marking, 60000),
+              "only a party wait is a regroup");
+        {
+            PullFacts w = Pull(PullState::WaitingParty);
+            w.partyReady = false;
+            w.msInState = kPull.partyWaitMaxMs - 1;
+            Check(DecidePull(w, kPull) == PullState::WaitingParty, "party wait inside the backstop -> keeps waiting");
+            w.msInState = kPull.partyWaitMaxMs;
+            Check(DecidePull(w, kPull) == PullState::Failed, "party wait at the backstop -> the try fails (bounded)");
+            w.partyReady = true;
+            Check(DecidePull(w, kPull) == PullState::Marking, "member back in soft range -> Marking");
+            w = Pull(PullState::WaitingParty);
+            w.partyReady = false;
+            w.leaderInCombat = true;
+            Check(DecidePull(w, kPull) == PullState::Approaching, "attacked while waiting -> the fight first");
+            // brain: the regroup wins over holding at the pack; it is never Travelling meanwhile
+            ActiveFacts a;
+            a.current = LeadState::PrePull;
+            a.leaderAlive = true;
+            a.walkReady = true;  // soft spread: fine to walk, not to pull
+            a.preparingPull = PullHoldsLeader(PullState::WaitingParty, 50000);
+            Check(DecideActive(a).next == LeadState::PrePull, "soft spread at the pack past 20 s -> held, not walking");
+            a.recovering = true;
+            Check(DecideActive(a).next == LeadState::Recovery, "regroup recovery open -> Recovery");
+        }
+        Check(PullHoldsLeader(PullState::Marking, kPullHoldStillMaxMs), "marking always holds");
+        Check(!PullHoldsLeader(PullState::Approaching, 0), "approaching walks");
+        f = Pull(PullState::Marking);
+        Check(DecidePull(f, kPull) == PullState::Marking, "not marked yet -> stays Marking");
+        f.targetMarked = true;
+        Check(DecidePull(f, kPull) == PullState::Initiating, "marked -> Initiating");
+        f = Pull(PullState::Marking);
+        f.msInState = 5000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "skull held elsewhere past timeout -> Failed");
+
+        f = Pull(PullState::Initiating);
+        f.msInState = 2000;
+        Check(DecidePull(f, kPull) == PullState::Initiating, "attack ordered, waiting -> Initiating");
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Establishing, "tank in combat -> Establishing");
+        f.packEngaged = true;
+        Check(DecidePull(f, kPull) == PullState::Established, "pack engaged on fighting tank -> Established");
+        f = Pull(PullState::Initiating);
+        f.msInState = 5000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "no combat within initiate timeout -> Failed");
+        f = Pull(PullState::Initiating);
+        f.orderRefused = true;
+        Check(DecidePull(f, kPull) == PullState::Failed, "attack order refused (e.g. no line of sight) -> Failed at once");
+        f.packEngaged = true;
+        Check(DecidePull(f, kPull) == PullState::Establishing, "refused, but the pack engaged anyway -> Establishing");
+        f = Pull(PullState::Establishing);
+        f.leaderInCombat = true;
+        f.msInState = 8000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "pack never engaged within establish timeout -> Failed");
+
+        f = Pull(PullState::Established);
+        Check(DecidePull(f, kPull) == PullState::Approaching, "fight over, pack still standing -> pull it next, not a failure");
+        f.packAlive = false;
+        Check(DecidePull(f, kPull) == PullState::None, "pack dead after established -> None");
+
+        f = Pull(PullState::Failed);
+        f.attempts = 1;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "failed, attempts left -> retry");
+        f.attempts = 2;
+        Check(DecidePull(f, kPull) == PullState::Failed, "failed, out of attempts -> stays Failed (pack gets skipped)");
+
+        f = Pull(PullState::Approaching);
+        f.inPullRange = false;
+        f.packEngaged = true;
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Established, "class AI opened the fight itself -> Established");
+
+        f = Pull(PullState::Establishing);
+        f.leaderInCombat = true;
+        f.primaryEngaged = true;
+        Check(DecidePull(f, kPull) == PullState::Established, "fighting the planned primary (trash next to the boss) -> Established");
+        f.primaryEngaged = false;
+        f.msInState = 8000;
+        Check(DecidePull(f, kPull) == PullState::Failed, "in combat with something unrelated past the timeout -> Failed");
+
+        f = Pull(PullState::Initiating);
+        f.pullablePack = false;
+        Check(DecidePull(f, kPull) == PullState::None, "pack cleared/skipped -> None");
+
+        // a CC'd leftover keeps the tank in combat - the next pull waits for it
+        f = Pull(PullState::Approaching);
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "in a fight with something else -> no marking yet");
+        f = Pull(PullState::Established);
+        f.leaderInCombat = true;
+        Check(DecidePull(f, kPull) == PullState::Approaching, "fight with the pack's trash goes on -> approach, not a new pull");
+
+        // brain: pull phases
+        ActiveFacts a = Active(LeadState::Travelling);
+        a.preparingPull = true;
+        Check(DecideActive(a).next == LeadState::PrePull, "marking -> PrePull");
+        a.pulling = true;
+        Check(DecideActive(a).next == LeadState::Pulling, "attack ordered -> Pulling");
+        a.walkReady = false;
+        Check(DecideActive(a).next == LeadState::Pulling, "pull in flight is not aborted by a readiness blip");
+        a.anyInCombat = true;
+        Check(DecideActive(a).next == LeadState::Combat, "fight started -> Combat");
+    }
+}
+
+namespace
+{
+    void TestLeash()
+    {
+        LeashFacts f;
+        f.anchorSet = true;
+        f.inCombat = true;
+        f.hasTarget = true;
+        f.targetDistFromAnchor = 20.0f;
+        Check(ChaseAllowed(f, 30.0f), "target inside leash -> chase allowed");
+        f.targetDistFromAnchor = 45.0f;
+        Check(!ChaseAllowed(f, 30.0f), "fleeing target beyond leash -> no chase");
+        f.targetAttackingParty = true;
+        Check(ChaseAllowed(f, 30.0f), "target beyond leash beating a party member -> tank goes");
+        f.targetAttackingParty = false;
+        f.targetRunningForHelp = true;
+        Check(ChaseAllowed(f, 30.0f), "target running for help beyond leash -> stop it before it brings a pack");
+        f.targetRunningForHelp = false;
+        f.inCombat = false;
+        Check(ChaseAllowed(f, 30.0f), "out of combat the leash does not apply");
+        f.inCombat = true;
+        f.anchorSet = false;
+        Check(ChaseAllowed(f, 30.0f), "no anchor (no fight began yet) -> no leash");
+
+        Check(BossAnchorAtHome(false, 0.f, 25.f), "boss pulled directly -> fight at its home");
+        Check(BossAnchorAtHome(true, 12.f, 25.f), "trash fight next to the boss -> fight at its home");
+        Check(!BossAnchorAtHome(true, 85.f, 25.f), "boss joined a fight 85 yd away -> fight stays there");
+        f.anchorSet = true;
+        f.hasTarget = false;
+        Check(ChaseAllowed(f, 30.0f), "no target -> nothing to judge");
+    }
+}
+
+namespace
+{
+    TargetCandidate T(uint64_t id, bool boss, bool caster, bool elite, float dist)
+    {
+        TargetCandidate c;
+        c.id = id;
+        c.boss = boss;
+        c.caster = caster;
+        c.elite = elite;
+        c.distToAnchor = dist;
+        return c;
+    }
+
+    void TestTargets()
+    {
+        {
+            // a mob running for help takes the skull from a kept primary and from a totem
+            std::vector<TargetCandidate> c(3);
+            c[0].id = 1; c[0].elite = true; c[0].caster = true;
+            c[1].id = 2; c[1].totem = true;
+            c[2].id = 3; c[2].elite = true; c[2].healthPct = 12; c[2].fleeing = true;
+            TargetPlan prev; prev.primary = 1;
+            TargetPlan const p = PickTargetPlan(c, prev, false);
+            Check(p.primary == 3, "a fleeing mob becomes the kill target over a kept primary and a totem");
+            FightCandidateFacts f; f.inCombat = true; f.fleeing = true; f.distToAnchor = 50.f;
+            Check(IsFightCandidate(f, 30.f), "a fleeing fight member stays a candidate beyond the anchor radius");
+            f.fleeing = false;
+            Check(!IsFightCandidate(f, 30.f), "an idle unit 50 yd away is not");
+        }
+
+        std::vector<TargetCandidate> pack{T(1, false, false, true, 5), T(2, false, true, true, 8),
+                                          T(3, true, false, true, 10), T(4, false, false, false, 3)};
+        TargetPlan p = PickTargetPlan(pack, TargetPlan(), true);
+        Check(p.primary == 3, "boss is primary");
+        Check(p.secondary == 2, "elite caster is secondary");
+        Check(p.cc == 1, "remaining elite is the CC target");
+        // no bot in the party can CC it -> no moon; the plan is otherwise the same
+        {
+            std::vector<TargetCandidate> noCaster = pack;
+            noCaster[0].ccCastable = false;
+            TargetPlan q = PickTargetPlan(noCaster, TargetPlan(), true);
+            Check(q.cc == 0 && q.primary == 3 && q.secondary == 2, "no usable CC caster -> no moon");
+            TargetPlan keep;
+            keep.cc = 1;
+            Check(PickTargetPlan(noCaster, keep, true).cc == 1,
+                  "a kept moon stays through a moment of no castable CC (GCD, casting) - no flapping");
+            noCaster[0].controlled = true;
+            Check(PickTargetPlan(noCaster, keep, true).cc == 1, "a mob already controlled keeps its moon");
+        }
+
+        std::vector<TargetCandidate> trash{T(10, false, false, false, 9), T(11, false, true, false, 12),
+                                           T(12, false, false, true, 4)};
+        p = PickTargetPlan(trash, TargetPlan(), true);
+        Check(p.primary == 11 && p.secondary == 12, "caster before elite before normal");
+        Check(p.cc == 0, "no elite left for CC -> none");
+
+        std::vector<TargetCandidate> twins{T(21, false, false, true, 6), T(20, false, false, true, 6)};
+        Check(PickTargetPlan(twins, TargetPlan(), false).primary == 20, "equal rank and distance -> lower id (deterministic)");
+
+        // stability: a kept target holds its slot even if something better shows up
+        TargetPlan prev;
+        prev.primary = 12;
+        prev.secondary = 10;
+        std::vector<TargetCandidate> more = trash;
+        more.push_back(T(13, true, false, true, 30));
+        p = PickTargetPlan(more, prev, false);
+        Check(p.primary == 12 && p.secondary == 10, "plan is stable while its targets live");
+        // primary died -> the best remaining takes over, secondary stays
+        std::vector<TargetCandidate> after{T(10, false, false, false, 9), T(11, false, true, false, 12),
+                                           T(13, true, false, true, 30)};
+        p = PickTargetPlan(after, prev, false);
+        Check(p.primary == 13 && p.secondary == 10, "dead primary replaced by the best remaining, secondary kept");
+
+        // CC stability: a kept CC target is not promoted to a kill target
+        TargetPlan prevCc;
+        prevCc.cc = 1;
+        p = PickTargetPlan(pack, prevCc, true);
+        Check(p.cc == 1 && p.primary != 1 && p.secondary != 1, "kept CC target stays CC");
+
+        Check(PickTargetPlan({}, TargetPlan(), true) == TargetPlan(), "no candidates -> empty plan");
+
+        // polymorph on the last, almost dead mob would hold the whole party
+        std::vector<TargetCandidate> lastOne{T(1, false, false, true, 5)};
+        p = PickTargetPlan(lastOne, prevCc, true);
+        Check(p.cc == 0 && p.primary == 1, "CC'd mob is the only enemy left -> released, it is the kill target");
+        std::vector<TargetCandidate> hurt = pack;
+        hurt[0].healthPct = 30;  // the would-be CC target, already half dead
+        p = PickTargetPlan(hurt, TargetPlan(), true);
+        Check(p.cc == 0, "no new CC on a mob the party has already damaged");
+        hurt[0].healthPct = 90;
+        Check(PickTargetPlan(hurt, TargetPlan(), true).cc == 1, "a fresh elite still gets CC");
+
+        // totems left standing, and a sheeped mob, must not keep the skull
+        std::vector<TargetCandidate> withTotem = pack;
+        withTotem.push_back(T(9, false, false, false, 20));
+        withTotem.back().totem = true;
+        TargetPlan prevKill;
+        prevKill.primary = 3;
+        p = PickTargetPlan(withTotem, prevKill, true);
+        Check(p.primary == 9, "an enemy totem takes the skull, even from the kept primary");
+        std::vector<TargetCandidate> sheep = trash;  // 10 normal, 11 caster, 12 elite
+        sheep[1].controlled = true;                  // the caster is a sheep already
+        p = PickTargetPlan(sheep, TargetPlan(), true);
+        Check(p.primary != 11 && p.secondary != 11, "a crowd-controlled mob is not a kill target while others are up");
+        Check(p.cc == 11, "the mob already under CC keeps the moon");
+        TargetPlan prevSheep;
+        prevSheep.primary = 11;
+        sheep[1].controlled = true;
+        Check(PickTargetPlan(sheep, prevSheep, false).primary != 11, "a kept primary that got sheeped is replaced");
+        // a CC that never landed: the mob is not re-marked while it beats the healer
+        std::vector<TargetCandidate> immune = pack;
+        immune[0].ccRefused = true;
+        TargetPlan prevImmune;
+        prevImmune.cc = 1;
+        p = PickTargetPlan(immune, prevImmune, true);
+        Check(p.cc != 1, "a mob our CC failed on is not kept or marked for CC again");
+
+        // fight membership is measured from the combat anchor, not the tank
+        float const radius = 40.0f;
+        auto fight = [](bool combat, bool attacking, float dist)
+        {
+            FightCandidateFacts f;
+            f.inCombat = combat;
+            f.attackingParty = attacking;
+            f.distToAnchor = dist;
+            return f;
+        };
+        Check(IsFightCandidate(fight(true, true, 5.0f), radius), "tank at the anchor: its target counts");
+        // the tank moved 15 yd; a mob 10 yd from the tank's new spot is 50 yd from the anchor
+        Check(!IsFightCandidate(fight(true, false, 50.0f), radius),
+              "neighbour near the moved tank but outside the anchor radius is not promoted");
+        Check(IsFightCandidate(fight(true, false, 35.0f), radius), "pack member still inside the anchor radius counts");
+        Check(IsFightCandidate(fight(true, true, 70.0f), radius), "an add attacking the party counts wherever it stands");
+        Check(!IsFightCandidate(fight(false, false, 3.0f), radius), "idle mob next to the anchor is not part of the fight");
+    }
+}
+
+namespace
+{
+    void TestRecovery()
+    {
+        {
+            using G = EscalationGate;
+            Check(DecideEscalationGate(false, 0, true) == G::Escalate, "leader on the ground: escalate");
+            Check(DecideEscalationGate(true, 10000, true) == G::Defer, "off the ground: wait a little");
+            Check(DecideEscalationGate(true, 30000, true) == G::LeaderToLastGood, "waited 30 s: leader back to its last good spot");
+            Check(DecideEscalationGate(true, 30000, false) == G::Escalate, "no good spot to go to: escalate anyway, never wait forever");
+        }
+
+        RecoveryPolicy const p{60000, 60000};
+        Check(DecideRecovery(RecoveryReason::None, 999999, 999999, p) == RecoveryStep::None, "no problem -> nothing to do");
+        Check(DecideRecovery(RecoveryReason::PartyFragmented, 0, 0, p) == RecoveryStep::Act, "new problem -> act");
+        Check(DecideRecovery(RecoveryReason::PartyFragmented, 59999, 59999, p) == RecoveryStep::Act, "inside the act window -> act");
+        Check(DecideRecovery(RecoveryReason::MemberLost, 60000, 60000, p) == RecoveryStep::Escalate, "act window over -> escalate");
+        Check(DecideRecovery(RecoveryReason::MemberDead, 119999, 119999, p) == RecoveryStep::Escalate, "inside escalation -> escalate");
+        Check(DecideRecovery(RecoveryReason::MemberDead, 120000, 120000, p) == RecoveryStep::Abort, "escalation over -> abort (bounded)");
+        Check(DecideRecovery(RecoveryReason::LeadershipLost, 500000, 500000, p) == RecoveryStep::Abort, "never an endless loop");
+
+        // a reason change restarts that reason's clock; the episode stays bounded
+        RecoveryTimers t;
+        uint32_t now = 1000;
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, now), "first problem starts a recovery");
+        now += 20000;  // fragmented for 20 s
+        Check(ObserveRecovery(t, RecoveryReason::MemberLost, now), "reason change starts a new recovery");
+        Check(now - t.reasonSince == 0 && t.step == RecoveryStep::None, "fragmented 20 s -> lost: elapsed restarts from 0");
+        Check(now - t.episodeSince == 20000, "the episode clock keeps running across the change");
+        Check(DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Act,
+              "new reason starts at act, not near escalation");
+
+        t = RecoveryTimers();
+        now = 5000;
+        ObserveRecovery(t, RecoveryReason::MemberDead, now);  // healer dead
+        now += 70000;  // past its act window
+        Check(DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Escalate,
+              "dead healer after 70 s -> escalate");
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, now);
+        Check(DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Act,
+              "dead -> fragmented gets its own independent timeout");
+
+        t = RecoveryTimers();
+        now = 0;
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, now);
+        Check(!ObserveRecovery(t, RecoveryReason::PartyFragmented, now + 30000) && t.reasonSince == 0,
+              "same reason again keeps its clock");
+
+        // flapping between two reasons every 50 s never escalates per reason, but the episode cap ends it
+        t = RecoveryTimers();
+        now = 0;
+        RecoveryStep last = RecoveryStep::None;
+        uint32_t abortAt = 0;
+        for (int i = 0; i < 20 && last != RecoveryStep::Abort; ++i)
+        {
+            ObserveRecovery(t, i % 2 ? RecoveryReason::MemberLost : RecoveryReason::PartyFragmented, now);
+            last = DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p);
+            abortAt = now;
+            now += 50000;
+        }
+        Check(last == RecoveryStep::Abort && abortAt < p.EpisodeCapMs() + 50000,
+              "flapping reasons are bounded by the episode cap");
+
+        Check(!ObserveRecovery(t, RecoveryReason::None, now) && t.reason == RecoveryReason::None && t.episodeSince == 0,
+              "problem gone -> clocks cleared");
+
+        // a straggler stuck on terrain - caught up while the leader walks back, behind again
+        // 20 s after it walks on - is one episode that reaches escalation, not a fresh act forever
+        t = RecoveryTimers();
+        now = 0;
+        bool escalated = false;
+        for (int i = 0; i < 10 && !escalated; ++i)
+        {
+            ObserveRecovery(t, RecoveryReason::PartyFragmented, now, 7);
+            escalated = DecideRecovery(t.reason, now - t.reasonSince, now - t.episodeSince, p) == RecoveryStep::Escalate;
+            now += 12000;
+            ObserveRecovery(t, RecoveryReason::None, now);
+            now += 20000;
+        }
+        Check(escalated && now < 160000, "relapsing straggler escalates within ~2 act windows");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        ObserveRecovery(t, RecoveryReason::None, 10000);
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 30000, 7) && t.relapse && t.reasonSince == 0,
+              "same reason + member soon after -> resumes the old clock");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        ObserveRecovery(t, RecoveryReason::None, 10000);
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 30000, 8);
+        Check(!t.relapse && t.reasonSince == 30000, "another member -> fresh recovery");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        ObserveRecovery(t, RecoveryReason::None, 10000);
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 10000 + kRecoveryRelapseMs, 7);
+        Check(!t.relapse && t.reasonSince == 10000 + kRecoveryRelapseMs, "long after it cleared -> fresh recovery");
+
+        // A straggler brought to the leader (escalated) and stuck again soon after is a new problem
+        // with fresh windows - not the old clocks run on into Abort
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        t.step = RecoveryStep::Escalate;
+        ObserveRecovery(t, RecoveryReason::None, 62000);
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 100000, 7) && !t.relapse && t.reasonSince == 100000 &&
+                  t.step == RecoveryStep::None,
+              "stuck again after an escalation -> fresh recovery");
+        Check(DecideRecovery(t.reason, 0, 100000 - t.episodeSince, p) == RecoveryStep::Act,
+              "...which starts at act, not at abort");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);  // still at Act when it cleared
+        ObserveRecovery(t, RecoveryReason::None, 20000);
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 40000, 7) && t.relapse,
+              "a relapse of a recovery that never escalated still resumes (the walk-back loop)");
+
+        // A straggler standing still is stuck: no walk back, bring it (after kStuckStragglerMs)
+        Check(EscalateStuckStraggler(RecoveryStep::Act, RecoveryReason::PartyFragmented, kStuckStragglerMs) ==
+                  RecoveryStep::Escalate,
+              "a straggler still for 10 s -> escalate at once");
+        Check(EscalateStuckStraggler(RecoveryStep::Act, RecoveryReason::PartyFragmented, kStuckStragglerMs - 1) ==
+                  RecoveryStep::Act,
+              "a straggler that moved a moment ago -> keep walking back");
+        Check(EscalateStuckStraggler(RecoveryStep::Act, RecoveryReason::PersistentWait, 600000) == RecoveryStep::Act,
+              "only a fragmented party escalates early (never a human-only wait)");
+
+        // Ordinary waits are timed one by one: drinking again 40 s after the last drink is a fresh
+        // wait, not the old one resumed (it would reach Abort from the first drink's start)
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PersistentWait, 1900);
+        ObserveRecovery(t, RecoveryReason::None, 9900);
+        Check(ObserveRecovery(t, RecoveryReason::PersistentWait, 64000) && !t.relapse && t.reasonSince == 64000 &&
+                  t.episodeSince == 64000,
+              "persistent wait soon after another -> fresh clocks");
+        Check(DecideRecovery(t.reason, 118000 - 64000, 118000 - t.episodeSince, p) == RecoveryStep::Act,
+              "the third minute of a run is not an abort for a 54 s wait");
+
+        // straggler A escalated, then B falls behind - B gets its own window
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        t.step = RecoveryStep::Escalate;
+        Check(ObserveRecovery(t, RecoveryReason::PartyFragmented, 70000, 8) && t.reasonSince == 70000 &&
+                  t.step == RecoveryStep::None && t.episodeSince == 0,
+              "same reason, another member -> new recovery, episode goes on");
+        Check(DecideRecovery(t.reason, 70000 - t.reasonSince, 70000 - t.episodeSince, p) == RecoveryStep::Act,
+              "the second straggler starts at act, not at abort");
+        Check(!ObserveRecovery(t, RecoveryReason::PartyFragmented, 80000, 8), "same member again -> same recovery");
+        t = RecoveryTimers();
+        ObserveRecovery(t, RecoveryReason::PartyFragmented, 0, 7);
+        Check(!ObserveRecovery(t, RecoveryReason::PartyFragmented, 30000, 8) && t.reasonSince == 0,
+              "farthest member swaps while still acting -> clock keeps running (escalation is reached)");
+
+        Check(RecoveryFor(ReadyStatus::Fragmented, true) == RecoveryReason::PartyFragmented, "fragmented -> regroup");
+        Check(RecoveryFor(ReadyStatus::MemberLost, true) == RecoveryReason::MemberLost, "lost member -> recovery");
+        Check(RecoveryFor(ReadyStatus::MemberDead, true) == RecoveryReason::MemberDead, "dead member -> recovery");
+        Check(RecoveryFor(ReadyStatus::HealerUnavailable, false) == RecoveryReason::MemberDead, "dead healer -> member dead");
+        Check(RecoveryFor(ReadyStatus::HealerUnavailable, true) == RecoveryReason::MemberLost, "healer elsewhere -> member lost");
+
+        // these five map to recoveries, so none of them can hold a manual session open forever -
+        // see DungeonLeadKernels.h's RecoveryFor.
+        Check(RecoveryFor(ReadyStatus::MasterUnavailable, true) == RecoveryReason::MasterUnavailable,
+              "dead/disconnected/departed master -> bounded recovery, not an indefinite wait");
+        Check(RecoveryFor(ReadyStatus::MasterTooFar, true) == RecoveryReason::MasterTooFar,
+              "master beyond the leash -> bounded recovery, distinct from MasterUnavailable");
+        Check(RecoveryFor(ReadyStatus::Drinking, true) == RecoveryReason::PersistentWait, "drinking -> persistent wait");
+        Check(RecoveryFor(ReadyStatus::LowHealth, true) == RecoveryReason::PersistentWait, "low health -> persistent wait");
+        Check(RecoveryFor(ReadyStatus::LowHealerMana, true) == RecoveryReason::PersistentWait, "low healer mana -> persistent wait");
+        // still not recoveries: these three are not in RecoveryFor's switch at all
+        Check(RecoveryFor(ReadyStatus::Ready, true) == RecoveryReason::None, "ready -> no recovery");
+        Check(RecoveryFor(ReadyStatus::PartyInCombat, true) == RecoveryReason::None, "a fight is the class AI's business, not a recovery");
+        Check(RecoveryFor(ReadyStatus::PartySpread, true) == RecoveryReason::None, "spread (pulls only) holds the pull itself, no recovery needed");
+
+        // A dead/departed master never comes back: the clock reaches Abort within the normal
+        // act+escalate window, same bound as every other reason (RecoveryController's Escalate
+        // step is a no-op for it either way - who is never a bot - so Act and Escalate are
+        // functionally identical waits; Abort is what actually ends it).
+        Check(DecideRecovery(RecoveryReason::MasterUnavailable, 0, 0, p) == RecoveryStep::Act,
+              "master just went unavailable -> act (wait)");
+        Check(DecideRecovery(RecoveryReason::MasterUnavailable, 119999, 119999, p) == RecoveryStep::Escalate,
+              "master still unavailable, inside escalation -> escalate (still just a wait)");
+        Check(DecideRecovery(RecoveryReason::MasterUnavailable, 120000, 120000, p) == RecoveryStep::Abort,
+              "master never came back -> abort, bounded like every other reason");
+
+        // A master 70 yd away is beyond the 60 yd leash (MasterTooFar) but inside the 90 yd hard
+        // range (not Fragmented) - distinguishing the two matters: MasterTooFar is "wait for the
+        // human", Fragmented would (for a bot) imply walking back to them instead.
+        {
+            PartyFacts tooFar = Party();
+            tooFar.master.distance = 70.0f;
+            Readiness const r = EvaluateReadiness(tooFar, kReady, ReadyPurpose::Walk);
+            Check(r.status == ReadyStatus::MasterTooFar, "master 70 yd away (past 60 leash, inside 90 hard range) -> MasterTooFar");
+            Check(RecoveryFor(r.status, true) == RecoveryReason::MasterTooFar, "-> bounded recovery, not silently stalled");
+            Check(DecideRecovery(RecoveryReason::MasterTooFar, 120000, 120000, p) == RecoveryStep::Abort,
+                  "master still too far after the full window -> abort");
+        }
+
+        // Persistent vs. momentary waits (Drinking/LowHealth/LowHealerMana): DecideRecovery itself
+        // already bounds this with no extra grace period needed - a momentary instance clears
+        // (observed -> None) long before the act window, same as every other reason; a persistent
+        // one reaches Abort exactly like MasterUnavailable above.
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 0, 0, p) == RecoveryStep::Act,
+              "someone just sat down / dropped low -> act (wait), not an immediate escalation");
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 500, 500, p) == RecoveryStep::Act,
+              "half a second of drinking -> still just a wait, nowhere near escalate/abort");
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 120000, 120000, p) == RecoveryStep::Abort,
+              "someone stuck drinking/low/out of mana for the full window -> abort, bounded");
+        {
+            // A momentary sit (one tick, then up again) clears via the generic None branch before
+            // the clock ever advances past Act - RecoveryTimers never even reaches Escalate.
+            RecoveryTimers mt;
+            uint32_t mNow = 0;
+            Check(ObserveRecovery(mt, RecoveryReason::PersistentWait, mNow), "member sits down -> recovery starts");
+            mNow += 2000;  // two seconds of drinking
+            Check(DecideRecovery(mt.reason, mNow - mt.reasonSince, mNow - mt.episodeSince, p) == RecoveryStep::Act,
+                  "2 s into drinking -> still act, far from escalate");
+            Check(!ObserveRecovery(mt, RecoveryReason::None, mNow) && mt.reason == RecoveryReason::None,
+                  "member stands back up -> recovery clears, never escalated");
+        }
+
+        ActiveFacts a = Active(LeadState::WaitingReady);
+        a.walkReady = false;
+        a.recovering = true;
+        Check(DecideActive(a).next == LeadState::Recovery, "open recovery -> Recovery state");
+        a.anyInCombat = true;
+        Check(DecideActive(a).next == LeadState::Combat, "combat interrupts recovery");
+        a = Active(LeadState::Recovery);
+        Check(DecideActive(a).next == LeadState::Travelling, "recovery resolved, ready -> Travelling");
+    }
+}
+
+namespace
+{
+    void TestCheckpoint()
+    {
+        Check(ResumeStepAfterWipe(-1, 0) == 0, "no checkpoint, at the start -> start");
+        Check(ResumeStepAfterWipe(-1, 3) == 0, "no checkpoint, steps passed over -> back to the start");
+        Check(ResumeStepAfterWipe(2, 3) == 3, "wiped on the step right after the checkpoint -> stay");
+        Check(ResumeStepAfterWipe(2, 6) == 3, "steps skipped after the checkpoint -> resume right after it");
+        Check(ResumeStepAfterWipe(5, 4) == 4, "never jump ahead of the route");
+    }
+}
+
+namespace
+{
+    AssemblyMember Here()
+    {
+        AssemblyMember m;
+        m.online = m.alive = m.onMap = m.sameInstance = true;
+        m.distanceToTank = 5.0f;
+        return m;
+    }
+
+    void TestAssembly()
+    {
+        std::vector<AssemblyMember> party(5, Here());
+        Check(DecideAssembly(party, 0, 30.0f, 180000) == AssemblyStep::Start, "everyone here -> start");
+        party[3].onMap = false;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "teleport requested, not landed -> wait");
+        party[3].onMap = true;
+        party[3].sameInstance = false;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "landed in another instance -> wait");
+        party[3].sameInstance = true;
+        party[3].distanceToTank = 80.0f;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "not gathered near the tank -> wait");
+        party[3].distanceToTank = 5.0f;
+        party[1].alive = false;
+        Check(DecideAssembly(party, 10000, 30.0f, 180000) == AssemblyStep::Wait, "dead member -> wait");
+        Check(DecideAssembly(party, 180000, 30.0f, 180000) == AssemblyStep::Abort, "never assembled -> abort, not a partial start");
+        Check(DecideAssembly({}, 0, 30.0f, 180000) == AssemblyStep::Wait, "no members -> never a start");
+    }
+}
+
+namespace
+{
+    // Lines lost after the drain (open/write/flush failure) are counted per file, a file
+    // turns failing on its first loss and ok again on its next successful write; the total never
+    // decreases, so a run that lost evidence stays marked.
+    void TestSinkHealth()
+    {
+        TelemetrySinkHealth h;
+        Check(!h.Record(TelemetryFile::EventsV2, 10, 0) && !h.AnyFailing(), "healthy write: no change");
+        Check(h.Record(TelemetryFile::EventsV2, 0, 4) && h.failing[size_t(TelemetryFile::EventsV2)],
+              "open/write failure -> failing, reported once");
+        Check(!h.Record(TelemetryFile::EventsV2, 0, 3), "still failing: no second transition");
+        Check(h.lost[size_t(TelemetryFile::EventsV2)] == 7 && h.TotalLost() == 7, "losses accumulate");
+        Check(!h.Record(TelemetryFile::Sessions, 5, 0) && h.AnyFailing(), "another file healthy, events still failing");
+        Check(h.Record(TelemetryFile::EventsV2, 2, 0) && !h.AnyFailing(), "writing again -> recovered");
+        Check(h.TotalLost() == 7, "recovery does not erase the loss count");
+        Check(!h.Record(TelemetryFile::Runs, 0, 0), "nothing to write: no change");
+    }
+
+    void TestTelemetryBuffer()
+    {
+        TelemetryBuffer buf(3);
+        Check(buf.Push(TelemetryFile::Sessions, "a\n") && buf.Push(TelemetryFile::Runs, "b\n") &&
+                  buf.Push(TelemetryFile::Debug, "c\n"),
+              "lines up to capacity are accepted");
+        Check(!buf.Push(TelemetryFile::Sessions, "d\n"), "full buffer refuses, does not grow");
+        uint64_t dropped = 0;
+        std::vector<TelemetryLine> lines = buf.Drain(dropped);
+        Check(lines.size() == 3 && dropped == 1, "drain returns everything queued and the drop count");
+        Check(lines[0].text == "a\n" && lines[1].file == TelemetryFile::Runs, "order and target file kept");
+        Check(buf.Size() == 0 && buf.Drain(dropped).empty() && dropped == 0, "drained buffer is empty, count reset");
+        Check(buf.Push(TelemetryFile::Sessions, "e\n"), "accepts again after a drain");
+    }
+}
+
+namespace
+{
+    void TestObjectivePolicy()
+    {
+        using R = DungeonObjectiveRequirement;
+        Check(ClassifyRequirement(DungeonRouteKind::Boss, 3653) == R::Boss, "boss row -> Boss");
+        Check(ClassifyRequirement(DungeonRouteKind::Optional, 3654) == R::Optional, "optional trash -> Optional");
+        Check(ClassifyRequirement(DungeonRouteKind::Boss, 1) == R::Optional, "path anchor is never mandatory");
+        Check(ClassifyRequirement(DungeonRouteKind::Event, 42) == R::Optional, "event row -> Optional");
+        // explicit requirement in the route data
+        Check(ParseRouteKind("required") == DungeonRouteKind::Required, "kind 'required' parses");
+        Check(ClassifyRequirement(DungeonRouteKind::Required, 4424) == R::Required, "required trash -> Required");
+        Check(ClassifyRouteStep(DungeonRouteKind::Required, 4424) == DungeonRouteNodeType::Pull,
+              "required trash is fought like a pull");
+        Check(ClassifyRequirement(DungeonRouteKind::Door, 16397) == R::Required, "a door is never skipped");
+        // use / talk steps (Zul'Farrak pyramid event: cage, Sergeant Bly)
+        Check(ParseRouteKind("use") == DungeonRouteKind::Use && ParseRouteKind("talk") == DungeonRouteKind::Talk,
+              "kinds 'use' and 'talk' parse");
+        Check(ClassifyRouteStep(DungeonRouteKind::Use, 141070) == DungeonRouteNodeType::Interaction &&
+                  ClassifyRouteStep(DungeonRouteKind::Talk, 7604) == DungeonRouteNodeType::Interaction,
+              "use/talk are interaction nodes");
+        Check(ClassifyRequirement(DungeonRouteKind::Use, 141070) == R::Required &&
+                  ClassifyRequirement(DungeonRouteKind::Talk, 7604) == R::Required,
+              "an event that gates progress is never skipped");
+        Check(DecideObjectiveFailure(R::Required, 1, 2) == ObjectiveFailureAction::Retry &&
+                  DecideObjectiveFailure(R::Required, 2, 2) == ObjectiveFailureAction::Abort,
+              "required objective: retry, then abort - never skip");
+        // door heuristic: on the way = near the line leader -> destination
+        Check(DistanceToSegment2D(5, 2, 0, 0, 10, 0) < 2.01f, "door 2 yd off the corridor line is on the way");
+        Check(DistanceToSegment2D(5, 14, 0, 0, 10, 0) > 10.f, "side-room door 14 yd off the line is not");
+        Check(DistanceToSegment2D(-3, 0, 0, 0, 10, 0) > 2.99f, "behind the leader measures to the leader");
+        // walking through a closed door: plane crossing, not just nearness
+        // SFK Courtyard Door at (-242.6, 2159.05), orientation -1.946 - the way north goes through it
+        Check(SegmentCrossesDoor(-242.6f, 2159.05f, -1.946f, -243.f, 2145.f, -241.f, 2172.f, 6.f),
+              "path north through the Courtyard Door crosses it");
+        // SFK cells at (-244.1, 2134.4), orientation -0.375, lined along the corridor wall
+        Check(!SegmentCrossesDoor(-244.1f, 2134.4f, -0.375f, -251.f, 2120.f, -240.f, 2147.f, 6.f),
+              "path along the corridor past a cell door does not cross it");
+        Check(!SegmentCrossesDoor(0.f, 0.f, 0.f, -5.f, 20.f, 5.f, 20.f, 6.f),
+              "crossing the door's plane far from the door doesn't count");
+        // from the walkway above the cells down to the next boss - crosses a cell's plane 8.6 yd
+        // from the cell door: not through the door
+        Check(!SegmentCrossesDoor(-244.14f, 2134.41f, -0.375f, -237.35f, 2133.24f, -252.09f, 2123.11f, 3.5f),
+              "passing a cell 8 yd from its door is not walking through it");
+        float t = -1.f;
+        SegmentCrossesDoor(0.f, 0.f, 0.f, -2.f, 0.f, 2.f, 0.f, 3.5f, &t);
+        Check(t > 0.49f && t < 0.51f, "crossing parameter reported for the height check");
+
+        for (uint32_t rounds = 1; rounds <= 3; ++rounds)
+            Check(DecideObjectiveFailure(R::Optional, rounds, 2) == ObjectiveFailureAction::Skip,
+                  "optional trash failing (1-3 rounds) may be skipped");
+        Check(DecideObjectiveFailure(R::Required, 1, 2) == ObjectiveFailureAction::Retry,
+              "required trash failing -> retried, not skipped");
+        Check(DecideObjectiveFailure(R::Required, 2, 2) == ObjectiveFailureAction::Abort,
+              "required trash still failing -> run stops, never silently advances");
+        Check(DecideObjectiveFailure(R::Boss, 1, 2) == ObjectiveFailureAction::Retry, "boss pull fails -> retried");
+        Check(DecideObjectiveFailure(R::Boss, 2, 2) == ObjectiveFailureAction::Abort, "boss still unresolved -> run stops");
+        bool neverSkips = true;
+        for (uint32_t rounds = 1; rounds < 10; ++rounds)
+            neverSkips = neverSkips && DecideObjectiveFailure(R::Boss, rounds, 2) != ObjectiveFailureAction::Skip &&
+                         DecideObjectiveFailure(R::Required, rounds, 2) != ObjectiveFailureAction::Skip;
+        Check(neverSkips, "a boss or required objective is never skipped, whatever the count");
+    }
+}
+
+namespace
+{
+    // DungeonRouteStep::IsMandatory() is `return Requirement() != Optional;` (see
+    // DungeonRouteMgr.h), so IsMandatory()/HasAnyMandatory() and ClassifyRequirement() agree by
+    // construction - a Door/Use/Talk row (Required) counts as mandatory.
+    //
+    // DungeonRouteStep/DungeonRoute themselves live in DungeonRouteMgr.h, which pulls in
+    // AzerothCore's Common.h/ObjectGuid.h - not available to this dependency-free test binary (see
+    // tools/run_tests.sh's include path: only src/DungeonLead, and this file only ever includes
+    // DungeonRouteTypes.h). So this exercises the definition at the one layer that IS testable
+    // here, ClassifyRequirement() - the function IsMandatory() delegates to - plus a local mirror
+    // of HasAnyMandatory()'s "any row mandatory" aggregation.
+    bool IsMandatoryMirror(DungeonRouteKind kind, uint32_t entry)
+    {
+        return ClassifyRequirement(kind, entry) != DungeonObjectiveRequirement::Optional;
+    }
+
+    // Mirrors DungeonRoute::HasAnyMandatory(): true iff any step in the route is mandatory.
+    bool HasAnyMandatoryMirror(std::vector<std::pair<DungeonRouteKind, uint32_t>> const& steps)
+    {
+        for (auto const& s : steps)
+            if (IsMandatoryMirror(s.first, s.second))
+                return true;
+        return false;
+    }
+
+    void TestRequiredRouteContract()
+    {
+        // Required/Door/Use/Talk report mandatory: a Door/Use/Talk row counts toward
+        // HasAnyMandatory()/the route-completion check.
+        Check(IsMandatoryMirror(DungeonRouteKind::Required, 4424), "required trash is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Door, 16397), "a door is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Use, 141070), "a use objective is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Talk, 7604), "a talk objective is mandatory");
+        Check(IsMandatoryMirror(DungeonRouteKind::Boss, 3653), "a boss is (and always was) mandatory");
+
+        // Optional/HeroicOnly/Event/Skip/Unknown all stay non-mandatory.
+        Check(!IsMandatoryMirror(DungeonRouteKind::Optional, 3654), "optional trash is not mandatory");
+        Check(!IsMandatoryMirror(DungeonRouteKind::HeroicOnly, 500),
+              "heroic_only is not mandatory - a separately tracked, already-acknowledged gap (DL-021), "
+              "not this finding's silently-bypassed-required-objective failure mode");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Event, 42), "an event row is not mandatory");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Skip, 0), "a skip row is not mandatory");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Unknown, 0), "an unparsed/unknown kind is not mandatory");
+
+        // The path-anchor exemption survives the rewrite regardless of declared kind - a path
+        // anchor on an otherwise-mandatory kind must stay non-mandatory (and, per IsWalkable(),
+        // always walkable), exactly as it must stay non-skippable in the route-advance loop.
+        Check(!IsMandatoryMirror(DungeonRouteKind::Boss, kPathAnchorEntry),
+              "a path anchor stays non-mandatory even declared as kind=boss");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Required, kPathAnchorEntry),
+              "a path anchor stays non-mandatory even declared as kind=required");
+        Check(!IsMandatoryMirror(DungeonRouteKind::Door, kPathAnchorEntry),
+              "a path anchor stays non-mandatory even declared as kind=door");
+
+        // HasAnyMandatory(): a route built only from optional/event/path-anchor rows reports no
+        // mandatory step at all - the "zero executable mandatory route -> Blocked, not Complete"
+        // downgrade (hadNothingToVerify in DungeonLeadNextAction::Execute) fires for this case.
+        Check(!HasAnyMandatoryMirror({{DungeonRouteKind::Optional, 100},
+                                      {DungeonRouteKind::Event, 101},
+                                      {DungeonRouteKind::Boss, kPathAnchorEntry}}),
+              "an all-optional/event/path-anchor route has no mandatory step -> still Blocked, not Complete");
+
+        // The same route with one genuinely mandatory row (any of boss/required/door/use/talk)
+        // added anywhere flips HasAnyMandatory() true - including when that row is a Door/Use/Talk.
+        Check(HasAnyMandatoryMirror({{DungeonRouteKind::Optional, 100}, {DungeonRouteKind::Door, 102}}),
+              "a required door among otherwise-optional rows now makes the route report a mandatory step");
+        Check(HasAnyMandatoryMirror({{DungeonRouteKind::Optional, 100}, {DungeonRouteKind::Talk, 103}}),
+              "a required talk objective among otherwise-optional rows now makes the route report a mandatory step");
+        Check(HasAnyMandatoryMirror({{DungeonRouteKind::Boss, 200}}), "a route with a boss has a mandatory step");
+    }
+}
+
+namespace
+{
+    PackUnitFacts U(uint64_t id, bool expected, bool alive, bool inCombat, bool attacking, float dist, float home)
+    {
+        PackUnitFacts u;
+        u.id = id;
+        u.expectedEntry = expected;
+        u.alive = alive;
+        u.inCombat = inCombat;
+        u.attackingParty = attacking;
+        u.distToPack = dist;
+        u.homeDistToPack = home;
+        return u;
+    }
+
+    bool Has(std::vector<uint64_t> const& v, uint64_t id)
+    {
+        for (uint64_t m : v)
+            if (m == id)
+                return true;
+        return false;
+    }
+
+    void TestPackIdentity()
+    {
+        float const radius = 10.0f;
+        // pack A at its spot (ids 1-3), pack B with the same entry 15 yd away (ids 4-6)
+        std::vector<PackUnitFacts> room{U(1, true, true, false, false, 2, 2), U(2, true, true, false, false, 4, 4),
+                                        U(3, true, true, false, false, 5, 5), U(4, true, true, false, false, 15, 15),
+                                        U(5, true, true, false, false, 16, 16), U(6, true, true, false, false, 17, 17)};
+        PackResolution r = ResolvePack(room, {}, radius);
+        Check(r.core.size() == 3 && Has(r.core, 1) && !Has(r.core, 4) && r.rejected == 3,
+              "two packs 15 yd apart, same entry: only the near one is this pack");
+        Check(r.lead == 1, "lead is the nearest live member");
+
+        // tank engages pack A only: lock it, pack B stays out
+        std::vector<uint64_t> locked = r.core;
+        room[0].inCombat = room[1].inCombat = true;
+        room[0].attackingParty = true;
+        r = ResolvePack(room, locked, radius);
+        Check(r.core.size() == 3 && !Has(r.core, 4) && r.observation.engaged == 2, "engaged pack A locked, B not merged");
+
+        // an unexpected add (other entry) joins the fight
+        room.push_back(U(9, false, true, true, true, 25, 40));
+        r = ResolvePack(room, locked, radius);
+        Check(Has(r.adds, 9) && r.adds.size() == 1, "add attacking the party becomes an encounter member");
+        // a pack-B unit pulled into the fight joins as an add, the rest of B does not
+        room[3].inCombat = room[3].attackingParty = true;
+        r = ResolvePack(room, locked, radius);
+        Check(Has(r.adds, 4) && !Has(r.adds, 5) && !Has(r.core, 5) && r.adds.size() == 2,
+              "neighbour that actually joins counts, its idle friends don't");
+
+        // a locked member that died and then despawned/moved out of sight: still bounded and stable
+        std::vector<PackUnitFacts> later{U(2, true, false, false, false, 4, 4), U(3, true, false, false, false, 5, 5)};
+        r = ResolvePack(later, locked, radius);
+        Check(r.core.size() == 2 && r.observation.alive == 0 &&
+                  DecidePackState(PackState::Engaged, r.observation) == PackState::Cleared,
+              "locked members dead (one missing) -> cleared");
+
+        // fighting a boss's trash is not fighting the boss
+        std::vector<PackUnitFacts> bossRoom{U(20, true, true, false, false, 3, 3), U(21, false, true, true, true, 15, 25)};
+        r = ResolvePack(bossRoom, {}, radius);
+        Check(r.observation.engaged == 0 && r.adds.size() == 1 && r.lead == 20,
+              "trash attacking the party is an add; the idle boss is not engaged");
+
+        // a patrolling named mob far from its spot is still the pack (the lead)
+        std::vector<PackUnitFacts> patrol{U(7, true, true, false, false, 90, 0)};
+        r = ResolvePack(patrol, {}, radius);
+        Check(r.lead == 7 && r.core.size() == 1, "patrol away from its spot is still the pack's lead");
+
+        Check(ResolvePack({}, {}, radius).core.empty(), "nothing around -> empty, Unknown");
+    }
+}
+
+namespace
+{
+    InteractionFacts I(InteractionState current, uint32_t ms, bool found, bool satisfied, bool canAct = false)
+    {
+        InteractionFacts f;
+        f.current = current;
+        f.msInInteraction = ms;
+        f.targetFound = found;
+        f.satisfied = satisfied;
+        f.canAct = canAct;
+        return f;
+    }
+
+    // A door missing from its spot advances only with the instance's saved open state
+    // (Deadmines' Iron Clad Door despawns on map load when saved GO_STATE_ACTIVE); bad data or a
+    // late load waits, then fails into the objective policy - never silent progress.
+    void TestMissingDoor()
+    {
+        using M = MissingDoorStep;
+        Check(DecideMissingDoor(true, 0, false) == M::Satisfied, "saved ACTIVE (opened, despawned) -> satisfied");
+        Check(DecideMissingDoor(true, 2, false) == M::Satisfied, "saved ACTIVE_ALTERNATIVE (cannon) -> satisfied");
+        Check(DecideMissingDoor(true, 0, true) == M::Satisfied, "saved open wins over an expired wait");
+        Check(DecideMissingDoor(true, 1, false) == M::Wait, "saved closed (READY) -> wait, not progress");
+        Check(DecideMissingDoor(true, 3, false) == M::Wait, "no saved state -> wait (late load)");
+        Check(DecideMissingDoor(false, 0, false) == M::Wait, "no resolved spawn -> stored state is not consulted");
+        Check(DecideMissingDoor(true, 3, true) == M::Fail, "no saved state, budget spent -> fail");
+        Check(DecideMissingDoor(false, 3, true) == M::Fail, "bad data (no spawn), budget spent -> fail");
+        Check(DecideObjectiveFailure(ClassifyRequirement(DungeonRouteKind::Door, 16397), 1, 2) ==
+                  ObjectiveFailureAction::Retry &&
+                  DecideObjectiveFailure(ClassifyRequirement(DungeonRouteKind::Door, 16397), 2, 2) ==
+                      ObjectiveFailureAction::Abort,
+              "a failed missing door is retried, then aborts the run - never skipped");
+    }
+
+    // A key is only ever used through a bot. A real player or a player's self-bot holding
+    // the only key is asked, never acted through; dead/other-map holders don't count.
+    void TestKeyUser()
+    {
+        auto C = [](bool key, bool alive, bool sameMap, bool bot) {
+            KeyCandidate c;
+            c.hasKey = key;
+            c.alive = alive;
+            c.sameMap = sameMap;
+            c.botActor = bot;
+            return c;
+        };
+        int i = -2;
+        Check(ChooseKeyUser({C(false, true, true, true), C(true, true, true, true)}, i) == KeyUse::BotUses && i == 1,
+              "bot holder -> that bot uses it");
+        Check(ChooseKeyUser({C(true, true, true, false)}, i) == KeyUse::PlayerMustUse && i == -1,
+              "only a player (or self-bot) holds it -> player must use it, no actor");
+        Check(ChooseKeyUser({C(true, true, true, false), C(true, true, true, true)}, i) == KeyUse::BotUses && i == 1,
+              "player and bot hold it -> the bot, never the player");
+        Check(ChooseKeyUser({C(true, false, true, true), C(true, true, false, true)}, i) == KeyUse::NobodyHasKey,
+              "dead or other-map bot holders don't count");
+        Check(ChooseKeyUser({C(true, false, true, false)}, i) == KeyUse::NobodyHasKey,
+              "a dead player holder is not asked");
+        Check(ChooseKeyUser({}, i) == KeyUse::NobodyHasKey && i == -1, "empty group -> nobody");
+    }
+
+    // Pause holds route side effects - no new door/lever action while paused or
+    // fighting, the interaction's clock stands outside Travelling, and the brain holds the
+    // session in WaitingReady (combat still tracked).
+    void TestPauseGates()
+    {
+        Check(InteractionMayAct(false, false, false), "idle, not acted -> may act");
+        Check(!InteractionMayAct(false, true, false), "paused -> no Use");
+        Check(!InteractionMayAct(false, false, true), "in combat -> no Use");
+        Check(!InteractionMayAct(true, false, false), "acted once -> not again");
+        Check(AdvanceInteractionClock(5000, 2000, /*holdingAtIt*/ false) == 5000,
+              "paused (not Travelling) -> door wait clock stands still");
+        InteractionFacts f = I(InteractionState::WaitingPrerequisite, 30000, true, false);
+        f.canAct = InteractionMayAct(false, /*paused*/ true, false);
+        Check(DecideInteraction(f, 120000) == InteractionState::WaitingPrerequisite, "paused door: still waiting");
+        f.satisfied = true;
+        Check(DecideInteraction(f, 120000) == InteractionState::Complete, "door opened while paused -> observed");
+    }
+
+    // A queued leader change is re-judged when it runs. Cancelled/restarted sessions,
+    // group changes and a player taking the lead meanwhile reject it; the current request applies.
+    void TestQueuedLeaderChange()
+    {
+        using Q = QueuedLeaderChange;
+        QueuedLeaderFacts ok;
+        ok.requestCurrent = ok.sameGroup = ok.targetMember = ok.leaderAsExpected = true;
+        Check(DecideQueuedLeaderChange(ok) == Q::Apply, "current request, same group, expected leader -> apply");
+        QueuedLeaderFacts f = ok;
+        f.requestCurrent = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectSuperseded,
+              "start cancelled / new session generation / session active already -> rejected");
+        f = ok;
+        f.sameGroup = false;
+        f.targetMember = f.leaderAsExpected = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectGroup, "bot moved to another group (target there too) -> rejected");
+        f = ok;
+        f.targetMember = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectTarget, "target left the group -> rejected");
+        f = ok;
+        f.leaderAsExpected = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectLeader, "a player took the lead meanwhile -> not overwritten");
+        f = ok;
+        f.targetIsLeader = true;
+        f.leaderAsExpected = false;
+        Check(DecideQueuedLeaderChange(f) == Q::AlreadyDone, "a retry after the first one landed -> no change");
+        f.requestCurrent = false;
+        Check(DecideQueuedLeaderChange(f) == Q::RejectSuperseded, "superseded wins over already-done");
+    }
+
+    // Recovery clocks. An ordinary wait closes while the controller
+    // cannot judge it and starts with fresh clocks after the fight; other recoveries keep running.
+    // After a wipe, an anchor route walks back from the first anchor only past 150 yd, and that
+    // reopens anchors only - cleared packs and killed bosses stay done.
+    void TestRecoveryDelta()
+    {
+        Check(RecoveryClosesWhenIneligible(RecoveryReason::PersistentWait), "ordinary wait closes in combat");
+        Check(!RecoveryClosesWhenIneligible(RecoveryReason::PartyFragmented) &&
+                  !RecoveryClosesWhenIneligible(RecoveryReason::None),
+              "a straggler recovery is kept through combat");
+
+        RecoveryPolicy policy;  // 60 s act + 60 s escalate
+        RecoveryTimers t;
+        ObserveRecovery(t, RecoveryReason::PersistentWait, 1000);
+        // a 150 s fight: closed at the fight's start (controller ineligible)
+        ObserveRecovery(t, RecoveryReason::None, 2000);
+        // after the fight the drink starts again: its clocks are new, nothing is near abort
+        ObserveRecovery(t, RecoveryReason::PersistentWait, 152000);
+        Check(t.reasonSince == 152000 && t.episodeSince == 152000, "post-combat wait: fresh clocks (no relapse)");
+        Check(DecideRecovery(t.reason, 152500 - t.reasonSince, 152500 - t.episodeSince, policy) == RecoveryStep::Act,
+              "post-combat wait acts, not aborts");
+        // kept open through the fight, it would have aborted
+        Check(DecideRecovery(RecoveryReason::PersistentWait, 152500 - 1000, 152500 - 1000, policy) == RecoveryStep::Abort,
+              "control: a wait kept open through the fight is past the abort mark");
+
+        Check(!WalkBackFromEntrance(true, 5, true, 150.0f), "150 yd exactly -> resume directly");
+        Check(WalkBackFromEntrance(true, 5, true, 150.5f), "past 150 yd on an anchor route -> walk back");
+        Check(!WalkBackFromEntrance(false, 5, true, 630.0f), "no anchors -> resume directly however far");
+        Check(!WalkBackFromEntrance(true, 0, true, 630.0f), "resume step 0 -> nothing to walk back");
+        Check(!WalkBackFromEntrance(true, 5, false, 630.0f), "resume step without a position -> no walk back");
+
+        // steps: anchor, pack (cleared), anchor, boss (killed), anchor, resume
+        std::vector<uint8_t> visited = {1, 1, 1, 1, 1, 0};
+        std::vector<bool> const isAnchor = {true, false, true, false, true, false};
+        ReopenPathAnchors(visited, isAnchor, 5);
+        Check(visited == std::vector<uint8_t>({0, 1, 0, 1, 0, 0}), "only anchors reopen; pack and boss stay done");
+        std::vector<uint8_t> v2 = {1, 1, 1};
+        ReopenPathAnchors(v2, {true, true, true}, 1);
+        Check(v2 == std::vector<uint8_t>({0, 1, 1}), "anchors at or after the resume step are untouched");
+
+        Check(ResumeStepAfterWipe(-1, 7) == 0 && ResumeStepAfterWipe(3, 7) == 4 && ResumeStepAfterWipe(9, 7) == 7,
+              "resume: no checkpoint -> 0, after the checkpoint, never ahead of the route");
+    }
+
+    // Each owned strategy component is repaired on its own; a stable session needs no
+    // change at all, and session start applies the whole set.
+    void TestStrategyDelta()
+    {
+        auto hasSet = [](std::vector<std::string> on) {
+            return [on](char const* n) { return std::find(on.begin(), on.end(), n) != on.end(); };
+        };
+        std::vector<std::string> const followerOk = {"follow"};
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet(followerOk)).empty(),
+              "follower as set -> no non-combat change");
+        Check(StrategyDelta(FollowerCombatStrategies(), hasSet({"cc"})).empty(), "follower combat as set -> no change");
+        Check(StrategyDelta(FollowerCombatStrategies(), hasSet({})) == "+cc", "lost only cc -> +cc");
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "rpg"})) == "-rpg",
+              "rpg put back -> -rpg only (follow untouched)");
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "loot", "new rpg"})) == "-new rpg,-loot",
+              "several conflicts -> exactly those");
+        Check(StrategyDelta(LeaderCombatStrategies(), hasSet({"dungeon lead", "cc", "mark rti"})).empty(),
+              "leader combat as set -> no change");
+        Check(StrategyDelta(LeaderCombatStrategies(), hasSet({"dungeon lead", "cc"})) == "+mark rti",
+              "leader lost mark rti -> +mark rti");
+        Check(StrategyDelta(LeaderNonCombatStrategies(), hasSet({"dungeon lead", "grind"})).empty(),
+              "leader non-combat as set -> no change");
+        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot",
+              "session start: the same follower set as before");
+        Check(StrategyAll(LeaderNonCombatStrategies()) == "+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg,-loot",
+              "session start: the same leader non-combat set as before");
+        Check(StrategyAll(LeaderCombatStrategies()) == "+dungeon lead,+cc,+mark rti", "session start: leader combat set");
+    }
+
+    // The run context id changes with any part of the stack and is stable otherwise;
+    // an unknown part or a dirty module tree marks the context incomplete.
+    void TestRunContext()
+    {
+        Check(Hex64(Fnv1a64("")) == "cbf29ce484222325", "FNV-1a 64 offset basis");
+        Check(Hex64(Fnv1a64("a")) == "af63dc4c8601ec8c", "FNV-1a 64 of 'a'");
+        RunContext a;
+        a.moduleSha = "02fc932";
+        a.coreSha = "f19a18799a35";
+        a.playerbotsSha = "037c01418b5d";
+        a.routeDigest = "1111111111111111";
+        a.configDigest = "2222222222222222";
+        a.mmapDigest = "3333333333333333";
+        RunContext b = a;
+        Check(a.Id() == b.Id() && a.Id().size() == 16, "same stack -> same id");
+        Check(!a.Incomplete(), "every part known, clean module -> complete");
+        b.routeDigest = "1111111111111112";
+        Check(a.Id() != b.Id(), "route change, same module -> different id");
+        b = a;
+        b.configDigest = "2222222222222223";
+        Check(a.Id() != b.Id(), "config change -> different id");
+        b = a;
+        b.playerbotsSha = "unknown";
+        Check(b.Incomplete(), "unknown playerbots commit -> incomplete");
+        b = a;
+        b.moduleSha = "02fc932-dirty";
+        Check(b.Incomplete(), "dirty module tree -> incomplete");
+    }
+
+    // A route that skips or does not execute part of its dungeon is a modeled route,
+    // not the dungeon; a route with nothing mandatory proves nothing.
+    void TestRouteScope()
+    {
+        Check(UnmodeledContent(DungeonRouteKind::Skip, false) && UnmodeledContent(DungeonRouteKind::Event, true),
+              "skip and generic event rows are not modeled");
+        Check(UnmodeledContent(DungeonRouteKind::HeroicOnly, false) && !UnmodeledContent(DungeonRouteKind::HeroicOnly, true),
+              "heroic-only without a position is not modeled; with one it is a boss");
+        Check(!UnmodeledContent(DungeonRouteKind::Boss, true) && !UnmodeledContent(DungeonRouteKind::Door, true) &&
+                  !UnmodeledContent(DungeonRouteKind::Talk, true) && !UnmodeledContent(DungeonRouteKind::Use, true) &&
+                  !UnmodeledContent(DungeonRouteKind::Optional, true) && !UnmodeledContent(DungeonRouteKind::Required, true),
+              "bosses, trash, doors and confirmed interactions are modeled");
+        Check(ClassifyRouteScope(true, 0) == DungeonRouteScope::Full, "all modeled -> full");
+        Check(ClassifyRouteScope(true, 1) == DungeonRouteScope::PartialModel, "Oculus after Drakos (skip) -> partial model");
+        Check(ClassifyRouteScope(false, 0) == DungeonRouteScope::NoMandatory, "nothing mandatory -> no_mandatory");
+        Check(std::string(ToString(DungeonRouteScope::PartialModel)) == "partial_model", "scope names");
+    }
+
+    // An idle creature of the talk NPC's event is attacked only if the route names its entry as
+    // event content, it is alive and attackable, within 60 yd of the NPC; nearest to the leader.
+    void TestEventCreature()
+    {
+        auto E = [](bool route, bool alive, bool attackable, float npc, float leader) {
+            EventCreatureCandidate e;
+            e.routeEventEntry = route;
+            e.alive = alive;
+            e.attackable = attackable;
+            e.distToNpc = npc;
+            e.distToLeader = leader;
+            return e;
+        };
+        // an event creature 28-29 yd from the NPC
+        Check(ChooseEventCreature({E(true, true, true, 28.f, 30.f), E(true, true, true, 29.f, 25.f)}) == 1,
+              "both wave bosses idle -> the nearer one to the leader");
+        Check(ChooseEventCreature({E(false, true, true, 10.f, 10.f)}) == -1, "not route event content -> never");
+        Check(ChooseEventCreature({E(true, true, false, 10.f, 10.f)}) == -1, "friendly (escort NPC) -> never");
+        Check(ChooseEventCreature({E(true, true, true, 61.f, 10.f)}) == -1, "beyond 60 yd of the NPC -> never");
+        Check(ChooseEventCreature({}) == -1, "nothing there -> keep waiting");
+    }
+
+    // The heartbeat's controller cost summary.
+    void TestDurationWindow()
+    {
+        DurationWindow w;
+        Check(w.Summarize().count == 0 && w.Summarize().max == 0, "empty window");
+        for (uint32_t v = 1; v <= 100; ++v)
+            w.Add(v * 10);
+        DurationWindow::Summary const s = w.Summarize();
+        Check(s.count == 100 && s.max == 1000, "count and max");
+        Check(s.p50 >= 500 && s.p50 <= 510 && s.p95 >= 950 && s.p95 <= 960, "p50 / p95 by rank");
+        w.Reset();
+        Check(w.Summarize().count == 0, "reset starts a new window");
+    }
+
+    // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
+    // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
+    // Only "on" strategies the class can create are owned (warriors have no "cc").
+    void TestStepWalkAndAvailability()
+    {
+        uint32_t ms = 0;
+        for (int i = 0; i < 8; ++i)
+            ms = AdvanceStepWalkClock(ms, 2000);
+        Check(ms == 16000, "consecutive 2 s ticks add up");
+        Check(AdvanceStepWalkClock(ms, 20000) == 16000, "a 20 s gap is not walking");
+        uint32_t cycle = 0;
+        int cycles = 0;
+        while (cycle < 600000)
+        {
+            for (int i = 0; i < 8; ++i)
+                cycle = AdvanceStepWalkClock(cycle, 2000);
+            cycle = AdvanceStepWalkClock(cycle, 2000);  // the 2 s WaitingReady blip is still a tick
+            ++cycles;
+        }
+        Check(cycles * 18 < 12 * 60, "oscillation reaches the limit within 12 minutes");
+
+        auto warrior = [](char const* n) { return std::string(n) != "cc"; };
+        std::vector<OwnedStrategy> const own = AvailableStrategies(FollowerCombatStrategies(), warrior);
+        Check(own.empty(), "warrior: no cc to own -> nothing to repair in combat");
+        Check(StrategyDelta(AvailableStrategies(LeaderCombatStrategies(), warrior),
+                            [](char const* n) { return std::string(n) == "dungeon lead" || std::string(n) == "mark rti"; })
+                  .empty(),
+              "warrior leader with dungeon lead + mark rti -> stable, no +cc every pass");
+        std::vector<OwnedStrategy> const offStays = AvailableStrategies(FollowerNonCombatStrategies(), [](char const*) { return false; });
+        Check(offStays.size() == FollowerNonCombatStrategies().size() - 1, "off entries always apply; only 'on' ones filtered");
+    }
+
+    void TestInteraction()
+    {
+        uint32_t const timeout = 120000;
+        using S = InteractionState;
+        Check(DecideInteraction(I(S::Resolving, 0, true, true), timeout) == S::Complete, "door already open -> complete");
+        Check(DecideInteraction(I(S::Resolving, 0, true, false), timeout) == S::WaitingPrerequisite,
+              "closed, nothing we can do -> wait for its event/key");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 30000, true, false), timeout) == S::WaitingPrerequisite,
+              "still closed inside the window -> keep waiting");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 45000, true, true), timeout) == S::Complete,
+              "door opens after the boss/event -> complete (world-confirmed)");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, timeout, true, false), timeout) == S::Failed,
+              "never opens -> failed, bounded");
+        // A late-arriving key/lever must be acted on in the same round, not left waiting
+        // for the door to open externally or for the whole interaction to time out.
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 30000, true, false, /*canAct*/ true), timeout) ==
+                  S::Interacting,
+              "prerequisite becomes available while waiting -> act now, same deadline/round");
+        Check(DecideInteraction(I(S::Resolving, 1000, false, false), timeout) == S::Resolving,
+              "target not seen yet -> keep resolving");
+        Check(DecideInteraction(I(S::WaitingPrerequisite, 1000, false, false), timeout) == S::Failed,
+              "interaction target vanished -> failed");
+        Check(DecideInteraction(I(S::Resolving, 0, true, false, true), timeout) == S::Interacting, "actionable -> interacting");
+        Check(DecideInteraction(I(S::Interacting, 500, true, false, true), timeout) == S::WaitingConfirmation,
+              "acted -> wait for confirmation, not done yet");
+        Check(DecideInteraction(I(S::WaitingConfirmation, 2000, true, true, true), timeout) == S::Complete,
+              "world confirms -> complete");
+        Check(DecideInteraction(I(S::None, 0, false, false), timeout) == S::None && !InteractionActive(S::Complete),
+              "no interaction -> nothing to do");
+
+        // the party fragments while waiting at a door - recovery time is not door time
+        uint32_t ms = 0;
+        ms = AdvanceInteractionClock(ms, 60000, true);    // a minute at the door
+        ms = AdvanceInteractionClock(ms, 300000, false);  // five minutes of recovery elsewhere
+        Check(ms == 60000 && DecideInteraction(I(S::WaitingPrerequisite, ms, true, false), timeout) ==
+                                 S::WaitingPrerequisite,
+              "recovery during a door wait doesn't use up the door's budget");
+        ms = AdvanceInteractionClock(ms, 60000, true);
+        Check(DecideInteraction(I(S::WaitingPrerequisite, ms, true, false), timeout) == S::Failed,
+              "back at the door, its own time still runs out");
+    }
+}
+
+namespace
+{
+    void TestTelemetryV2()
+    {
+        std::string const line = JsonLine()
+                                      .Num("schema_version", int32_t(kTelemetrySchemaVersion))
+                                      .Str("event_type", "pull_started")
+                                      .Open("leader").Str("name", "Ae\"var").Num("x", -112.404f).Close()
+                                      .Raw("payload", JsonLine().Str("detail", "a\\b\nc").Done())
+                                      .Done();
+        Check(line == "{\"schema_version\":2,\"event_type\":\"pull_started\",\"leader\":{\"name\":\"Ae\\\"var\","
+                      "\"x\":-112.40},\"payload\":{\"detail\":\"a\\\\b\\nc\"}}",
+              "v2 line: nested object, escaping, 2-decimal coordinates");
+        Check(JsonEscape(std::string(1, char(1))) == "\\u0001", "control characters are escaped");
+        Check(JsonLine().Raw("p", "").Done() == "{\"p\":null}", "empty raw value is null");
+
+        PositionSampleFacts f;
+        Check(ShouldSamplePosition(f), "first sample of a run is always taken");
+        f.haveLast = true;
+        f.x = 0.3f;
+        f.msSinceLast = 10000;
+        Check(!ShouldSamplePosition(f), "standing still (< 0.5 yd) emits nothing, however long");
+        f.x = 3.5f;
+        f.msSinceLast = 100;
+        Check(ShouldSamplePosition(f), "moved >= 3 yd -> sample");
+        f.x = 1.5f;
+        Check(!ShouldSamplePosition(f), "moved 1.5 yd just now -> wait");
+        f.msSinceLast = 3000;
+        Check(ShouldSamplePosition(f), "still moving after 3 s -> sample");
+        f.x = 0.f;
+        f.msSinceLast = 0;
+        f.stateChanged = true;
+        Check(ShouldSamplePosition(f), "state change -> sample even without movement");
+    }
+}
+
+int main()
+{
+    TestLeadership();
+    TestHealer();
+    TestReadiness();
+    TestHealerReach();
+    TestBrain();
+    TestRouteTypes();
+    TestSkipOptionalEligibility();
+    TestRepeatedEntryObjectives();
+    TestPack();
+    TestPull();
+    TestLeash();
+    TestTargets();
+    TestRecovery();
+    TestCheckpoint();
+    TestAssembly();
+    TestTelemetryBuffer();
+    TestSinkHealth();
+    TestTelemetryV2();
+    TestObjectivePolicy();
+    TestRequiredRouteContract();
+    TestPackIdentity();
+    TestInteraction();
+    TestMissingDoor();
+    TestKeyUser();
+    TestPauseGates();
+    TestQueuedLeaderChange();
+    TestRecoveryDelta();
+    TestStrategyDelta();
+    TestRunContext();
+    TestRouteScope();
+    TestEventCreature();
+    TestDurationWindow();
+    TestStepWalkAndAvailability();
+    std::printf("%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures == 0 ? 0 : 1;
+}

@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in Dungeon Lead didn't behave as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Reports without logs get closed.** "This dungeon doesn't work" or "the tank got
+        stuck" with no `DungeonLeadSessions.csv` rows and no `DungeonLeadDebug.log` can't be
+        acted on. Reproduce with `startdungeon debug` on first (see README "Debugging"), then
+        come back and fill this in.
+
+        Have a general question instead (e.g. "how does this differ from X")? Use
+        [Discussions → Q&A](../../discussions/categories/q-a) — this form is for concrete,
+        reproducible bugs only.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+      description: What did you expect vs. what actually happened?
+    validations:
+      required: true
+  - type: input
+    id: dungeon
+    attributes:
+      label: Dungeon / LFD id
+      placeholder: "e.g. Wailing Caverns"
+    validations:
+      required: true
+  - type: textarea
+    id: sessions_csv
+    attributes:
+      label: Relevant rows from DungeonLeadSessions.csv
+      description: Filter by the run_id of your session - see README "Debugging"
+      render: csv
+    validations:
+      required: true
+  - type: textarea
+    id: debug_log
+    attributes:
+      label: DungeonLeadDebug.log
+      description: Reproduce with `startdungeon debug` on first - paste the window around the problem
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Pinned mod-playerbots commit you're running against
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: >-
+            I reproduced this with debug on and attached both the CSV rows and the debug log
+            above - not just a description of what I saw on screen.
+          required: true

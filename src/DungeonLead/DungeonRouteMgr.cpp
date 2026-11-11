@@ -1,0 +1,336 @@
+/*
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ */
+
+#include "DungeonRouteMgr.h"
+
+#include "Log.h"
+#include "DatabaseEnv.h"
+#include "QueryResult.h"  // Field/ResultSet are only forward-declared by DatabaseEnv.h
+
+#include "ObjectMgr.h"
+// Since the playerbots database moved from the core fork into mod-playerbots, DatabaseEnv.h no
+// longer brings in PlayerbotsDatabase; older trees still ship it there.
+#if __has_include("PlayerbotsDatabase.h")
+#include "PlayerbotsDatabase.h"
+#endif
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+void DungeonRouteMgr::Load()
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    routes.clear();
+
+    QueryResult result = PlayerbotsDatabase.Query(
+        "SELECT lfg_id, map_id, difficulty, name, step, kind, boss, IFNULL(entry, 0), IFNULL(x, 0), IFNULL(y, 0), "
+        "IFNULL(z, 0), IFNULL(note, '') FROM playerbots_dungeon_route ORDER BY lfg_id, step");
+
+    uint32 count = 0;
+    uint32 unknownKinds = 0;
+    uint64 digest = DungeonLeadKernel::Fnv1a64("");
+    if (result)
+    {
+        do
+        {
+            Field* f = result->Fetch();
+            uint32 lfgId = f[0].Get<uint32>();
+            DungeonRoute& route = routes[lfgId];
+            route.lfgId = lfgId;
+            route.mapId = f[1].Get<uint32>();
+            route.difficulty = f[2].Get<uint8>();
+            route.name = f[3].Get<std::string>();
+
+            DungeonRouteStep step;
+            step.step = f[4].Get<uint32>();
+            std::string kindStr = f[5].Get<std::string>();
+            step.kind = ParseRouteKind(kindStr);
+            step.boss = f[6].Get<std::string>();
+            step.entry = f[7].Get<uint32>();
+            step.x = f[8].Get<float>();
+            step.y = f[9].Get<float>();
+            step.z = f[10].Get<float>();
+            step.note = f[11].Get<std::string>();
+
+            // tools/validate_routes.py should already reject this before it ever reaches the
+            // DB; a typo that slips through anyway is logged here instead of silently becoming a
+            // non-walkable, non-mandatory step.
+            if (step.kind == DungeonRouteKind::Unknown)
+            {
+                ++unknownKinds;
+                LOG_ERROR("playerbots", "DungeonRouteMgr: unknown kind '{}' for lfg_id={} step={} '{}' - "
+                          "treated as unwalkable/non-mandatory", kindStr, lfgId, step.step, step.boss);
+            }
+
+            char coords[64];
+            snprintf(coords, sizeof(coords), "%.2f|%.2f|%.2f", step.x, step.y, step.z);
+            digest = DungeonLeadKernel::Fnv1a64(std::to_string(lfgId) + "|" + std::to_string(route.mapId) + "|" +
+                                                    std::to_string(route.difficulty) + "|" + std::to_string(step.step) +
+                                                    "|" + kindStr + "|" + step.boss + "|" + std::to_string(step.entry) +
+                                                    "|" + coords + "\n",
+                                                digest);
+            route.steps.push_back(step);
+            ++count;
+        } while (result->NextRow());
+    }
+
+    // Each door row's world spawn (same entry and map, nearest within 10 yd of the row),
+    // so a door that is not there can be checked against the instance's saved state for it. One
+    // pass over the loaded gameobject spawns, at load time only.
+    std::unordered_map<uint32, std::vector<DungeonRouteStep*>> doorsByEntry;
+    std::unordered_map<DungeonRouteStep*, uint32> doorMap;
+    for (auto& kv : routes)
+        for (DungeonRouteStep& s : kv.second.steps)
+            if (s.IsDoorObject() && s.HasPosition())
+            {
+                doorsByEntry[s.entry].push_back(&s);
+                doorMap[&s] = kv.second.mapId;
+            }
+    uint32 doorsResolved = 0;
+    if (!doorsByEntry.empty())
+    {
+        std::unordered_map<DungeonRouteStep*, float> bestDist2;
+        for (auto const& kv : sObjectMgr->GetAllGOData())
+        {
+            auto it = doorsByEntry.find(kv.second.id);
+            if (it == doorsByEntry.end())
+                continue;
+            for (DungeonRouteStep* s : it->second)
+            {
+                if (kv.second.mapid != doorMap[s])
+                    continue;
+                float const dx = kv.second.posX - s->x, dy = kv.second.posY - s->y, dz = kv.second.posZ - s->z;
+                float const d2 = dx * dx + dy * dy + dz * dz;
+                auto best = bestDist2.find(s);
+                if (d2 < 100.0f && (best == bestDist2.end() || d2 < best->second))
+                {
+                    bestDist2[s] = d2;
+                    s->doorSpawnId = kv.first;
+                }
+            }
+        }
+        doorsResolved = uint32(bestDist2.size());
+    }
+
+    routeRows = count;
+    routeDigest = result ? DungeonLeadKernel::Hex64(digest) : std::string("unknown");
+    LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind, {}/{} door spawns, "
+             "digest {})", count, routes.size(), unknownKinds, doorsResolved, uint32(doorMap.size()), routeDigest);
+}
+
+void DungeonRouteMgr::EnsureLoaded()
+{
+    std::call_once(loadOnce, [this] { Load(); });
+}
+
+std::string DungeonRouteMgr::RouteDigest()
+{
+    EnsureLoaded();
+    std::lock_guard<std::mutex> lock(mtx);
+    return routeDigest;
+}
+
+uint32 DungeonRouteMgr::RouteRows()
+{
+    EnsureLoaded();
+    std::lock_guard<std::mutex> lock(mtx);
+    return routeRows;
+}
+
+DungeonRoute const* DungeonRouteMgr::GetByLfgId(uint32 lfgId)
+{
+    EnsureLoaded();
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = routes.find(lfgId);
+    return it == routes.end() ? nullptr : &it->second;
+}
+
+std::vector<DungeonRoute const*> DungeonRouteMgr::GetByMap(uint32 mapId, uint32 difficulty)
+{
+    EnsureLoaded();
+    std::lock_guard<std::mutex> lock(mtx);
+    std::vector<DungeonRoute const*> out;
+    for (auto const& kv : routes)
+        if (kv.second.mapId == mapId && kv.second.difficulty == difficulty)
+            out.push_back(&kv.second);
+    return out;
+}
+
+DungeonLeadState& DungeonRouteMgr::State(ObjectGuid guid)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    return states[guid];
+}
+
+void DungeonRouteMgr::ResetState(ObjectGuid guid)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    states.erase(guid);
+}
+
+void DungeonRouteMgr::ResetRouteProgress(ObjectGuid guid)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = states.find(guid);
+    if (it != states.end())
+        it->second.ResetRouteProgress();
+}
+
+bool DungeonRouteMgr::GetEntrance(DungeonRoute const& route, Entrance& out)
+{
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        auto it = entranceByLfg.find(route.lfgId);
+        if (it != entranceByLfg.end())
+        {
+            out = it->second;
+            return true;
+        }
+    }
+
+    DungeonRouteStep const* first = route.RecoveryPoint();
+    Entrance e;
+    float bestDist = -1.f;
+    // The teleport store is only reachable per trigger id; ids are small (WotLK < ~6000) and this
+    // runs once per route, so a bounded scan is fine.
+    for (uint32 id = 1; id < 20000; ++id)
+    {
+        AreaTriggerTeleport const* t = sObjectMgr->GetAreaTriggerTeleport(id);
+        if (!t || t->target_mapId != route.mapId)
+            continue;
+        float const d = first ? std::hypot(t->target_X - first->x, t->target_Y - first->y) : 0.f;
+        if (bestDist < 0.f || d < bestDist)
+        {
+            bestDist = d;
+            e.x = t->target_X;
+            e.y = t->target_Y;
+            e.z = t->target_Z;
+            e.o = t->target_Orientation;
+            e.fromTrigger = true;
+        }
+    }
+    if (!e.fromTrigger)
+    {
+        if (!first)
+            return false;
+        e.x = first->x;
+        e.y = first->y;
+        e.z = first->z;
+    }
+    LOG_INFO("playerbots.dungeonlead", "[DungeonLead] entrance for lfg {} ({}): ({:.1f},{:.1f},{:.1f}) from {}",
+             route.lfgId, route.name, e.x, e.y, e.z, e.fromTrigger ? "entrance teleport" : "first route step");
+
+    std::lock_guard<std::mutex> lock(mtx);
+    entranceByLfg[route.lfgId] = e;
+    out = e;
+    return true;
+}
+
+bool DungeonRouteMgr::HasState(ObjectGuid guid)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    return states.count(guid) != 0;
+}
+
+bool DungeonRouteMgr::LeadershipRequestCurrent(ObjectGuid guid, uint32 generation)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = states.find(guid);
+    if (it == states.end())
+        return false;
+    DungeonLeadState const& st = it->second;
+    return generation && st.leadershipGeneration == generation &&
+           (st.state == DungeonLeadKernel::LeadState::Starting || st.state == DungeonLeadKernel::LeadState::Stopping);
+}
+
+std::vector<ObjectGuid> DungeonRouteMgr::GetActiveSessionGuids()
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    std::vector<ObjectGuid> guids;
+    guids.reserve(states.size());
+    for (auto const& kv : states)
+        guids.push_back(kv.first);
+    return guids;
+}
+
+bool DungeonRouteMgr::IsStepKilled(uint32 instanceId, uint32 entry)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = killedByInstance.find(instanceId);
+    return it != killedByInstance.end() && it->second.count(entry) > 0;
+}
+
+void DungeonRouteMgr::MarkStepKilled(uint32 instanceId, uint32 entry)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    killedByInstance[instanceId].insert(entry);
+}
+
+void DungeonRouteMgr::ClearInstance(uint32 instanceId)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    killedByInstance.erase(instanceId);
+}
+
+char const* ToString(DungeonRunOutcome v)
+{
+    switch (v)
+    {
+        case DungeonRunOutcome::Running:  return "running";
+        case DungeonRunOutcome::Complete: return "complete";
+        case DungeonRunOutcome::Partial:  return "partial";
+        case DungeonRunOutcome::Blocked:  return "blocked";
+        case DungeonRunOutcome::Failed:   return "failed";
+        case DungeonRunOutcome::Aborted:  return "aborted";
+    }
+    return "unknown";
+}
+
+char const* ToString(DungeonFailureDomain v)
+{
+    switch (v)
+    {
+        case DungeonFailureDomain::None:            return "none";
+        case DungeonFailureDomain::Navigation:       return "navigation";
+        case DungeonFailureDomain::PartyCoordination: return "party_coordination";
+        case DungeonFailureDomain::PullPlanning:     return "pull_planning";
+        case DungeonFailureDomain::Combat:           return "combat";
+        case DungeonFailureDomain::Encounter:        return "encounter";
+        case DungeonFailureDomain::Recovery:         return "recovery";
+        case DungeonFailureDomain::Infrastructure:   return "infrastructure";
+    }
+    return "unknown";
+}
+
+char const* ToString(DungeonFailureReason v)
+{
+    switch (v)
+    {
+        case DungeonFailureReason::None:             return "none";
+        case DungeonFailureReason::PathFailed:        return "path_failed";
+        case DungeonFailureReason::ObjectiveTimeout:  return "objective_timeout";
+        case DungeonFailureReason::BossEvade:         return "boss_evade";
+        case DungeonFailureReason::PartyWipe:         return "party_wipe";
+        case DungeonFailureReason::PlayerMissing:     return "player_missing";
+        case DungeonFailureReason::UnsupportedEvent:  return "unsupported_event";
+        case DungeonFailureReason::InternalInvariant: return "internal_invariant";
+        case DungeonFailureReason::RouteDataInvalid:  return "route_data_invalid";
+    }
+    return "unknown";
+}
+
+char const* ToString(DungeonLeadSessionOrigin v)
+{
+    switch (v)
+    {
+        case DungeonLeadSessionOrigin::Manual:     return "manual";
+        case DungeonLeadSessionOrigin::AutoCanary: return "auto_canary";
+    }
+    return "unknown";
+}

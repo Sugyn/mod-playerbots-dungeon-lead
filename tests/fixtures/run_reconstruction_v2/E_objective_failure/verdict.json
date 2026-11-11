@@ -1,0 +1,16 @@
+{
+ "analysis_version": 2,
+ "campaign_id": "campaign-0002",
+ "commit_sha": "d1f1ddf",
+ "dungeon_support": null,
+ "health": "unhealthy",
+ "result": "PARTIAL",
+ "result_reason": "progress to step 11, outcome partial",
+ "run_id": "100011",
+ "scenario_id": "lfg8-lvl20-bot5-wtank-phealer-wmr-dps-lfg-target-level",
+ "unhealthy": [
+  "mandatory_objective_failed"
+ ],
+ "unmodeled": null,
+ "warnings": []
+}

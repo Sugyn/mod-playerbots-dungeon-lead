@@ -1,0 +1,1878 @@
+/*
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ *
+ * DungeonLeadKernels.h
+ *
+ * Pure decision functions: plain data in, decision out, no AzerothCore/mod-playerbots types. The
+ * game-facing code gathers the facts and acts on the result; these decide. Kept header-only and
+ * dependency-free so tests/ can compile and run them without a worldserver.
+ */
+
+#ifndef MOD_DUNGEONLEAD_KERNELS_H
+#define MOD_DUNGEONLEAD_KERNELS_H
+
+#include "DungeonRouteTypes.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace DungeonLeadKernel
+{
+    // ---------------------------------------------------------------------------------------
+    // Leadership transfer (acquire at session start, return at session stop)
+    // ---------------------------------------------------------------------------------------
+    //
+    // Queueing a GroupSetLeaderOperation is not success - it runs later on the world thread and
+    // can be dropped (queue full) or overtaken by someone else changing the leader first. The
+    // only success signal is observing group->GetLeaderGUID() == the expected leader.
+
+    enum class LeadershipStep : uint8_t
+    {
+        Confirmed,  // expected leader observed
+        Wait,       // request still within its timeout
+        Retry,      // timed out, attempts left - request again
+        GiveUp,     // timed out, no attempts left
+        Abandon,    // can no longer succeed (target gone, or a third party took the lead)
+    };
+
+    struct LeadershipObservation
+    {
+        bool targetIsLeader = false;       // GetLeaderGUID() == expected leader
+        bool targetEligible = true;        // expected leader still exists and is in the group
+        bool thirdPartyIsLeader = false;   // leader is neither the expected one nor the one we're moving away from
+        uint32_t msSinceRequest = 0;       // since the last request was sent
+        uint8_t attempts = 0;              // requests sent so far, including the first
+    };
+
+    struct LeadershipPolicy
+    {
+        uint32_t timeoutMs = 5000;  // per attempt
+        uint8_t maxAttempts = 3;
+    };
+
+    inline LeadershipStep DecideLeadership(LeadershipObservation const& o, LeadershipPolicy const& p)
+    {
+        if (o.targetIsLeader)
+            return LeadershipStep::Confirmed;
+        if (!o.targetEligible || o.thirdPartyIsLeader)
+            return LeadershipStep::Abandon;
+        if (o.msSinceRequest < p.timeoutMs)
+            return LeadershipStep::Wait;
+        if (o.attempts < p.maxAttempts)
+            return LeadershipStep::Retry;
+        return LeadershipStep::GiveUp;
+    }
+
+    // A queued leader change is checked again when the world thread runs it - the
+    // request can outlive the session that asked for it (start cancelled, a new session, the bot
+    // in another group, a player who took the lead meanwhile). It applies only if it is still the
+    // session's current request and the group is the one it was made for, with the leader it was
+    // made against.
+    enum class QueuedLeaderChange : uint8_t
+    {
+        Apply,
+        AlreadyDone,       // the target already leads: nothing to change
+        RejectSuperseded,  // no session, or not its current request (cancelled/restarted/stopped)
+        RejectGroup,       // the bot is in no group or another group
+        RejectTarget,      // the target is not a member of that group
+        RejectLeader,      // someone else changed the leader since the request
+    };
+
+    struct QueuedLeaderFacts
+    {
+        bool requestCurrent = false;   // session exists, in Starting/Stopping, same generation
+        bool sameGroup = false;        // bot's group GUID == the one at request time
+        bool targetMember = false;
+        bool targetIsLeader = false;
+        bool leaderAsExpected = false; // leader == the one the request moves away from
+    };
+
+    inline QueuedLeaderChange DecideQueuedLeaderChange(QueuedLeaderFacts const& f)
+    {
+        if (!f.requestCurrent)
+            return QueuedLeaderChange::RejectSuperseded;
+        if (!f.sameGroup)
+            return QueuedLeaderChange::RejectGroup;
+        if (!f.targetMember)
+            return QueuedLeaderChange::RejectTarget;
+        if (f.targetIsLeader)
+            return QueuedLeaderChange::AlreadyDone;
+        if (!f.leaderAsExpected)
+            return QueuedLeaderChange::RejectLeader;
+        return QueuedLeaderChange::Apply;
+    }
+
+    inline char const* ToString(QueuedLeaderChange c)
+    {
+        switch (c)
+        {
+            case QueuedLeaderChange::Apply:            return "apply";
+            case QueuedLeaderChange::AlreadyDone:      return "already_done";
+            case QueuedLeaderChange::RejectSuperseded: return "superseded";
+            case QueuedLeaderChange::RejectGroup:      return "group_changed";
+            case QueuedLeaderChange::RejectTarget:     return "target_not_member";
+            case QueuedLeaderChange::RejectLeader:     return "leader_changed";
+        }
+        return "unknown";
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Healer availability
+    // ---------------------------------------------------------------------------------------
+    //
+    // Distinct from low mana (ReadyStatus::LowHealerMana): a dead/ghost healer or one on another map cannot
+    // support the next pull at all. A party with no healer role is not blocked - it advances
+    // opportunistically.
+
+    enum class HealerAvailability : uint8_t
+    {
+        NoHealerRole,
+        Available,
+        Unavailable,
+    };
+
+    struct MemberFacts
+    {
+        bool isHealer = false;
+        bool alive = false;    // false for dead and ghost alike (both are DeathState::Dead in AC)
+        bool sameMap = false;  // same map object as the leader
+    };
+
+    inline HealerAvailability EvaluateHealer(std::vector<MemberFacts> const& members)
+    {
+        bool healerInRoster = false;
+        for (MemberFacts const& m : members)
+        {
+            if (!m.isHealer)
+                continue;
+            healerInRoster = true;
+            if (m.alive && m.sameMap)
+                return HealerAvailability::Available;
+        }
+        return healerInRoster ? HealerAvailability::Unavailable : HealerAvailability::NoHealerRole;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Party readiness (the one place that decides whether the leader may walk on or pull)
+    // ---------------------------------------------------------------------------------------
+    //
+    // DungeonPartyState gathers these facts from the live group; EvaluateReadiness decides.
+
+    struct PartyMemberFacts
+    {
+        bool isSelf = false;          // the leader itself
+        bool isMaster = false;        // the real player the leader belongs to
+        bool isHealerBySpec = false;  // talent spec says healer (availability check)
+        bool isHealerRole = false;    // mod-playerbots' default healer test (mana check)
+        bool gameMaster = false;
+        bool alive = false;           // false for dead and ghost alike
+        bool online = true;           // in world with a session
+        bool sameMap = false;         // same map object as the leader
+        bool inCombat = false;
+        bool sitting = false;         // sitting with a food/drink regeneration aura
+        bool lineOfSight = true;      // healers only: line of sight to the leader
+        float manaPct = 100.0f;
+        float healthPct = 100.0f;
+        float distance = 0.0f;        // to the leader, only meaningful when sameMap
+    };
+
+    struct MasterFacts
+    {
+        bool assigned = false;  // a real player owns this leader (not a bot-only/canary run)
+        bool online = false;    // in world with a session
+        bool alive = false;
+        bool inGroup = true;    // still a member (true when the leader has no group at all)
+        bool sameMap = false;
+        float distance = 0.0f;
+    };
+
+    struct PartyFacts
+    {
+        bool hasGroup = false;
+        bool selfInCombat = false;  // used when there is no group
+        MasterFacts master;
+        std::vector<PartyMemberFacts> members;  // whole group, leader included
+    };
+
+    struct ReadinessPolicy
+    {
+        float healerManaPct = 20.0f;
+        float leash = 60.0f;          // master farther than this (or off-map) -> wait
+        float softRange = 40.0f;      // a member farther than this -> no new pull (PartySoftRange)
+        float hardRange = 90.0f;      // a member farther than this -> stop walking too (PartyHardRange)
+        float minHealthPct = 50.0f;   // out of combat, anyone below this -> wait (0 = off)
+        float healReach = 40.0f;      // a healer farther than this from the leader can't heal it
+    };
+
+    enum class ReadyPurpose : uint8_t
+    {
+        Walk,  // advance along the route
+        Pull,  // open a new fight; being in combat already is the class AI's business
+    };
+
+    // In evaluation order - the first one that applies is reported.
+    enum class ReadyStatus : uint8_t
+    {
+        Ready,
+        MasterUnavailable,  // dead, offline or left the group
+        HealerUnavailable,  // every healer dead/ghost or on another map
+        MemberDead,         // another party member dead
+        PartyInCombat,      // walk only
+        Drinking,           // someone (not the leader) sitting
+        LowHealth,          // someone (leader included) below minHealthPct, out of combat
+        LowHealerMana,
+        MemberLost,         // a living member not on the leader's map, or offline
+        MasterTooFar,       // off-map or beyond leash
+        Fragmented,         // a member beyond PartyHardRange
+        PartySpread,        // a member beyond PartySoftRange - pulls only
+        HealerOutOfReach,   // pulls only: no living healer in sight of the leader within healReach
+    };
+
+    inline char const* ToString(ReadyStatus s)
+    {
+        switch (s)
+        {
+            case ReadyStatus::Ready:             return "ready";
+            case ReadyStatus::MasterUnavailable: return "master dead/disconnected/left the party";
+            case ReadyStatus::HealerUnavailable: return "healer dead or not in the instance";
+            case ReadyStatus::MemberDead:        return "party member dead";
+            case ReadyStatus::PartyInCombat:     return "group in combat";
+            case ReadyStatus::Drinking:          return "someone is eating/drinking";
+            case ReadyStatus::LowHealth:         return "someone is low on health";
+            case ReadyStatus::LowHealerMana:     return "healer low on mana";
+            case ReadyStatus::MasterTooFar:      return "waiting for you, master too far";
+            case ReadyStatus::MemberLost:        return "party member lost (other map or offline)";
+            case ReadyStatus::Fragmented:        return "group too spread";
+            case ReadyStatus::PartySpread:       return "group spread out, holding the pull";
+            case ReadyStatus::HealerOutOfReach:  return "healer out of sight or range of the tank, holding the pull";
+        }
+        return "unknown";
+    }
+
+    struct Readiness
+    {
+        ReadyStatus status = ReadyStatus::Ready;
+        int offender = -1;  // index into PartyFacts::members for MemberDead/MemberLost/Fragmented/PartySpread
+    };
+
+    inline bool MasterUnavailable(PartyFacts const& f)
+    {
+        MasterFacts const& m = f.master;
+        return m.assigned && (!m.online || !m.alive || !m.inGroup);
+    }
+
+    inline bool MasterTooFar(PartyFacts const& f, ReadinessPolicy const& p)
+    {
+        MasterFacts const& m = f.master;
+        if (!m.assigned || !m.alive)
+            return false;
+        return !m.sameMap || m.distance > p.leash;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Party cohesion: how far apart the party is, as one semantic level
+    // ---------------------------------------------------------------------------------------
+
+    enum class Cohesion : uint8_t
+    {
+        Ok,
+        SoftWarning,  // someone beyond softRange: finish what we're doing, don't open a new pull
+        HardStop,     // someone beyond hardRange: stop advancing
+        LostMember,   // a living member not on our map / offline: needs a regroup
+    };
+
+    inline char const* ToString(Cohesion c)
+    {
+        switch (c)
+        {
+            case Cohesion::Ok:          return "ok";
+            case Cohesion::SoftWarning: return "soft_warning";
+            case Cohesion::HardStop:    return "hard_stop";
+            case Cohesion::LostMember:  return "lost_member";
+        }
+        return "unknown";
+    }
+
+    struct CohesionResult
+    {
+        Cohesion level = Cohesion::Ok;
+        int offender = -1;  // the member that sets the level (farthest one for soft/hard)
+    };
+
+    // The master's own distance/presence is judged by MasterTooFar/MasterUnavailable; it still
+    // counts toward soft/hard spread like everyone else.
+    inline CohesionResult EvaluateCohesion(PartyFacts const& f, ReadinessPolicy const& p)
+    {
+        CohesionResult r;
+        float worstDist = 0.0f;
+        for (size_t i = 0; i < f.members.size(); ++i)
+        {
+            PartyMemberFacts const& m = f.members[i];
+            if (m.isSelf || !m.alive)
+                continue;
+            if (!m.isMaster && (!m.online || !m.sameMap))
+                return {Cohesion::LostMember, int(i)};
+            if (!m.sameMap)
+                continue;
+            Cohesion const level = m.distance > p.hardRange ? Cohesion::HardStop
+                                 : m.distance > p.softRange ? Cohesion::SoftWarning
+                                                            : Cohesion::Ok;
+            if (level > r.level || (level == r.level && level != Cohesion::Ok && m.distance > worstDist))
+            {
+                r.level = level;
+                r.offender = int(i);
+                worstDist = m.distance;
+            }
+        }
+        return r;
+    }
+
+    // Farthest member (not the leader) past hardRange, or -1 - named in the "waiting for X" chat line.
+    inline int FindSpreadMember(PartyFacts const& f, ReadinessPolicy const& p)
+    {
+        int worst = -1;
+        float worstDist = p.hardRange;
+        for (size_t i = 0; i < f.members.size(); ++i)
+        {
+            PartyMemberFacts const& m = f.members[i];
+            if (m.isSelf || !m.alive || !m.sameMap)
+                continue;
+            if (m.distance > worstDist)
+            {
+                worstDist = m.distance;
+                worst = int(i);
+            }
+        }
+        return worst;
+    }
+
+    // A combat flag with no enemy behind it - nobody attacking the member, no target of its own -
+    // stops counting after kStaleCombatMs: mobs left far away with the member on their threat list
+    // (e.g. after a wipe) would otherwise keep the whole party "in combat" and the route walk would
+    // never resume. Whatever is still out there is met on the way.
+    constexpr uint32_t kStaleCombatMs = 20000;
+
+    inline bool CombatCounts(bool inCombat, bool hasEnemy, uint32_t msWithoutEnemy)
+    {
+        return inCombat && (hasEnemy || msWithoutEnemy < kStaleCombatMs);
+    }
+
+    inline bool AnyInCombat(PartyFacts const& f)
+    {
+        if (!f.hasGroup)
+            return f.selfInCombat;
+        for (PartyMemberFacts const& m : f.members)
+            if (m.alive && m.sameMap && m.inCombat)
+                return true;
+        return false;
+    }
+
+    inline Readiness EvaluateReadiness(PartyFacts const& f, ReadinessPolicy const& p, ReadyPurpose purpose)
+    {
+        if (MasterUnavailable(f))
+            return {ReadyStatus::MasterUnavailable, -1};
+        if (!f.hasGroup)
+            return {purpose == ReadyPurpose::Walk && f.selfInCombat ? ReadyStatus::PartyInCombat : ReadyStatus::Ready, -1};
+
+        std::vector<MemberFacts> healerFacts;
+        for (PartyMemberFacts const& m : f.members)
+        {
+            MemberFacts h;
+            h.isHealer = m.isHealerBySpec;
+            h.alive = m.alive;
+            h.sameMap = m.sameMap;
+            healerFacts.push_back(h);
+        }
+        if (EvaluateHealer(healerFacts) == HealerAvailability::Unavailable)
+            return {ReadyStatus::HealerUnavailable, -1};
+
+        for (size_t i = 0; i < f.members.size(); ++i)
+        {
+            PartyMemberFacts const& m = f.members[i];
+            if (!m.isSelf && !m.isMaster && !m.alive)
+                return {ReadyStatus::MemberDead, int(i)};  // leader's own death and the master's are handled elsewhere
+        }
+
+        CohesionResult const cohesion = EvaluateCohesion(f, p);
+        if (cohesion.level == Cohesion::LostMember)
+            return {ReadyStatus::MemberLost, cohesion.offender};
+
+        if (purpose == ReadyPurpose::Walk && AnyInCombat(f))
+        {
+            // who is fighting - a fight nobody can see the end of has to be traceable to a member
+            for (size_t i = 0; i < f.members.size(); ++i)
+                if (f.members[i].alive && f.members[i].sameMap && f.members[i].inCombat)
+                    return {ReadyStatus::PartyInCombat, int(i)};
+            return {ReadyStatus::PartyInCombat, -1};
+        }
+
+        float lowestHealerMana = 100.0f;
+        for (PartyMemberFacts const& m : f.members)
+        {
+            if (m.isSelf || !m.alive)
+                continue;
+            if (m.sitting && m.sameMap)
+                return {ReadyStatus::Drinking, -1};
+            if (m.isHealerRole && !m.gameMaster && m.manaPct < lowestHealerMana)
+                lowestHealerMana = m.manaPct;
+        }
+        for (size_t i = 0; i < f.members.size(); ++i)
+        {
+            PartyMemberFacts const& m = f.members[i];
+            if (m.alive && m.sameMap && !m.inCombat && m.healthPct < p.minHealthPct)
+                return {ReadyStatus::LowHealth, int(i)};
+        }
+        if (lowestHealerMana < p.healerManaPct)
+            return {ReadyStatus::LowHealerMana, -1};
+
+        if (MasterTooFar(f, p))
+            return {ReadyStatus::MasterTooFar, -1};
+        if (cohesion.level == Cohesion::HardStop)
+            return {ReadyStatus::Fragmented, cohesion.offender};
+        if (cohesion.level == Cohesion::SoftWarning && purpose == ReadyPurpose::Pull)
+            return {ReadyStatus::PartySpread, cohesion.offender};
+        // A new pull needs a healer that can heal the tank - in sight and in range. A party
+        // without a healer is not held here (that has its own policy).
+        if (purpose == ReadyPurpose::Pull)
+        {
+            bool anyHealer = false, healerInReach = false;
+            int offender = -1;
+            for (size_t i = 0; i < f.members.size(); ++i)
+            {
+                PartyMemberFacts const& m = f.members[i];
+                if (m.isSelf || !m.isHealerBySpec || !m.alive || !m.sameMap || m.gameMaster)
+                    continue;
+                anyHealer = true;
+                if (m.lineOfSight && m.distance <= p.healReach)
+                    healerInReach = true;
+                else if (offender < 0)
+                    offender = int(i);
+            }
+            if (anyHealer && !healerInReach)
+                return {ReadyStatus::HealerOutOfReach, offender};
+        }
+        return {};
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Leader state machine (DungeonLeadBrain) - the one authoritative state of a session
+    // ---------------------------------------------------------------------------------------
+
+    enum class LeadState : uint8_t
+    {
+        Starting,      // leadership requested, not yet observed; nothing applied
+        WaitingReady,  // party not ready (or paused) - hold position, no new pulls
+        Travelling,    // party ready, walking the route
+        PrePull,       // in range of the pack, preparing the pull (marking)
+        Pulling,       // attack ordered, fight not established yet
+        BossPrep,      // the current pack is a boss: preparing / opening the pull
+        Combat,        // someone in the party is fighting
+        BossCombat,    // fighting the current boss (its own anchor and leash)
+        PostCombat,    // fight over, party not ready yet
+        WipeRecovery,  // leader dead - waiting for upstream's release/corpse-run/res chain
+        Recovery,      // a bounded recovery is running (DungeonRecoveryController)
+        Completing,    // route finished, session held until stopped
+        Stopping,      // strategies restored, leader handback not yet observed
+    };
+
+    inline char const* ToString(LeadState s)
+    {
+        switch (s)
+        {
+            case LeadState::Starting:     return "starting";
+            case LeadState::WaitingReady: return "waiting_ready";
+            case LeadState::Travelling:   return "travelling";
+            case LeadState::PrePull:      return "pre_pull";
+            case LeadState::Pulling:      return "pulling";
+            case LeadState::BossPrep:     return "boss_prep";
+            case LeadState::Combat:       return "combat";
+            case LeadState::BossCombat:   return "boss_combat";
+            case LeadState::PostCombat:   return "post_combat";
+            case LeadState::WipeRecovery: return "wipe_recovery";
+            case LeadState::Recovery:     return "recovery";
+            case LeadState::Completing:   return "completing";
+            case LeadState::Stopping:     return "stopping";
+        }
+        return "unknown";
+    }
+
+    // Starting and Stopping are driven by the leadership reconciliation, everything else by
+    // DecideActive below.
+    inline bool IsActive(LeadState s) { return s != LeadState::Starting && s != LeadState::Stopping; }
+
+    // Whether the brain's current state allows a fight to be opened (grind's opportunistic pulls
+    // and the pull controller's own): only while working the route or already fighting - never
+    // while waiting, recovering, after a wipe, done, or outside an active session.
+    inline bool StateAllowsNewPull(LeadState s)
+    {
+        switch (s)
+        {
+            case LeadState::Travelling:
+            case LeadState::PrePull:
+            case LeadState::Pulling:
+            case LeadState::BossPrep:
+            case LeadState::Combat:
+            case LeadState::BossCombat:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    enum class TransitionReason : uint8_t
+    {
+        SessionStart,
+        LeadershipConfirmed,
+        StopRequested,
+        Paused,
+        PartyNotReady,
+        PartyReady,
+        CombatStarted,
+        CombatEnded,
+        LeaderDied,
+        LeaderRecovered,
+        RouteComplete,
+        PullPreparing,
+        PullStarted,
+        RecoveryNeeded,
+        BossEngaged,
+    };
+
+    inline char const* ToString(TransitionReason r)
+    {
+        switch (r)
+        {
+            case TransitionReason::SessionStart:        return "session_start";
+            case TransitionReason::LeadershipConfirmed: return "leadership_confirmed";
+            case TransitionReason::StopRequested:       return "stop_requested";
+            case TransitionReason::Paused:              return "paused";
+            case TransitionReason::PartyNotReady:       return "party_not_ready";
+            case TransitionReason::PartyReady:          return "party_ready";
+            case TransitionReason::CombatStarted:       return "combat_started";
+            case TransitionReason::CombatEnded:         return "combat_ended";
+            case TransitionReason::LeaderDied:          return "leader_died";
+            case TransitionReason::LeaderRecovered:     return "leader_recovered";
+            case TransitionReason::RouteComplete:       return "route_complete";
+            case TransitionReason::PullPreparing:       return "pull_preparing";
+            case TransitionReason::PullStarted:         return "pull_started";
+            case TransitionReason::RecoveryNeeded:      return "recovery_needed";
+            case TransitionReason::BossEngaged:         return "boss_engaged";
+        }
+        return "unknown";
+    }
+
+    struct ActiveFacts
+    {
+        LeadState current = LeadState::WaitingReady;
+        bool leaderAlive = true;
+        bool paused = false;
+        bool routeComplete = false;
+        bool anyInCombat = false;  // leader or a living same-map member
+        bool walkReady = false;    // EvaluateReadiness(..., Walk) == Ready
+        bool preparingPull = false;  // pull controller holds the leader (PullHoldsLeader)
+        bool pulling = false;        // pull controller: Initiating / Establishing
+        uint32_t msInState = 0;
+        uint32_t postCombatMinMs = 3000;  // shortest pause between two fights
+        bool recovering = false;          // DungeonRecoveryController has an open problem
+        bool bossPack = false;            // the current pack is a boss
+        bool bossEngaged = false;         // ... and it is in the fight
+    };
+
+    struct Transition
+    {
+        LeadState next;
+        TransitionReason reason;
+    };
+
+    // Next state for an active session. Returns `current` unchanged (with the reason that keeps
+    // it there) when nothing changed - the caller only logs actual changes.
+    inline Transition DecideActive(ActiveFacts const& f)
+    {
+        if (!f.leaderAlive)
+            return {LeadState::WipeRecovery, TransitionReason::LeaderDied};
+        if (f.current == LeadState::WipeRecovery)
+            return {LeadState::WaitingReady, TransitionReason::LeaderRecovered};
+        if (f.routeComplete)
+            return {LeadState::Completing, TransitionReason::RouteComplete};
+        if (f.anyInCombat)
+        {
+            // A boss fight stays a boss fight even if the boss is briefly not seen engaged.
+            if (f.bossEngaged || f.current == LeadState::BossCombat)
+                return {LeadState::BossCombat, TransitionReason::BossEngaged};
+            return {LeadState::Combat, TransitionReason::CombatStarted};
+        }
+        if (f.current == LeadState::Combat || f.current == LeadState::BossCombat)
+            return {LeadState::PostCombat, TransitionReason::CombatEnded};
+        // The deliberate gate between two packs: always a pause, then a full readiness check.
+        if (f.current == LeadState::PostCombat && f.msInState < f.postCombatMinMs)
+            return {LeadState::PostCombat, TransitionReason::CombatEnded};
+        if (f.paused)
+            return {LeadState::WaitingReady, TransitionReason::Paused};
+        if (f.pulling)  // attack already ordered
+            return {f.bossPack ? LeadState::BossPrep : LeadState::Pulling, TransitionReason::PullStarted};
+        if (f.recovering)
+            return {LeadState::Recovery, TransitionReason::RecoveryNeeded};
+        if (!f.walkReady)
+            return {f.current == LeadState::PostCombat ? LeadState::PostCombat : LeadState::WaitingReady,
+                    TransitionReason::PartyNotReady};
+        if (f.preparingPull)
+            return {f.bossPack ? LeadState::BossPrep : LeadState::PrePull, TransitionReason::PullPreparing};
+        return {LeadState::Travelling, TransitionReason::PartyReady};
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Pack state (the enemy group a Pull/Boss/Interaction route node is about)
+    // ---------------------------------------------------------------------------------------
+    //
+    // A pack is identified by static data only (expected creature entries near the node's
+    // position); runtime GUIDs are observed each tick, never stored as the definition. Route
+    // progress depends on the pack becoming Cleared (or explicitly Skipped), never on the tank
+    // merely reaching the coordinate.
+
+    enum class PackState : uint8_t
+    {
+        Unknown,    // nothing seen yet (not in range, or nothing spawned)
+        Available,  // alive, not fighting
+        Engaged,    // alive and in combat
+        Cleared,    // seen dead (or remembered killed in this instance)
+        Skipped,    // given up on (stuck / not progressing) - terminal
+    };
+
+    inline char const* ToString(PackState s)
+    {
+        switch (s)
+        {
+            case PackState::Unknown:   return "unknown";
+            case PackState::Available: return "available";
+            case PackState::Engaged:   return "engaged";
+            case PackState::Cleared:   return "cleared";
+            case PackState::Skipped:   return "skipped";
+        }
+        return "unknown";
+    }
+
+    struct PackObservation
+    {
+        uint32_t found = 0;            // matching creatures near the pack position, dead or alive
+        uint32_t alive = 0;
+        uint32_t engaged = 0;          // alive and in combat
+        bool rememberedKilled = false; // instance kill memory says this pack is done
+    };
+
+    // Which live units make up the pack. Geometry alone merges neighbouring groups in dense rooms,
+    // so membership combines:
+    //  - static identity: the expected entry, and the *spawn* (home) position near the pack's spot
+    //    - plus the nearest such unit as the lead (a patrol away from home is still the pack);
+    //  - runtime identity: once the pack is engaged its members are locked, and any unit attacking
+    //    the party joins as an engaged add.
+    // An expected-entry unit spawned elsewhere and not fighting the party is rejected.
+    struct PackUnitFacts
+    {
+        uint64_t id = 0;
+        bool expectedEntry = false;
+        bool alive = false;
+        bool inCombat = false;
+        bool attackingParty = false;
+        float distToPack = 0.0f;      // current position to the pack's configured spot
+        float homeDistToPack = 0.0f;  // spawn/home position to the pack's configured spot
+    };
+
+    // `observation` describes the pack itself (its core members) - adds are counted separately:
+    // fighting a boss's trash must not look like fighting the boss (see the pull controller's
+    // reset count). Combat with adds already holds the route through the brain's Combat state.
+    struct PackResolution
+    {
+        std::vector<uint64_t> core;     // the pack itself - what gets locked once engaged
+        std::vector<uint64_t> adds;     // other units attacking the party during this fight
+        uint64_t lead = 0;              // nearest live core member (pull target / destination)
+        uint32_t rejected = 0;          // expected-entry units judged not part of this pack
+        PackObservation observation;
+    };
+
+    inline PackResolution ResolvePack(std::vector<PackUnitFacts> const& units, std::vector<uint64_t> const& locked,
+                                      float memberRadius)
+    {
+        PackResolution r;
+        auto isLocked = [&](uint64_t id)
+        {
+            for (uint64_t l : locked)
+                if (l == id)
+                    return true;
+            return false;
+        };
+
+        // the lead: the nearest expected unit (alive preferred) - only relevant before the lock
+        uint64_t nearest = 0;
+        float nearestDist = 0.0f;
+        bool nearestAlive = false;
+        for (PackUnitFacts const& u : units)
+        {
+            if (!u.expectedEntry)
+                continue;
+            bool const better = !nearest || (u.alive && !nearestAlive) ||
+                                (u.alive == nearestAlive && u.distToPack < nearestDist);
+            if (better)
+            {
+                nearest = u.id;
+                nearestDist = u.distToPack;
+                nearestAlive = u.alive;
+            }
+        }
+
+        float leadDist = 0.0f;
+        for (PackUnitFacts const& u : units)
+        {
+            bool member = false;
+            bool add = false;
+            if (!locked.empty())
+            {
+                member = isLocked(u.id);
+                add = !member && u.alive && u.attackingParty;
+            }
+            else if (u.expectedEntry)
+                member = u.id == nearest || u.homeDistToPack <= memberRadius || (u.alive && u.attackingParty);
+            else
+                add = u.alive && u.attackingParty;
+
+            if (!member && !add)
+            {
+                if (u.expectedEntry)
+                    ++r.rejected;
+                continue;
+            }
+            if (add)
+            {
+                r.adds.push_back(u.id);
+                continue;
+            }
+            r.core.push_back(u.id);
+            ++r.observation.found;
+            if (u.alive)
+            {
+                ++r.observation.alive;
+                if (u.inCombat)
+                    ++r.observation.engaged;
+                if (u.expectedEntry && (!r.lead || u.distToPack < leadDist))
+                {
+                    r.lead = u.id;
+                    leadDist = u.distToPack;
+                }
+            }
+        }
+        return r;
+    }
+
+    inline PackState DecidePackState(PackState prev, PackObservation const& o)
+    {
+        if (prev == PackState::Cleared || prev == PackState::Skipped)
+            return prev;  // terminal
+        if (o.rememberedKilled)
+            return PackState::Cleared;
+        if (o.engaged > 0)
+            return PackState::Engaged;
+        if (o.alive > 0)
+            return PackState::Available;
+        if (o.found > 0)
+            return PackState::Cleared;  // only corpses left
+        // Nothing in range: an engaged pack may just have been pulled out of probe range.
+        return prev == PackState::Engaged ? PackState::Engaged : PackState::Unknown;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Combat anchor and leash
+    // ---------------------------------------------------------------------------------------
+    //
+    // When a fight starts the leader's position becomes the combat anchor. While the fight lasts
+    // the tank may move freely around it, but it does not chase a target that has left the leash
+    // radius around the anchor - a fleeing mob must not drag the party into the next pack.
+
+    struct LeashFacts
+    {
+        bool anchorSet = false;
+        bool inCombat = false;
+        bool hasTarget = false;
+        bool targetAttackingParty = false;  // its victim is a party member - not fleeing
+        bool targetRunningForHelp = false;  // fleeing for assistance: it brings the next pack if not stopped
+        float targetDistFromAnchor = 0.0f;
+    };
+
+    // A mob beating a party member is not fleeing: the tank goes, wherever it is.
+    inline bool ChaseAllowed(LeashFacts const& f, float leashRadius)
+    {
+        if (!f.anchorSet || !f.inCombat || !f.hasTarget || f.targetAttackingParty || f.targetRunningForHelp)
+            return true;
+        return f.targetDistFromAnchor <= leashRadius;
+    }
+
+    // A boss fight is held at the boss's home with the boss leash - unless the fight already runs
+    // farther than that leash from it (the boss came to a trash fight): walking the tank there
+    // would drag the whole fight through the packs in between.
+    inline bool BossAnchorAtHome(bool anchorSet, float anchorDistToBossHome, float bossLeash)
+    {
+        return !anchorSet || anchorDistToBossHome <= bossLeash;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Pull lifecycle (DungeonPullController) for the current Pull/Boss pack
+    // ---------------------------------------------------------------------------------------
+    //
+    // Orchestration only: the controller decides when to open the fight, marks the target and
+    // starts the attack through mod-playerbots' own "attack rti target"; the class AI fights.
+
+    enum class PullState : uint8_t
+    {
+        None,          // no pullable pack (travel node, cleared, interaction)
+        Approaching,   // pack known, tank not in pull range yet
+        WaitingParty,  // in range, party not ready for a pull
+        WaitingPatrol, // in range, ready, a patrol walking past the target - let it pass
+        Marking,       // ready - put the skull on the pull target
+        Initiating,    // attack ordered, waiting for the tank to be in combat
+        Establishing,  // tank fighting, waiting for the pack to be engaged on it
+        Established,   // tank fighting the pack or its planned primary - the class AI owns it now
+        Failed,        // order refused / no fight within the timeouts; retried until the budget is spent
+    };
+
+    inline char const* ToString(PullState s)
+    {
+        switch (s)
+        {
+            case PullState::None:         return "none";
+            case PullState::Approaching:  return "approaching";
+            case PullState::WaitingParty: return "waiting_party";
+            case PullState::WaitingPatrol: return "waiting_patrol";
+            case PullState::Marking:      return "marking";
+            case PullState::Initiating:   return "initiating";
+            case PullState::Establishing: return "establishing";
+            case PullState::Established:  return "established";
+            case PullState::Failed:       return "failed";
+        }
+        return "unknown";
+    }
+
+    struct PullFacts
+    {
+        PullState current = PullState::None;
+        uint32_t msInState = 0;
+        bool pullablePack = false;  // current node is a Pull/Boss pack that is not cleared/skipped
+        bool packAlive = false;     // something of the pack seen alive
+        bool packEngaged = false;   // something of the pack alive and in combat
+        bool primaryEngaged = false;  // the target plan's primary (may be trash next to the pack) fighting
+        bool inPullRange = false;   // tank within PullRange of the pull target
+        bool inRangeNoSight = false;  // within PullRange but not in line of sight (behind a wall, a fence)
+        uint32_t msNoSightStill = 0;  // how long the leader has stood still in range without sight
+        bool partyReady = false;    // EvaluateReadiness(..., Pull) == Ready
+        bool patrolNear = false;    // an unengaged patrol (not of the pack) close to the pull target
+        uint32_t msPatrolHeld = 0;  // how long this pack's pull has already waited for patrols
+        bool targetMarked = false;  // skull is on a living member of the pack
+        bool leaderInCombat = false;
+        bool orderRefused = false;  // the attack order for this attempt was not accepted
+        uint8_t attempts = 0;       // pulls initiated so far for this pack
+    };
+
+    struct PullPolicy
+    {
+        uint32_t initiateTimeoutMs = 10000;
+        uint32_t establishTimeoutMs = 8000;
+        uint8_t maxAttempts = 2;
+        // In range of the target but without sight of it this long: a failed try, not a wait
+        // forever (e.g. a mob in a stall behind a wall).
+        uint32_t approachNoSightTimeoutMs = 15000;
+        // Longest wait for patrols to pass before pulling anyway - a patrol that stands or loops
+        // around the pack never passes.
+        uint32_t patrolHoldMaxMs = 20000;  // = kPullHoldStillMaxMs: the leader holds that long
+        // Longest a pull waits for the party in range of the pack before the try fails.
+        // The regroup recovery normally ends the wait long before: this is the backstop.
+        uint32_t partyWaitMaxMs = 300000;
+    };
+
+    inline PullState DecidePull(PullFacts const& f, PullPolicy const& p)
+    {
+        if (!f.pullablePack)
+            return PullState::None;
+        if (f.current == PullState::Failed)
+            return f.attempts < p.maxAttempts ? PullState::Approaching : PullState::Failed;
+        if (f.leaderInCombat && (f.packEngaged || f.primaryEngaged))
+            return PullState::Established;  // however it started (ours, or the class AI's own)
+
+        switch (f.current)
+        {
+            case PullState::Established:
+                // Fight over. If the pack is still standing that fight was its trash (or it reset):
+                // go for it again - a fight that happened is progress, not a failed pull. Repeated
+                // fights on one pack are bounded by the caller.
+                return f.packAlive ? PullState::Approaching : PullState::None;
+            case PullState::Initiating:
+                if (f.leaderInCombat || f.packEngaged)
+                    return PullState::Establishing;
+                if (f.orderRefused)
+                    return PullState::Failed;  // nothing is coming of it - don't wait out the timeout
+                return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Initiating;
+            case PullState::Establishing:
+                return f.msInState >= p.establishTimeoutMs ? PullState::Failed : PullState::Establishing;
+            case PullState::Marking:
+                if (!f.partyReady)
+                    return PullState::WaitingParty;
+                if (f.targetMarked)
+                    return PullState::Initiating;
+                // the skull is held by someone else's live mark - don't fight over it forever
+                return f.msInState >= p.initiateTimeoutMs ? PullState::Failed : PullState::Marking;
+            default:  // None, Approaching, WaitingParty, WaitingPatrol
+                // a fight that isn't this pack (trash, a CC'd leftover) finishes first
+                // standing still, in range, no sight: walking up a spiral stair to the target is not this
+                if (f.current == PullState::Approaching && f.packAlive && f.inRangeNoSight && !f.leaderInCombat &&
+                    f.msNoSightStill >= p.approachNoSightTimeoutMs)
+                    return PullState::Failed;
+                if (!f.packAlive || !f.inPullRange || f.leaderInCombat)
+                    return PullState::Approaching;
+                if (!f.partyReady)
+                    return f.current == PullState::WaitingParty && f.msInState >= p.partyWaitMaxMs
+                               ? PullState::Failed
+                               : PullState::WaitingParty;
+                if (f.patrolNear && f.msPatrolHeld < p.patrolHoldMaxMs)
+                    return PullState::WaitingPatrol;
+                return PullState::Marking;
+        }
+    }
+
+    // How long a pull waits for the party standing still before the party's spread is a regroup
+    // recovery, instead of the leader walking on toward the pack into proximity aggro with the
+    // party still unready.
+    constexpr uint32_t kPullHoldStillMaxMs = 20000;
+
+    // Whether the pull controller holds the leader in place (PrePull/BossPrep instead of
+    // Travelling): marking, a pull waiting for the party, a patrol. Travelling on toward the
+    // pack's coordinates while "holding" would walk the tank into aggro range. A party wait is held
+    // for as long as it lasts - bounded by the regroup recovery (PullHoldExpired) and
+    // PullPolicy::partyWaitMaxMs; a patrol wait for kPullHoldStillMaxMs, after which the pull goes
+    // ahead (patrolHoldMaxMs).
+    inline bool PullHoldsLeader(PullState s, uint32_t msInState)
+    {
+        if (s == PullState::Marking || s == PullState::WaitingParty)
+            return true;
+        return s == PullState::WaitingPatrol && msInState < kPullHoldStillMaxMs;
+    }
+
+    // A party wait at the pack that has gone on past kPullHoldStillMaxMs: the spread is handed to
+    // the regroup recovery (the leader walks back to the member, away from the pack).
+    inline bool PullHoldExpired(PullState s, uint32_t msInState)
+    {
+        return s == PullState::WaitingParty && msInState >= kPullHoldStillMaxMs;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Target plan (DungeonTargetManager): primary / secondary / CC for the current fight
+    // ---------------------------------------------------------------------------------------
+    //
+    // Deterministic and stable: a planned target keeps its slot for as long as it is a live
+    // candidate, so marks don't flicker between equally good choices. Priority: boss, elite
+    // caster, caster, elite, normal; ties by distance to the anchor, then id.
+
+    struct TargetCandidate
+    {
+        uint64_t id = 0;
+        bool boss = false;
+        bool caster = false;    // mana user
+        bool elite = false;
+        float distToAnchor = 0.0f;
+        uint8_t healthPct = 100;
+        bool totem = false;       // enemy totem: dies in a hit or two, and some hurt the whole party
+        bool controlled = false;  // under breakable crowd control right now (a sheep, a sap, ...)
+        bool ccRefused = false;   // our CC never landed on it this step - don't mark it again
+        bool fleeing = false;     // running for help (flee for assistance) or fleeing: it brings a pack
+        // A bot of the party could crowd-control it with its class CC right now as far as
+        // the spell check goes (PlayerbotAI::CanCastSpell; range is not required). Gates a new
+        // moon only - a cooldown or a sight line is temporary, a kept moon stays.
+        bool ccCastable = true;
+    };
+
+    // A new CC target must be (nearly) untouched: crowd-controlling a mob the party has already
+    // half killed only stops the party from finishing it.
+    constexpr uint8_t kCcMinHealthPct = 70;
+
+    struct TargetPlan
+    {
+        uint64_t primary = 0;    // skull
+        uint64_t secondary = 0;  // cross
+        uint64_t cc = 0;         // moon - an elite, never the boss or a kill target
+
+        bool operator==(TargetPlan const& o) const
+        {
+            return primary == o.primary && secondary == o.secondary && cc == o.cc;
+        }
+    };
+
+    inline int TargetRank(TargetCandidate const& c)
+    {
+        if (c.controlled)
+            return 6;  // never break a CC for a kill target while anything else is up
+        // A mob running for help brings the next pack with it (flee-for-assistance can chain
+        // several packs and a boss into one fight): stop it before anything else.
+        if (c.fleeing)
+            return -2;
+        if (c.totem)
+            return -1;
+        if (c.boss)
+            return 0;
+        if (c.caster && c.elite)
+            return 1;
+        if (c.caster)
+            return 2;
+        if (c.elite)
+            return 3;
+        return 4;
+    }
+
+    inline bool TargetBefore(TargetCandidate const& a, TargetCandidate const& b)
+    {
+        int const ra = TargetRank(a), rb = TargetRank(b);
+        if (ra != rb)
+            return ra < rb;
+        if (a.distToAnchor != b.distToAnchor)
+            return a.distToAnchor < b.distToAnchor;
+        return a.id < b.id;
+    }
+
+    // During a fight, what belongs to it: units in combat within the radius of the *combat anchor*
+    // (where the fight began - not wherever the tank has moved to, or a neighbouring pack slides
+    // into range), plus any unit attacking a party member wherever it stands (an add that ran in).
+    struct FightCandidateFacts
+    {
+        bool inCombat = false;
+        bool attackingParty = false;  // its victim is a party member
+        bool fleeing = false;         // a fight member running for help - still ours wherever it is
+        float distToAnchor = 0.0f;
+    };
+
+    inline bool IsFightCandidate(FightCandidateFacts const& c, float radius)
+    {
+        return c.inCombat && (c.attackingParty || c.fleeing || c.distToAnchor <= radius);
+    }
+
+    inline TargetPlan PickTargetPlan(std::vector<TargetCandidate> const& candidates, TargetPlan const& previous,
+                                     bool wantCc)
+    {
+        auto find = [&](uint64_t id) -> TargetCandidate const*
+        {
+            for (TargetCandidate const& c : candidates)
+                if (c.id == id)
+                    return &c;
+            return nullptr;
+        };
+        auto best = [&](auto accept) -> uint64_t
+        {
+            TargetCandidate const* pick = nullptr;
+            for (TargetCandidate const& c : candidates)
+                if (accept(c) && (!pick || TargetBefore(c, *pick)))
+                    pick = &c;
+            return pick ? pick->id : 0;
+        };
+
+        TargetPlan plan;
+        // CC first among the kept slots: a kept CC target must not be promoted to a kill target -
+        // until it is the only enemy left; then it is released and becomes the kill target.
+        TargetCandidate const* keptCc = wantCc && previous.cc ? find(previous.cc) : nullptr;
+        // ccCastable gates a new moon only. CanCastSpell is false for a moment while the caster is
+        // on its global cooldown or casting something else; dropping a kept moon on that would
+        // release and re-mark it plan after plan. A kept moon that never lands is CheckCcMark's to
+        // release.
+        if (keptCc && keptCc->elite && !keptCc->boss && !keptCc->ccRefused && candidates.size() > 1)
+            plan.cc = keptCc->id;
+        // A mob already crowd controlled (an earlier moon, a class AI's own sheep) keeps the moon
+        // rather than a second mob being controlled and the first one broken.
+        if (wantCc && !plan.cc && candidates.size() > 1)
+            plan.cc = best([&](TargetCandidate const& c) { return c.controlled && !c.boss; });
+
+        // A kept primary holds its slot - except against a totem or a mob running for help, which go
+        // first.
+        TargetCandidate const* keptPrimary = previous.primary ? find(previous.primary) : nullptr;
+        bool const totemUp = std::any_of(candidates.begin(), candidates.end(),
+                                         [&](TargetCandidate const& c) { return c.totem && c.id != plan.cc; });
+        bool const fleeingUp = std::any_of(candidates.begin(), candidates.end(),
+                                           [&](TargetCandidate const& c) { return c.fleeing && !c.controlled && c.id != plan.cc; });
+        plan.primary = keptPrimary && previous.primary != plan.cc && !keptPrimary->controlled &&
+                               (keptPrimary->fleeing || !fleeingUp) && (keptPrimary->totem || keptPrimary->fleeing || !totemUp)
+                           ? previous.primary
+                           : best([&](TargetCandidate const& c) { return c.id != plan.cc; });
+        TargetCandidate const* keptSecondary = previous.secondary ? find(previous.secondary) : nullptr;
+        plan.secondary = keptSecondary && previous.secondary != plan.primary && previous.secondary != plan.cc &&
+                                 !keptSecondary->controlled
+                             ? previous.secondary
+                             : best([&](TargetCandidate const& c) { return c.id != plan.primary && c.id != plan.cc; });
+        if (wantCc && !plan.cc)
+        {
+            // Only worth it with more than two enemies: CC the best remaining elite that is
+            // neither kill target.
+            uint64_t const cc = best([&](TargetCandidate const& c)
+                { return c.elite && !c.boss && !c.ccRefused && c.ccCastable && c.healthPct >= kCcMinHealthPct &&
+                         c.id != plan.primary && c.id != plan.secondary; });
+            if (cc && candidates.size() > 2)
+                plan.cc = cc;
+        }
+        return plan;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Recovery (DungeonRecoveryController) - problems that waiting alone may not fix
+    // ---------------------------------------------------------------------------------------
+    //
+    // Every recovery is bounded: act, then escalate, then abort the session with a recorded
+    // failure. Each reason gets its own fresh window when the reason changes (a new problem must
+    // not inherit an almost-expired timeout), and the episode as a whole - as long as *some*
+    // recovery problem persists - has a hard cap, so flapping between reasons can't loop forever.
+    //
+    // MasterUnavailable/MasterTooFar and the three persistent-wait statuses are recoveries too: a
+    // dead real player who never releases, one stuck past the leash, or someone stuck
+    // eating/drinking/low on mana forever must not hold a MANUAL (human-led) session open without
+    // bound. For them escalation is deliberately a no-op (see the `movable` whitelist in
+    // DungeonRecoveryController::Update()'s Escalate case) - waiting itself is the only "action",
+    // Abort is the actual bound.
+    enum class RecoveryReason : uint8_t
+    {
+        None,
+        LeadershipLost,     // someone else is group leader now
+        MemberLost,         // a living member on another map / offline
+        PartyFragmented,    // a member beyond the hard range
+        MemberDead,         // a party member (not the leader) dead
+        MasterUnavailable,  // the real player dead, disconnected, or left the group
+        MasterTooFar,       // the real player off-map or beyond the leash - distinct from the above:
+                            // a different real-world situation (and fix - walk back vs. reconnect)
+        PersistentWait,     // drinking/low health/low healer mana held long enough to need a bound -
+                            // one shared reason: the plan treats prolonged resource waits as one
+                            // category, and none of the three need their own escalation behaviour
+    };
+
+    inline char const* ToString(RecoveryReason r)
+    {
+        switch (r)
+        {
+            case RecoveryReason::None:              return "none";
+            case RecoveryReason::LeadershipLost:    return "leadership_lost";
+            case RecoveryReason::MemberLost:        return "member_lost";
+            case RecoveryReason::PartyFragmented:   return "party_fragmented";
+            case RecoveryReason::MemberDead:        return "member_dead";
+            case RecoveryReason::MasterUnavailable: return "master_unavailable";
+            case RecoveryReason::MasterTooFar:      return "master_too_far";
+            case RecoveryReason::PersistentWait:    return "persistent_wait";
+        }
+        return "unknown";
+    }
+
+    enum class RecoveryStep : uint8_t
+    {
+        None,      // nothing to recover
+        Act,       // the reason's own action (regroup, wait for a resurrection, ...)
+        Escalate,  // stronger action, once (bring a bot member to the leader, ...)
+        Abort,     // give up: stop the session, recorded as failed
+    };
+
+    inline char const* ToString(RecoveryStep s)
+    {
+        switch (s)
+        {
+            case RecoveryStep::None:     return "none";
+            case RecoveryStep::Act:      return "act";
+            case RecoveryStep::Escalate: return "escalate";
+            case RecoveryStep::Abort:    return "abort";
+        }
+        return "unknown";
+    }
+
+    struct RecoveryPolicy
+    {
+        uint32_t actMs = 60000;       // RecoveryTimeoutSeconds
+        uint32_t escalateMs = 60000;  // RecoveryEscalationSeconds
+        // Cap for one recovery episode across reason changes: two full windows.
+        uint32_t EpisodeCapMs() const { return 2u * (actMs + escalateMs); }
+    };
+
+    // The same problem coming back this soon after it cleared is the same episode (a straggler
+    // stuck on terrain is "caught up" each time the leader walks back, and behind again as soon as
+    // the leader walks on).
+    constexpr uint32_t kRecoveryRelapseMs = 90000;
+
+    // Recovery clocks. `reasonSince` restarts whenever the reason changes; `episodeSince` only
+    // when a new episode begins (no problem before). Timestamps are getMSTime()-style, compared by
+    // wrap-safe differences. `subject` identifies who the recovery is about (0 = nobody specific).
+    struct RecoveryTimers
+    {
+        RecoveryReason reason = RecoveryReason::None;
+        RecoveryStep step = RecoveryStep::None;  // last step taken for the current reason
+        uint32_t reasonSince = 0;
+        uint32_t episodeSince = 0;
+        uint64_t subject = 0;
+        bool relapse = false;     // the current reason resumed a recently cleared one
+        // Last cleared recovery, to recognise a relapse.
+        RecoveryReason clearedReason = RecoveryReason::None;
+        RecoveryStep clearedStep = RecoveryStep::None;
+        uint32_t clearedReasonSince = 0;
+        uint32_t clearedEpisodeSince = 0;
+        uint64_t clearedSubject = 0;
+        uint32_t clearedAt = 0;
+    };
+
+    // Whether a problem coming back soon after it cleared continues the old episode. Not for the
+    // ordinary waits (eating, drinking, healing up after every fight): each is timed on its own,
+    // else the clock of the first one runs across the healthy minutes between them and a short
+    // later wait "exceeds" the whole window.
+    inline bool RelapseContinuesEpisode(RecoveryReason r) { return r != RecoveryReason::PersistentWait; }
+
+    // Whether an open recovery is closed while the controller may not judge it (combat, pause,
+    // death, travelling). An ordinary wait is: its clock would be past the abort mark when a long
+    // fight ends; it starts afresh after the fight if still needed. Every other recovery keeps its
+    // clocks running, bounded by its own episode cap.
+    inline bool RecoveryClosesWhenIneligible(RecoveryReason r) { return r == RecoveryReason::PersistentWait; }
+
+    // Feed one observation (only while the controller is eligible to judge - in combat an open
+    // recovery is simply kept). Returns true if the reason changed (a new recovery started); a
+    // relapse of the recovery that cleared less than kRecoveryRelapseMs ago (same reason, same
+    // subject) resumes its clocks and step instead of starting fresh, so it still escalates.
+    inline bool ObserveRecovery(RecoveryTimers& t, RecoveryReason observed, uint32_t now, uint64_t subject = 0)
+    {
+        if (observed == RecoveryReason::None)
+        {
+            if (t.reason != RecoveryReason::None)
+            {
+                t.clearedReason = t.reason;
+                t.clearedStep = t.step;
+                t.clearedReasonSince = t.reasonSince;
+                t.clearedEpisodeSince = t.episodeSince;
+                t.clearedSubject = t.subject;
+                t.clearedAt = now;
+            }
+            t.reason = RecoveryReason::None;
+            t.step = RecoveryStep::None;
+            t.reasonSince = t.episodeSince = 0;
+            t.subject = 0;
+            t.relapse = false;
+            return false;
+        }
+        // Same reason: the recovery goes on, even if the farthest member changes while it is still
+        // acting (two stragglers swapping places must not keep restarting the clock). Only once it
+        // has escalated (the stragglers were brought) is someone new falling behind a recovery of
+        // its own - the episode cap still bounds the whole.
+        if (observed == t.reason)
+        {
+            bool const newMember = subject && t.subject && subject != t.subject;
+            if (!newMember || t.step != RecoveryStep::Escalate)
+            {
+                if (subject)
+                    t.subject = subject;
+                return false;
+            }
+        }
+        // A recovery that got as far as the escalation and cleared did its job (the straggler was
+        // brought); the same problem again is a new one with fresh windows, not the old clocks run
+        // on - they would be long past the abort mark. Repeats are bounded by kMaxStragglerBrought
+        // instead.
+        bool const relapse = RelapseContinuesEpisode(observed) && t.reason == RecoveryReason::None &&
+                             t.clearedReason == observed && t.clearedStep != RecoveryStep::Escalate &&
+                             t.clearedSubject == subject && uint32_t(now - t.clearedAt) < kRecoveryRelapseMs;
+        if (relapse)
+        {
+            t.reason = observed;
+            t.step = t.clearedStep;
+            t.reasonSince = t.clearedReasonSince;
+            t.episodeSince = t.clearedEpisodeSince;
+            t.subject = subject;
+            t.relapse = true;
+            t.clearedReason = RecoveryReason::None;
+            return true;
+        }
+        if (t.reason == RecoveryReason::None)
+            t.episodeSince = now;
+        t.reason = observed;
+        t.reasonSince = now;
+        t.step = RecoveryStep::None;
+        t.subject = subject;
+        t.relapse = false;
+        return true;
+    }
+
+    // How often one bot is brought to the leader before the run gives up on keeping the party together.
+    constexpr uint8_t kMaxStragglerBrought = 3;
+
+    // A straggler that has not moved for this long is stuck, not slow: walking back to it only
+    // ends the recovery as soon as the leader is near, and the walk on makes it fall behind again.
+    constexpr uint32_t kStuckStragglerMs = 10000;
+    // A straggler this long out of the recovery's view starts a new still-clock.
+    constexpr uint32_t kStragglerClockStaleMs = 30000;
+
+    inline RecoveryStep EscalateStuckStraggler(RecoveryStep step, RecoveryReason reason, uint32_t msStill)
+    {
+        if (step == RecoveryStep::Act && reason == RecoveryReason::PartyFragmented && msStill >= kStuckStragglerMs)
+            return RecoveryStep::Escalate;
+        return step;
+    }
+
+    inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msInReason, uint32_t msInEpisode,
+                                       RecoveryPolicy const& p)
+    {
+        if (observed == RecoveryReason::None)
+            return RecoveryStep::None;
+        if (msInEpisode >= p.EpisodeCapMs())
+            return RecoveryStep::Abort;  // flapping between reasons: the episode as a whole is bounded
+        if (msInReason < p.actMs)
+            return RecoveryStep::Act;
+        if (msInReason < p.actMs + p.escalateMs)
+            return RecoveryStep::Escalate;
+        return RecoveryStep::Abort;
+    }
+
+    // Which recovery a readiness result calls for (LeadershipLost is observed separately).
+    // `healerAlive`: for HealerUnavailable, whether the healer is alive (then it is elsewhere).
+    // Escalation brings members to the leader - but not to a leader off the ground (inside the rock).
+    // That wait is bounded: after kEscalationDeferMaxMs the leader is put back on its last good spot,
+    // or, without one, the escalation goes ahead (an unreadable ground height under a leader that
+    // stands normally must not defer it forever).
+    constexpr uint32_t kEscalationDeferMaxMs = 30000;
+    enum class EscalationGate : uint8_t { Escalate, Defer, LeaderToLastGood };
+
+    inline EscalationGate DecideEscalationGate(bool leaderOffGround, uint32_t msDeferred, bool haveLastGood)
+    {
+        if (!leaderOffGround)
+            return EscalationGate::Escalate;
+        if (msDeferred < kEscalationDeferMaxMs)
+            return EscalationGate::Defer;
+        return haveLastGood ? EscalationGate::LeaderToLastGood : EscalationGate::Escalate;
+    }
+
+    // MasterUnavailable/MasterTooFar and the three persistent-wait statuses get a bounded bystander
+    // recovery, so none of them can hold a manual session open forever (dead/departed real player,
+    // one stuck past the leash, someone stuck eating/drinking/low on mana/health indefinitely).
+    // Safe: `movable` in DungeonRecoveryController::Update()'s Escalate case only ever acts on
+    // PartyFragmented/MemberLost, so none of these human-only reasons can trigger a teleport, only
+    // the act/escalate(no-op)/abort clock. Drinking/LowHealth/LowHealerMana share one reason
+    // (PersistentWait); ordinary short drinking/healing resolves long before the act+escalate
+    // windows (60s+60s default) and DungeonRecoveryController's "observed == None" branch clears
+    // the reason - no separate grace period is needed.
+    inline RecoveryReason RecoveryFor(ReadyStatus status, bool healerAlive)
+    {
+        switch (status)
+        {
+            case ReadyStatus::MemberLost:        return RecoveryReason::MemberLost;
+            case ReadyStatus::Fragmented:        return RecoveryReason::PartyFragmented;
+            case ReadyStatus::MemberDead:        return RecoveryReason::MemberDead;
+            case ReadyStatus::HealerUnavailable: return healerAlive ? RecoveryReason::MemberLost : RecoveryReason::MemberDead;
+            case ReadyStatus::MasterUnavailable: return RecoveryReason::MasterUnavailable;
+            case ReadyStatus::MasterTooFar:      return RecoveryReason::MasterTooFar;
+            case ReadyStatus::Drinking:
+            case ReadyStatus::LowHealth:
+            case ReadyStatus::LowHealerMana:     return RecoveryReason::PersistentWait;
+            default:                             return RecoveryReason::None;  // Ready / PartyInCombat / PartySpread
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Wipe checkpoints
+    // ---------------------------------------------------------------------------------------
+    //
+    // The checkpoint is the last step confirmed safe: a pack confirmed cleared or a travel node
+    // reached - never a skip. After a wipe the route resumes right after it, so nothing that was
+    // only passed over (skipped, given up on) before the wipe stays skipped because of it.
+
+    // After a wipe, a route with path anchors is walked again from its first anchor when the resume
+    // step is farther than this from where the party respawns.
+    constexpr float kWalkBackFromEntranceYd = 150.0f;
+
+    // Whether the walk restarts from the first path anchor after a wipe (a resume step far from the
+    // entrance may have no direct path). Only on a route with anchors, past step 0, with a resume
+    // position farther than kWalkBackFromEntranceYd.
+    inline bool WalkBackFromEntrance(bool routeHasAnchors, uint32_t resumeStep, bool resumeHasPosition, float distYd)
+    {
+        return routeHasAnchors && resumeStep > 0 && resumeHasPosition && distYd > kWalkBackFromEntranceYd;
+    }
+
+    // ... and what that reopens: the path anchors before the resume step, nothing else - a cleared
+    // pack or a killed boss stays visited and is not a fresh requirement again.
+    inline void ReopenPathAnchors(std::vector<uint8_t>& visited, std::vector<bool> const& isAnchor, uint32_t before)
+    {
+        for (uint32_t i = 0; i < before && i < visited.size() && i < isAnchor.size(); ++i)
+            if (isAnchor[i])
+                visited[i] = 0;
+    }
+
+    // Step index to resume from after a wipe: the step after the checkpoint (-1 = none yet),
+    // never ahead of where the route already is.
+    inline uint32_t ResumeStepAfterWipe(int32_t checkpointStep, uint32_t currentStep)
+    {
+        uint32_t const afterCheckpoint = checkpointStep < 0 ? 0u : uint32_t(checkpointStep) + 1u;
+        return afterCheckpoint < currentStep ? afterCheckpoint : currentStep;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Test-party assembly (DungeonTestBotPool): start only once the party is really there
+    // ---------------------------------------------------------------------------------------
+    //
+    // A requested teleport is not an arrival. A test session starts only when every member is
+    // confirmed alive, on the dungeon map, in the tank's instance and gathered near the tank.
+
+    struct AssemblyMember
+    {
+        bool online = false;
+        bool alive = false;
+        bool onMap = false;         // on the dungeon's map
+        bool sameInstance = false;  // in the tank's instance
+        float distanceToTank = 0.0f;
+    };
+
+    inline bool MemberAssembled(AssemblyMember const& m, float gatherRange)
+    {
+        return m.online && m.alive && m.onMap && m.sameInstance && m.distanceToTank <= gatherRange;
+    }
+
+    enum class AssemblyStep : uint8_t
+    {
+        Wait,
+        Start,
+        Abort,  // never assembled within the timeout - don't start a half-there party
+    };
+
+    inline AssemblyStep DecideAssembly(std::vector<AssemblyMember> const& members, uint32_t msWaiting,
+                                       float gatherRange, uint32_t timeoutMs)
+    {
+        bool all = !members.empty();
+        for (AssemblyMember const& m : members)
+            all = all && MemberAssembled(m, gatherRange);
+        if (all)
+            return AssemblyStep::Start;
+        return msWaiting >= timeoutMs ? AssemblyStep::Abort : AssemblyStep::Wait;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Objective failure policy - what happens when a route objective can't be completed
+    // ---------------------------------------------------------------------------------------
+
+    enum class ObjectiveFailureAction : uint8_t
+    {
+        Skip,   // give up on it and move on (optional content only)
+        Retry,  // start a fresh round of attempts on the same objective
+        Abort,  // stop the run as partial - never advance past an unresolved mandatory objective
+    };
+
+    inline char const* ToString(ObjectiveFailureAction a)
+    {
+        switch (a)
+        {
+            case ObjectiveFailureAction::Skip:  return "skip";
+            case ObjectiveFailureAction::Retry: return "retry";
+            case ObjectiveFailureAction::Abort: return "abort";
+        }
+        return "unknown";
+    }
+
+    // `failedRounds`: rounds of attempts that have failed on this objective, the current one
+    // included. `maxRounds`: rounds a mandatory objective gets before the run is stopped.
+    inline ObjectiveFailureAction DecideObjectiveFailure(DungeonObjectiveRequirement requirement, uint32_t failedRounds,
+                                                         uint32_t maxRounds)
+    {
+        if (requirement == DungeonObjectiveRequirement::Optional)
+            return ObjectiveFailureAction::Skip;
+        return failedRounds < maxRounds ? ObjectiveFailureAction::Retry : ObjectiveFailureAction::Abort;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Interaction / gating (DungeonInteractionController)
+    // ---------------------------------------------------------------------------------------
+    //
+    // A route can be blocked by something that walking and pulling can't solve. Requested is not
+    // done: success is only ever the world confirming it (the door is open). Bounded by a timeout,
+    // and a failure is reported with its reason instead of the walk thrashing against it.
+
+    enum class InteractionType : uint8_t
+    {
+        None,
+        Door,  // a closed door/gate in the way: wait for its event/key/boss to open it
+    };
+
+    enum class InteractionState : uint8_t
+    {
+        None,
+        Resolving,             // find the object
+        WaitingPrerequisite,   // found, closed - waiting for whatever opens it
+        Interacting,           // we act on it ourselves (no type uses this yet)
+        WaitingConfirmation,   // acted, waiting for the world to show the result
+        Complete,
+        Failed,
+    };
+
+    inline char const* ToString(InteractionType t)
+    {
+        switch (t)
+        {
+            case InteractionType::None: return "none";
+            case InteractionType::Door: return "door";
+        }
+        return "unknown";
+    }
+
+    inline char const* ToString(InteractionState s)
+    {
+        switch (s)
+        {
+            case InteractionState::None:                return "none";
+            case InteractionState::Resolving:           return "resolving";
+            case InteractionState::WaitingPrerequisite: return "waiting_prerequisite";
+            case InteractionState::Interacting:         return "interacting";
+            case InteractionState::WaitingConfirmation: return "waiting_confirmation";
+            case InteractionState::Complete:            return "complete";
+            case InteractionState::Failed:              return "failed";
+        }
+        return "unknown";
+    }
+
+    inline bool InteractionActive(InteractionState s)
+    {
+        return s != InteractionState::None && s != InteractionState::Complete && s != InteractionState::Failed;
+    }
+
+    struct InteractionFacts
+    {
+        InteractionState current = InteractionState::None;
+        uint32_t msInInteraction = 0;  // since it started (one budget for the whole interaction)
+        bool targetFound = false;      // the object still exists
+        bool satisfied = false;        // the world shows it done (door open)
+        bool canAct = false;           // we can perform it ourselves
+    };
+
+    // The interaction's own clock only runs while the leader is actually holding at it: time spent
+    // fighting, waiting for the party or recovering a straggler must not use up the door's budget.
+    inline uint32_t AdvanceInteractionClock(uint32_t activeMs, uint32_t deltaMs, bool holdingAtIt)
+    {
+        return holdingAtIt ? activeMs + deltaMs : activeMs;
+    }
+
+    // Whether the controller may act on the object now (Use a lever, a bot's key). The
+    // world is observed regardless; acting waits while paused or fighting, and happens once.
+    inline bool InteractionMayAct(bool alreadyActed, bool paused, bool inCombat)
+    {
+        return !alreadyActed && !paused && !inCombat;
+    }
+
+    inline InteractionState DecideInteraction(InteractionFacts const& f, uint32_t timeoutMs)
+    {
+        if (!InteractionActive(f.current))
+            return f.current;
+        if (f.satisfied)
+            return InteractionState::Complete;  // confirmed by the world, however it came about
+        if (!f.targetFound)
+            return f.current == InteractionState::Resolving && f.msInInteraction < timeoutMs ? InteractionState::Resolving
+                                                                                            : InteractionState::Failed;
+        if (f.msInInteraction >= timeoutMs)
+            return InteractionState::Failed;
+        switch (f.current)
+        {
+            case InteractionState::Resolving:
+            // A prerequisite observed missing (no key/lever reachable) is not sticky - the
+            // next tick's canAct may already be true (a party member picked up the key, someone
+            // freed the lever), and WaitingPrerequisite must act on that immediately rather than
+            // wait for the door to open externally or the whole interaction to time out.
+            case InteractionState::WaitingPrerequisite:
+                return f.canAct ? InteractionState::Interacting : InteractionState::WaitingPrerequisite;
+            case InteractionState::Interacting:
+                return InteractionState::WaitingConfirmation;
+            default:
+                return f.current;
+        }
+    }
+
+    // A route door that is not at its spot. Absence alone is not "nothing in the way" - bad
+    // route data, an unloaded object and a door that despawned after opening all look the same.
+    // Only the instance's saved state for that spawn (InstanceScript::GetStoredGameObjectState)
+    // proves the last case: 0 = GO_STATE_ACTIVE, 2 = GO_STATE_ACTIVE_ALTERNATIVE (opened);
+    // 1 = closed; anything above 2 = no saved state. Some doors despawn on map load when saved
+    // ACTIVE (e.g. instance_deadmines.cpp). Otherwise the door is waited for, then failed.
+    enum class MissingDoorStep : uint8_t
+    {
+        Satisfied,  // the instance saved it open: nothing is in the way
+        Wait,       // look again (late load), within the step's wait budget
+        Fail,       // budget spent: the objective failure policy decides
+    };
+
+    inline MissingDoorStep DecideMissingDoor(bool haveSpawn, uint8_t storedState, bool waitExpired)
+    {
+        if (haveSpawn && (storedState == 0 || storedState == 2))
+            return MissingDoorStep::Satisfied;
+        return waitExpired ? MissingDoorStep::Fail : MissingDoorStep::Wait;
+    }
+
+    // The context a run was made in, so two runs are only compared or counted together
+    // when the stack under them is the same. Digests are FNV-1a 64 over normalized text; "unknown"
+    // where a part could not be read - never a guess.
+    inline uint64_t Fnv1a64(std::string const& s, uint64_t h = 14695981039346656037ULL)
+    {
+        for (unsigned char c : s)
+        {
+            h ^= c;
+            h *= 1099511628211ULL;
+        }
+        return h;
+    }
+
+    inline std::string Hex64(uint64_t v)
+    {
+        static char const digits[] = "0123456789abcdef";
+        std::string out(16, '0');
+        for (int i = 15; i >= 0; --i, v >>= 4)
+            out[size_t(i)] = digits[v & 0xf];
+        return out;
+    }
+
+    struct RunContext
+    {
+        std::string moduleSha = "unknown";      // DUNGEONLEAD_COMMIT_SHA ("-dirty" = uncommitted sources)
+        std::string coreSha = "unknown";        // GitRevision::GetHash()
+        std::string playerbotsSha = "unknown";  // DUNGEONLEAD_PLAYERBOTS_SHA (from the build host)
+        std::string routeDigest = "unknown";    // playerbots_dungeon_route as loaded
+        uint32_t routeRows = 0;
+        std::string configDigest = "unknown";   // AiPlayerbot.DungeonLead.* keys set in config files
+        uint32_t configKeys = 0;
+        std::string mmapDigest = "unknown";     // mmaps file names and sizes
+        uint32_t mmapFiles = 0;
+
+        // One id for the whole context: equal ids = same module, core, playerbots, routes, config
+        // and mmaps.
+        std::string Id() const
+        {
+            return Hex64(Fnv1a64(moduleSha + "|" + coreSha + "|" + playerbotsSha + "|" + routeDigest + "|" +
+                                 configDigest + "|" + mmapDigest));
+        }
+
+        // True when any part is unknown or the module tree was dirty: such a run is evidence, but
+        // not for a qualification.
+        bool Incomplete() const
+        {
+            for (std::string const* v : {&moduleSha, &coreSha, &playerbotsSha, &routeDigest, &configDigest, &mmapDigest})
+                if (*v == "unknown")
+                    return true;
+            return moduleSha.find("-dirty") != std::string::npos;
+        }
+    };
+
+    // A bound on one route step: walking time spent on it (consecutive route-walk ticks, gaps over
+    // 15 s - a fight, a wait, a pause - not counted). A walk that keeps making a little progress
+    // never trips the stuck check, and a recovery can reopen as a new episode every cycle. Past the
+    // limit the step fails through the objective policy (optional: skipped; mandatory: retried,
+    // then partial).
+    inline uint32_t AdvanceStepWalkClock(uint32_t walkedMs, uint32_t deltaMs)
+    {
+        return deltaMs < 15000 ? walkedMs + deltaMs : walkedMs;
+    }
+
+    // Run-time cost of a periodic controller pass, summarised once a minute (heartbeat).
+    // Samples in microseconds; Summary() sorts a copy, Reset() starts the next window.
+    struct DurationWindow
+    {
+        std::vector<uint32_t> samplesUs;
+
+        void Add(uint32_t us) { samplesUs.push_back(us); }
+
+        struct Summary
+        {
+            uint32_t count = 0, p50 = 0, p95 = 0, max = 0;
+        };
+
+        Summary Summarize() const
+        {
+            Summary out;
+            if (samplesUs.empty())
+                return out;
+            std::vector<uint32_t> v = samplesUs;
+            std::sort(v.begin(), v.end());
+            auto at = [&](double q) { return v[std::min(v.size() - 1, size_t(q * double(v.size() - 1) + 0.5))]; };
+            out.count = uint32_t(v.size());
+            out.p50 = at(0.50);
+            out.p95 = at(0.95);
+            out.max = v.back();
+            return out;
+        }
+
+        void Reset() { samplesUs.clear(); }
+    };
+
+    // The strategy components a session owns on one engine (non-combat or combat): each
+    // name that must be on or off. StrategyDelta gives only what differs from what the bot has, as
+    // a ChangeStrategy() string ("+cc,-rpg"), empty when nothing does - so a partial external reset
+    // (a lost "cc", a "rpg" put back) is repaired and a stable session is not touched.
+    struct OwnedStrategy
+    {
+        char const* name;
+        bool on;
+    };
+
+    template <class HasFn>
+    inline std::string StrategyDelta(std::vector<OwnedStrategy> const& owned, HasFn has)
+    {
+        std::string out;
+        for (OwnedStrategy const& o : owned)
+            if (has(o.name) != o.on)
+            {
+                if (!out.empty())
+                    out += ",";
+                out += (o.on ? "+" : "-");
+                out += o.name;
+            }
+        return out;
+    }
+
+    // Only what the bot's class can have: "cc" exists for mage, priest, druid, hunter, rogue and a
+    // few more, not for a warrior - an "on" entry its context cannot create is not owned for that
+    // bot (else it would be re-added on every guard pass). "Off" entries always apply.
+    template <class CanCreateFn>
+    inline std::vector<OwnedStrategy> AvailableStrategies(std::vector<OwnedStrategy> const& owned, CanCreateFn canCreate)
+    {
+        std::vector<OwnedStrategy> out;
+        for (OwnedStrategy const& o : owned)
+            if (!o.on || canCreate(o.name))
+                out.push_back(o);
+        return out;
+    }
+
+    // The whole owned set as one ChangeStrategy() string (session start: everything is applied).
+    inline std::string StrategyAll(std::vector<OwnedStrategy> const& owned)
+    {
+        std::string out;
+        for (OwnedStrategy const& o : owned)
+        {
+            if (!out.empty())
+                out += ",";
+            out += (o.on ? "+" : "-");
+            out += o.name;
+        }
+        return out;
+    }
+
+    // What a session sets: followers on "+follow" with RPG, looting, grinding and staying off, and
+    // "+cc" in combat; the leader on "+dungeon lead,+grind" with the same off-list, and
+    // "+dungeon lead,+cc,+mark rti" in combat.
+    inline std::vector<OwnedStrategy> const& FollowerNonCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"follow", true},  {"passive", false}, {"stay", false},
+                                                     {"grind", false},  {"dungeon lead", false},
+                                                     {"new rpg", false}, {"rpg", false},     {"loot", false}};
+        return v;
+    }
+    inline std::vector<OwnedStrategy> const& FollowerCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"cc", true}};
+        return v;
+    }
+    inline std::vector<OwnedStrategy> const& LeaderNonCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"dungeon lead", true}, {"grind", true}, {"passive", false},
+                                                     {"stay", false},        {"new rpg", false}, {"rpg", false},
+                                                     {"loot", false}};
+        return v;
+    }
+    inline std::vector<OwnedStrategy> const& LeaderCombatStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"dungeon lead", true}, {"cc", true}, {"mark rti", true}};
+        return v;
+    }
+
+    // A talk NPC that offers no option yet is waiting on its event; a creature of that event can
+    // stand idle out of reach, nobody engages, and the NPC's option never comes. The leader goes
+    // for one only if the route itself names its entry as event content of this dungeon, it is
+    // alive and attackable, and it stands within kEventCreatureRadius of the NPC. Nearest first.
+    constexpr float kEventCreatureRadius = 60.0f;
+
+    struct EventCreatureCandidate
+    {
+        bool routeEventEntry = false;
+        bool alive = false;
+        bool attackable = false;
+        float distToNpc = 0.f;
+        float distToLeader = 0.f;
+    };
+
+    inline int ChooseEventCreature(std::vector<EventCreatureCandidate> const& c)
+    {
+        int best = -1;
+        for (size_t i = 0; i < c.size(); ++i)
+        {
+            EventCreatureCandidate const& e = c[i];
+            if (!e.routeEventEntry || !e.alive || !e.attackable || e.distToNpc > kEventCreatureRadius)
+                continue;
+            if (best < 0 || e.distToLeader < c[size_t(best)].distToLeader)
+                best = int(i);
+        }
+        return best;
+    }
+
+    // Who uses a key on a route object or door. Only a bot the module may act through
+    // (not a real player, not a player's self-bot) is ever made to cast, Use or loot; a key held only
+    // by a player is asked for, and the world is watched for the player using it.
+    struct KeyCandidate
+    {
+        bool hasKey = false;
+        bool alive = false;
+        bool sameMap = false;
+        bool botActor = false;  // !IsRealPlayer && !IsSelfBot
+    };
+
+    enum class KeyUse : uint8_t
+    {
+        BotUses,         // `index` names the bot that uses it
+        PlayerMustUse,   // only a player has it: ask, watch the world, never act through them
+        NobodyHasKey,
+    };
+
+    inline KeyUse ChooseKeyUser(std::vector<KeyCandidate> const& members, int& index)
+    {
+        index = -1;
+        bool playerHasIt = false;
+        for (size_t i = 0; i < members.size(); ++i)
+        {
+            KeyCandidate const& m = members[i];
+            if (!m.hasKey || !m.alive || !m.sameMap)
+                continue;
+            if (m.botActor)
+            {
+                index = int(i);
+                return KeyUse::BotUses;
+            }
+            playerHasIt = true;
+        }
+        return playerHasIt ? KeyUse::PlayerMustUse : KeyUse::NobodyHasKey;
+    }
+
+    // 2D distance from point P to the segment A-B. Used to tell a door in the way (near the line
+    // from the leader to where it is going) from a side-room door that just happens to be close.
+    inline float DistanceToSegment2D(float px, float py, float ax, float ay, float bx, float by)
+    {
+        float const dx = bx - ax, dy = by - ay;
+        float const len2 = dx * dx + dy * dy;
+        float t = len2 > 0.f ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.f;
+        t = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
+        float const cx = ax + t * dx - px, cy = ay + t * dy - py;
+        return std::sqrt(cx * cx + cy * cy);
+    }
+
+    // Whether the walk segment A-B goes through a door at P facing `orientation` (a door object's
+    // orientation is the normal of its plane, e.g. cell doors lining a wall have their orientation
+    // perpendicular to it): A and B on opposite sides of the plane, and the
+    // crossing point within `halfWidth` of the door. A path along a wall of closed doors (cells)
+    // never crosses their planes.
+    inline bool SegmentCrossesDoor(float px, float py, float orientation, float ax, float ay, float bx, float by,
+                                   float halfWidth, float* crossingT = nullptr)
+    {
+        float const nx = std::cos(orientation), ny = std::sin(orientation);
+        float const da = (ax - px) * nx + (ay - py) * ny;
+        float const db = (bx - px) * nx + (by - py) * ny;
+        if ((da > 0.f && db > 0.f) || (da < 0.f && db < 0.f) || da == db)
+            return false;
+        float const t = da / (da - db);
+        float const cx = ax + t * (bx - ax) - px, cy = ay + t * (by - ay) - py;
+        if (crossingT)
+            *crossingT = t;
+        return cx * cx + cy * cy <= halfWidth * halfWidth;
+    }
+}
+
+#endif

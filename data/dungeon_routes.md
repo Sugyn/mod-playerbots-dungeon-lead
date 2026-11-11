@@ -1,0 +1,542 @@
+# Dungeon routes (LFD 3.3.5a) — boss order per LFD entry
+
+Legend: `spawn` = static spawn in `creature` table (entry + x/y/z resolved), `script` = template exists but is spawned by instance script/summon, `unknown` = no template match. Heroic LFD ids share the normal route (same map); `heroic only` steps apply to the heroic id only. Sources per dungeon are in `routes.tsv` comments.
+
+## Vanilla
+
+### Ragefire Chasm (LFD 4, map 389)
+
+1. **Oggleflint** — entry 11517 @ (-147.5, 38.7, -38.8)
+2. **Taragaman the Hungerer** — entry 11520 @ (-244.7, 150.1, -18.7)
+3. **Jergosh the Invoker** — entry 11518 @ (-376.8, 209.2, -21.8)
+4. **Bazzalan** — entry 11519 @ (-384.9, 146, 7.8) — upper walkway
+### Wailing Caverns (LFD 1, map 43)
+
+1. **Lady Anacondra** — entry 3671 @ (-67.8, 122.6, -92.8) — Screaming Gully
+2. **Kresh** *(optional)* — entry 3653 @ (-64.4, 319.1, -106.7) — river turtle
+3. **Cobrahn approach (bridge)** *(optional)* `derived` — entry 1 @ (-104.533, 427.733, -99.2298) — path bridge: the direct Kresh->Cobrahn path ends here; Cobrahn is reachable from here (entry=1 waypoint template that never spawns)
+4. **Lord Cobrahn** — entry 3669 @ (-151.1, 414.4, -72.6) — Fanglord 1/4. Dead end: no direct path from here to Verdan/Serpentis/Pythas/Skum/Naralex - return via the step 3 bridge
+5. **Cobrahn return (bridge)** *(optional)* `derived` — entry 1 @ (-104.533, 427.733, -99.2298) — same point as step 3 (return leg) - no direct path Cobrahn->Verdan
+6. **Verdan approach (bridge)** *(optional)* `derived` — entry 1 @ (-55.7333, 67.4667, -85.9882) — path bridge hub (also reached from Kresh/Naralex directly); Verdan is reachable from here
+7. **Verdan the Everliving** *(optional)* — entry 5775 @ (-81.9, 32.3, -31) — Fanglord 2/4.
+8. **Lord Serpentis** — entry 3673 @ (-120.2, -24.6, -28.6) — Fanglord 3/4. Reachable directly from Verdan
+9. **Pythas approach (bridge)** *(optional)* `derived` — entry 1 @ (-101.333, -42.6667, -22.0857) — path bridge: the direct Serpentis->Pythas path ends here; Pythas is reachable from here
+10. **Lord Pythas** — entry 3670 @ (36.8, -241.1, -79.5) — Fanglord 4/4 - all 4 Fanglords dead after this Naralex escort can spawn.
+11. **Skum** *(optional)* — entry 3674 @ (-285.6, -313, -69.2) — reachable directly from Pythas; dead end - return via Pythas
+12. **Pythas return (bridge)** *(optional)* `derived` — entry 1 @ (36.8, -241.1, -79.5) — same point as step 10; entry=1 waypoint (a boss entry would be skipped once that boss is dead); no direct path Skum->Naralex
+13. **Naralex approach (bridge)** *(optional)* `derived` — entry 1 @ (-162.133, 92.2667, -76.0141) — path bridge: the direct Pythas->Naralex path ends here; Naralex is reachable from here
+14. **Disciple of Naralex** **[event]** — entry 3678 @ (-135, 125.4, -78.1) — escort from entrance after 4 Fanglords -> spawns Mutanus
+15. **Mutanus the Devourer** **[event]** `script` — entry 3654 (no static spawn) — script-spawned by escort
+### Deadmines (LFD 6, map 36)
+
+1. **Rhahk'Zor** — entry 644 @ (-192.9, -448.2, 54.4)
+2. **Sneed's Shredder** — entry 642 @ (-289.5, -513, 49.7) — Sneed pops out after shredder dies (script)
+3. **Goblin Craftsman** *(optional)* — entry 1731 @ (-183.2, -564.6, 51.2) — goblin foundry: the ramp's goblins are pulled one by one before Gilnid, or they join him
+4. **Goblin Craftsman** *(optional)* — entry 1731 @ (-188.7, -600.5, 36.6) — goblin foundry: ramp 2
+5. **Goblin Craftsman** *(optional)* — entry 1731 @ (-203.3, -602.7, 30.4) — goblin foundry: ramp 3
+6. **Goblin Engineer** *(optional)* — entry 622 @ (-209.0, -590.7, 21.0) — goblin foundry: bottom of the ramp
+7. **Goblin Craftsman** *(optional)* — entry 1731 @ (-209.6, -568.1, 21.0) — goblin foundry: floor west
+8. **Goblin Engineer** *(optional)* — entry 622 @ (-196.8, -582.3, 21.0) — goblin foundry: floor centre
+9. **Goblin Engineer** *(optional)* — entry 622 @ (-208.0, -546.8, 19.3) — goblin foundry: floor north
+10. **Goblin Craftsman** *(optional)* — entry 1731 @ (-186.9, -553.6, 19.3) — goblin foundry: by Gilnid north
+11. **Goblin Craftsman** *(optional)* — entry 1731 @ (-198.9, -603.8, 19.3) — goblin foundry: by Gilnid south
+12. **Gilnid** — entry 1763 @ (-177.4, -574.5, 19.3)
+13. **Defias Gunpowder** `gameobject` — entry 17155 @ (-106.409, -617.284, 13.8495) — powder keg - opening it brings Defias Taskmasters
+14. **Defias Cannon** `gameobject` — entry 16398 @ (-107.562, -659.674, 7.21211) — loaded with the gunpowder - blows the Iron Clad Door
+15. **Iron door to Ironclad Cove** **[door]** `gameobject` — entry 16397 @ (-100.502, -668.771, 7.41049) — Defias Gunpowder on cannon / rogue lockpick
+16. **Mr. Smite** — entry 646 @ (-22.8, -797.3, 20.4) — stealthed elites first
+17. **Captain Greenskin** — entry 647 @ (-59.6, -820.1, 41.6) — on ship
+18. **Edwin VanCleef** — entry 639 @ (-87.4, -819.9, 39.3) — cabin; adds
+19. **Cookie** *(optional)* — entry 645 @ (-67.6, -853.7, 17.1) — after VanCleef
+### Shadowfang Keep (LFD 8, map 33)
+
+1. **Rethilgore** — entry 3914 @ (-252.1, 2123.1, 81.2)
+2. **Deathstalker Adamant** — entry 3849 @ (-243.712, 2113.72, 81.2629) — Horde prisoner: 'Please unlock the courtyard door' after Rethilgore
+3. **Sorcerer Ashcrombe** — entry 3850 @ (-240.904, 2122.55, 81.2629) — Alliance prisoner: 'Please unlock the courtyard door' after Rethilgore
+4. **Courtyard door** **[door]** `gameobject` — entry 18895 @ (-242.581, 2159.05, 90.6226) — opened by Deathstalker Adamant / Sorcerer Ashcrombe after Rethilgore
+5. **Slavering Worg** *(optional)* — entry 3862 @ (-231.9, 2165.9, 79.8) — courtyard: worg by the door - the courtyard packs are pulled one by one - not crossed
+6. **Shadowfang Moonwalker** *(optional)* — entry 3853 @ (-223.4, 2202.7, 79.8) — courtyard: pair west of the fountain
+7. **Slavering Worg** *(optional)* — entry 3862 @ (-204, 2184.1, 79.8) — courtyard: worg + moonwalkers east
+8. **Haunted Servitor** *(optional)* — entry 3875 @ (-205.2, 2208.9, 79.8) — courtyard: servitor + worg patrol at the fountain
+9. **Shadowfang Moonwalker** *(optional)* — entry 3853 @ (-217.1, 2225.2, 79.8) — courtyard: north of the fountain
+10. **Shadowfang Moonwalker** *(optional)* — entry 3853 @ (-199.1, 2221, 79.8) — courtyard: moonwalker + worg north-east
+11. **Fel Steed** *(optional)* — entry 3864 @ (-223.6, 2245.7, 79.9) — courtyard: fel steeds + moonwalker below Razorclaw
+12. **Razorclaw the Butcher** — entry 3886 @ (-202.6, 2258, 76.3)
+13. **Baron Silverlaine** — entry 3887 @ (-275.3, 2297.4, 76.2)
+14. **Commander Springvale** — entry 4278 @ (-222.6, 2259.4, 102.8)
+15. **Odo the Blindwatcher** — entry 4279 @ (-236.7, 2146.1, 100.1)
+16. **Fenrus the Devourer** — entry 4274 @ (-135.6, 2168.7, 128.8)
+17. **Wolf Master Nandos** — entry 3927 @ (-120.7, 2162, 155.8) — kills opens Arugal's door
+18. **Archmage Arugal** — entry 4275 @ (-76.8, 2152.4, 155.8)
+### Blackfathom Deeps (LFD 10, map 48)
+
+1. **Ghamoo-ra** — entry 4887 @ (-442.4, 211.8, -52.6)
+2. **Lady Sarevess** *(optional)* — entry 4831 @ (-299.9, 413.8, -57.1) — side cavern
+3. **Gelihast** — entry 6243 @ (-412.7, 40.9, -48.1)
+4. **Lorgus Jett** — entry 12902 @ (-622.4, -86.9, -39.9) — 3 possible spawns
+5. **Baron Aquanis** *(optional)* `script` — entry 12876 (no static spawn) — quest summon
+6. **Old Serra'kis** *(optional)* — entry 4830 @ (-746.7, -169.4, -50.6) — underwater
+7. **Twilight Lord Kelris** — entry 4832 @ (-818.8, -155.6, -25.8)
+8. **Altar candles** **[event]** `unknown` — light 4 braziers -> waves -> spawns Aku'mai
+9. **Aku'mai** **[event]** — entry 4829 @ (-848.4, -453.9, -33.9) — script-spawned
+### Stormwind Stockade (LFD 12, map 34)
+
+1. **Targorr the Dread** — entry 1696 @ (159.6, 1.3, -25.6) — variable cell
+2. **Kam Deepfury** — entry 1666 @ (142.6, -71.9, -34.9) — variable cell
+3. **Hamhock** — entry 1717 @ (105.5, -105.8, -35.1) — east/right wing
+4. **Bazil Thredd** — entry 1716 @ (89.6, -136.9, -33.9) — beyond Hamhock, east wing
+5. **Dextren Ward** — entry 1663 @ (166.8, 134.8, -33.9) — end of west/left wing
+6. **Bruegal Ironknuckle** *(optional)* — entry 1720 @ (160.1, 45.7, -34.8) — rare
+### Gnomeregan (LFD 14, map 90)
+
+1. **Viscous Fallout** *(optional)* — entry 7079 @ (-471.4, 48.5, -208) — Hall of Gears
+2. **Blastmaster Emi Shortfuse** **[event]** — entry 7998 @ (-514.9, -138.5, -152.4) — Grubbis event (script-spawned Grubbis)
+3. **Grubbis** **[event]** `script` — entry 7361 (no static spawn)
+4. **Electrocutioner 6000** — entry 6235 @ (-552, 502.9, -216.7)
+5. **Crowd Pummeler 9-60** — entry 6229 @ (-889.1, 360.7, -272.5)
+6. **Dark Iron Ambassador** *(optional)* — entry 6228 @ (-718.1, 565.2, -289.1) — rare
+7. **Mekgineer Thermaplugg** — entry 7800 @ (-531.3, 670.2, -325.2) — buttons must be pressed during fight (scripted)
+### Razorfen Kraul (LFD 16, map 47)
+
+1. **Roogug** — entry 6168 @ (2143, 1581.6, 80.4)
+2. **Aggem Thorncurse** — entry 4424 @ (2082.3, 1463.5, 73.2)
+3. **Overlord Ramtusk** — entry 4420 @ (2203.1, 1640.1, 85.9)
+4. **Death Speaker Jargba** — entry 4428 @ (2146.4, 1411.2, 74)
+5. **Earthcaller Halmgar** *(optional)* — entry 4842 @ (2118.6, 1695.3, 80.3) — rare
+6. **Agathelos the Raging** — entry 4422 @ (1994.4, 1976.4, 63.3)
+7. **Blind Hunter** *(optional)* — entry 4425 @ (2200.8, 1978.2, 56.7) — rare
+8. **Charlga Razorflank** — entry 4421 @ (2190.4, 1864.3, 79.1)
+### Scarlet Monastery - Graveyard (LFD 18, map 189)
+
+1. [Graveyard] **Interrogator Vishas** — entry 3983 @ (1786.6, 1124.4, 7.6)
+2. [Graveyard] **Ironspine** *(optional)* — entry 6489 @ (1749.6, 1247.4, 18.2) — rare, Forlorn Cloister
+3. [Graveyard] **Azshir the Sleepless** *(optional)* — entry 6490 @ (1851, 1392.8, 20.5) — rare
+4. [Graveyard] **Fallen Champion** *(optional)* — entry 6488 @ (1756.2, 1345.4, 19.4) — rare
+5. [Graveyard] **Bloodmage Thalnos** — entry 4543 @ (1820.3, 1416.7, -7.9)
+### Scarlet Monastery - Library (LFD 165, map 189)
+
+1. [Library] **Houndmaster Loksey** — entry 3974 @ (119.9, -260.9, 18.6)
+2. [Library] **Arcanist Doan** — entry 6487 @ (148.3, -428.7, 18.5) — drops Scarlet Key
+### Scarlet Monastery - Armory (LFD 163, map 189)
+
+1. [Armory] **Herod** — entry 3975 @ (1965.1, -431.6, 6.3) — Scarlet Key door
+### Scarlet Monastery - Cathedral (LFD 164, map 189)
+
+1. [Cathedral] **High Inquisitor Fairbanks** *(optional)* — entry 4542 @ (1158.9, 1354.3, 30.4) — hidden room
+2. [Cathedral] **Scarlet Commander Mograine** — entry 3976 @ (1153.9, 1398.4, 32.6) — clear whole cathedral first
+3. [Cathedral] **High Inquisitor Whitemane** **[event]** — entry 3977 @ (1202.1, 1399.1, 29.1) — enters + resurrects Mograine (scripted)
+### Razorfen Downs (LFD 20, map 129)
+
+1. **Tuten'kash** **[event]** `unknown` — gong summons (script)
+2. **Mordresh Fire Eye** — entry 7357 @ (2466.6, 671.4, 63.5) — Bone Pile
+3. **Glutton** — entry 8567 @ (2468.7, 1006.8, 23.8)
+4. **Ragglesnout** *(optional)* — entry 7354 @ (2364.8, 904.5, 28.8) — rare, 3 spots
+5. **Amnennar the Coldbringer** — entry 7358 @ (2403.4, 960.9, 55.1)
+6. **Plaguemaw the Rotting** *(optional)* `script` — entry 7356 (no static spawn) — quest event
+### Uldaman (LFD 22, map 70)
+
+1. **Baelog** — entry 6906 @ (-353, 117.2, -44.4) — with Eric "The Swift" + Olaf
+2. **Revelosh** — entry 6910 @ (-225.6, 161.2, -44.5)
+3. **Ironaya** *(optional)* — entry 7228 @ (-235.7, 309.6, -47.6) — door needs Staff of Prehistoria
+4. **Ancient Stone Keeper** — entry 7206 @ (-38.4, 221.3, -48.4)
+5. **Galgann Firehammer** — entry 7291 @ (-10.4, 414.7, -46.9)
+6. **Grimlok** — entry 4854 @ (56.7, 455.3, -41)
+7. **Archaedas** **[event]** — entry 2748 @ (104.3, 272.3, -51.7) — altar click starts encounter
+### Zul'Farrak (LFD 24, map 209)
+
+1. **Theka the Martyr** — entry 7272 @ (1778, 859.7, 8.9)
+2. **Antu'sul** — entry 8127 @ (1815.8, 670.4, 15)
+3. **Witch Doctor Zum'rah** — entry 7271 @ (1912.2, 1016.1, 11.6)
+4. **Sandfury Executioner** — entry 7274 @ (1886.8, 1289.9, 46) — pyramid top, drops Executioner's Key
+5. **Troll Cage** `gameobject` — entry 141070 @ (1890.96, 1294.47, 48.1535) — opened with Executioner's Key - the waves come up the stairs at once
+6. **Weegli Blastfuse** — entry 7607 @ (1881.05, 1297.36, 48.419) — once the crew is downstairs: he blows the End Door - first, or he turns hostile with Bly
+7. **Sergeant Bly** — entry 7604 @ (1882.89, 1299.27, 48.3843) — after Weegli: Bly and his crew turn hostile
+8. **Sergeant Bly** `derived` — entry 7604 @ (1883.82, 1200.83, 8.87) — fought where the crew waits downstairs
+9. **Nekrum Gutchewer** **[event]** `script` — entry 7796 (no static spawn) — wave 3
+10. **Shadowpriest Sezz'ziz** **[event]** `script` — entry 7275 (no static spawn) — wave 3
+11. **End Door** **[door]** `gameobject` — entry 146084 @ (1854.53, 1142.89, 16.0846) — blown by Weegli; Ukorz is behind it
+12. **Chief Ukorz Sandscalp** — entry 7267 @ (1727.5, 1017.3, 54.9) — with Ruuzlu
+13. **Hydromancer Velratha** *(optional)* — entry 7795 @ (1698.2, 1210.7, 9.4)
+14. **Gahz'rilla** *(optional)* `unknown` — Mallet summon
+### Maraudon - Orange Crystals (LFD 26, map 349)
+
+1. [Foulspore Cavern] **Noxxion** — entry 13282 @ (1130.4, -191.3, -80) — Orange Crystals
+2. [Foulspore Cavern] **Razorlash** — entry 12258 @ (978.9, -10.2, -62.5)
+### Maraudon - Purple Crystals (LFD 272, map 349)
+
+1. [Wicked Grotto] **Lord Vyletongue** — entry 12236 @ (748.9, -219.6, -47.7) — Purple Crystals
+### Maraudon - Pristine Waters (LFD 273, map 349)
+
+1. [Earth Song Falls] **Celebras the Cursed** *(optional)* — entry 12225 @ (726.1, 78, -86.6) — optional/shared, not assigned to a specific 3.3.5 LFD wing (Poison Falls, between outer wings and inner)
+2. [Earth Song Falls] **Tinkerer Gizlock** — entry 13601 @ (134.9, -313.7, -173.6) — Earth Song Falls in 3.3.5a (moved to Wicked Grotto only in 4.0.3a)
+3. [Earth Song Falls] **Landslide** — entry 12203 @ (356.7, -185.5, -59.8)
+4. [Earth Song Falls] **Rotgrip** *(optional)* — entry 13596 @ (42.1, -66, -199.6) — lake
+5. [Earth Song Falls] **Princess Theradras** — entry 12201 @ (27.9, 83.2, -124.5)
+### Sunken Temple (LFD 28, map 109)
+
+1. **Loro** — entry 5714 @ (-466.7, 24.4, -66.8) — Atal'ai Defender 1/6 — all six required, kill order arbitrary; listed order follows a clockwise route
+2. **Gasher** — entry 5713 @ (-528, 59.5, -66.7) — Atal'ai Defender 2/6
+3. **Zolo** — entry 5712 @ (-528.6, 130.2, -66.8) — Atal'ai Defender 3/6
+4. **Mijan** — entry 5717 @ (-406.2, 131.1, -66.9) — Atal'ai Defender 4/6
+5. **Zul'Lor** — entry 5716 @ (-467.4, 166, -66.7) — Atal'ai Defender 5/6
+6. **Hukku** — entry 5715 @ (-405.5, 60.5, -67.1) — Atal'ai Defender 6/6 -> Jammal'an shield drops
+7. **Jammal'an the Prophet** — entry 5710 @ (-425.9, -86.1, -88.2) — with Ogom the Wretched
+8. **Dreamscythe** *(optional)* — entry 5721 @ (-453.5, 137.2, -90.8)
+9. **Weaver** *(optional)* — entry 5720 @ (-458.8, 127.7, -91.6)
+10. **Morphaz** *(optional)* — entry 5719 @ (-667.6, 103.1, -90.8)
+11. **Hazzas** *(optional)* — entry 5722 @ (-667.4, 80.8, -90.8)
+12. **Shade of Eranikus** — entry 5709 @ (-658.4, -35.8, -90.8)
+13. **Atal'alarion** *(optional)* — entry 8580 @ (-480.4, 96.6, -189.7) — statue puzzle, basement
+14. **Avatar of Hakkar** *(optional)* `script` — entry 8443 (no static spawn) — quest event
+### Blackrock Depths - Prison (LFD 30, map 230)
+
+1. [Prison] **High Interrogator Gerstahn** — entry 9018 @ (310.6, -146.3, -70.3) — LFD completion boss for Prison
+2. [Prison] **Lord Roccor** — entry 9025 @ (615.5, -267.4, -83.6)
+3. [Prison] **Houndmaster Grebmar** — entry 9319 @ (607.7, -174.8, -84.5)
+4. [Prison] **Ring of Law** **[event]** `unknown` — arena, random boss (Anub'shiah/Eviscerator/Gorosh/Grizzle/Hedrum/Ok'thor)
+5. [Prison] **Fineous Darkvire** *(optional)* — entry 9056 @ (963.3, -343.7, -71.7) — Dark Iron Legacy / Shadowforge Key
+6. [Prison] **Pyromancer Loregrain** — entry 9024 @ (530.2, -243.9, -43)
+7. [Prison] **Bael'Gar** — entry 9016 @ (702.4, 184.5, -72)
+8. [Prison] **Lord Incendius** — entry 9017 @ (893.5, -267.1, -71.9)
+9. [Prison] **Warder Stilgiss** *(optional)* — entry 9041 @ (823.4, -342.3, -50.1) — with Verek
+10. [Prison] **Watchman Doomgrip** *(optional)* `script` — entry 9476 (no static spawn) — event: spawns when relic coffers are opened (12 keys)
+### Blackrock Depths - Upper City (LFD 276, map 230)
+
+1. [Upper] **General Angerforge** — entry 9033 @ (652.4, 21.4, -60)
+2. [Upper] **Golem Lord Argelmach** — entry 8983 @ (846.8, 16.3, -53.6)
+3. [Upper] **Ribbly Screwspigot** *(optional)* — entry 9543 @ (878.5, -167.7, -49.7) — Grim Guzzler
+4. [Upper] **Phalanx** *(optional)* — entry 9502 @ (869, -225, -43.7) — Grim Guzzler
+5. [Upper] **Hurley Blackbreath** *(optional)* — entry 9537 @ (878.1, -153.1, -49.8) — Grim Guzzler
+6. [Upper] **Grim Guzzler back door** **[door]** `gameobject` — entry 170571 @ (870.693, -228.936, -43.7509) — Plugger bar fight / Rocknot event; Bar Door; lock 739 = Grim Guzzler Key (11602); opened by the Plugger bar-fight script
+7. [Upper] **Ambassador Flamelash** — entry 9156 @ (1009.8, -239, -61.3)
+8. [Upper] **Panzor the Invincible** *(optional)* — entry 8923 @ (1135.5, -163, -74.9) — rare
+9. [Upper] **Doom'rel** **[event]** — entry 9039 @ (1281.1, -282.2, -78.1) — Chest of the Seven (7 dwarves sequential)
+10. [Upper] **Magmus** — entry 9938 @ (1380.7, -659.3, -92) — Lyceum gauntlet before
+11. [Upper] **Emperor Dagran Thaurissan** — entry 9019 @ (1380.2, -831.6, -87.6) — LFD completion boss for Upper City; with Princess Moira Bronzebeard; High Priestess of Thaurissan spawns
+### Lower Blackrock Spire (LFD 32, map 229)
+
+1. **Highlord Omokk** — entry 9196 @ (-22.8, -300.7, 31.8)
+2. **Shadow Hunter Vosh'gajin** — entry 9236 @ (-121.2, -482.2, 24.7)
+3. **War Master Voone** — entry 9237 @ (-17, -459.1, -18.6)
+4. **Mother Smolderweb** — entry 10596 @ (-135.5, -565.8, 10.2)
+5. **Halycon** *(optional)* — entry 10220 @ (-193.9, -338.1, 64.5)
+6. **Quartermaster Zigris** — entry 9736 @ (-190.5, -475.6, 87.4)
+7. **Gizrul the Slavener** *(optional)* `script` — entry 10268 (no static spawn) — spawns after Halycon
+8. **Overlord Wyrmthalak** — entry 9568 @ (-22.6, -486.2, 90.8)
+### Scholomance (LFD 2, map 289)
+
+1. **Kirtonos the Herald** *(optional)* `script` — entry 10506 (no static spawn) — summon (Blood of Innocents)
+2. **Jandice Barov** — entry 10503 @ (268.2, 73.6, 95.9)
+3. **Rattlegore** — entry 11622 @ (137.1, 171.7, 96) — drops Viewing Room Key
+4. **Viewing Room door** **[door]** `gameobject` — entry 175167 @ (174.378, 77.9398, 104.802) — Rattlegore key
+5. **Marduk Blackpool** — entry 10433 @ (150.4, 116.2, 104.7)
+6. **Vectus** — entry 10432 @ (143.5, 99.1, 104.7)
+7. **The Ravenian** — entry 10507 @ (103.3, -1.7, 75.2)
+8. **Lord Alexei Barov** — entry 10504 @ (178.7, -91, 70.9)
+9. **Instructor Malicia** — entry 10505 @ (86.7, -2, 85.3)
+10. **Doctor Theolen Krastinov** — entry 11261 @ (182.2, -95.4, 85.3)
+11. **Lorekeeper Polkelt** — entry 10901 @ (274.9, 1.3, 85.3)
+12. **Lady Illucia Barov** — entry 10502 @ (266, 0.9, 75.3)
+13. **Ras Frostwhisper** — entry 10508 @ (-25.1, 141.3, 83.9)
+14. **Darkmaster Gandling** **[event]** — entry 1853 @ (180.8, -5.4, 75.6) — spawns after all six
+### Stratholme - Main Gate (LFD 40, map 329)
+
+1. [Live] **Timmy the Cruel** *(optional)* — entry 10808 @ (3614.7, -3187.6, 131.4) — script-spawned in Market Row
+2. [Live] **The Unforgiven** *(optional)* — entry 10516 @ (3719.8, -3426.2, 131.8)
+3. [Live] **Postmaster Malown** *(optional)* `script` — entry 11143 (no static spawn) — summon via postboxes
+4. [Live] **Scarlet Bastion gate** **[door]** `gameobject` — entry 175967 @ (3645.56, -3136.76, 134.76) — Scarlet Key / Crusaders' Square; The Bastion Door; lock 299 = The Scarlet Key (7146)
+5. [Live] **Cannon Master Willey** — entry 10997 @ (3573.6, -2937.3, 125.1)
+6. [Live] **Crimson Hammersmith** *(optional)* `script` — entry 11120 (no static spawn) — summon
+7. [Live] **Archivist Galford** — entry 10811 @ (3456, -3103.4, 136.5)
+8. [Live] **Grand Crusader Dathrohan** — entry 10812 @ (3415.8, -3044.5, 136.8) — -> Balnazzar at 50%
+### Stratholme - Service Entrance (LFD 274, map 329)
+
+1. [Undead] **Magistrate Barthilas** **[event]** — entry 10435 @ (3663.2, -3619.1, 138) — flees on first contact
+2. [Undead] **Stonespine** *(optional)* — entry 10809 @ (4058.9, -3530.3, 122.2) — rare
+3. [Undead] **Baroness Anastari** — entry 10436 @ (3855.3, -3715.8, 148.2) — ziggurat 1
+4. [Undead] **Nerub'enkan** — entry 10437 @ (3855, -3528.8, 144.3) — ziggurat 2
+5. [Undead] **Maleki the Pallid** — entry 10438 @ (4035.8, -3647.8, 135.7) — ziggurat 3 -> Slaughter Square gate opens
+6. [Undead] **Magistrate Barthilas** — entry 10435 @ (3663.2, -3619.1, 138) — rematch
+7. [Undead] **Ramstein the Gorger** **[event]** `script` — entry 10439 (no static spawn) — after abominations
+8. [Undead] **Baron Rivendare** — entry 10440 @ (4035.8, -3336.3, 115.1) — 45-min timer for quest only
+### Dire Maul - East (LFD 34, map 429)
+
+1. [East] **Pusillin** **[event]** — entry 14354 @ (86.2, -197.9, -4.1) — chase, Crescent Key
+2. [East] **Lethtendris** *(optional)* — entry 14327 @ (-5.5, -441.1, 16.4) — with Pimgib
+3. [East] **Hydrospawn** *(optional)* — entry 13280 @ (4.6, -438.4, -60)
+4. [East] **Zevrim Thornhoof** *(optional)* — entry 11490 @ (-35, -448, -37.9)
+5. [East] **Alzzin door** **[UNSUPPORTED]** — Old Ironbark opens after Zevrim; unsupported: Alzzin door; opened by an Old Ironbark gossip event; no verified door object
+6. [East] **Alzzin the Wildshaper** — entry 11492 @ (274.8, -427.3, -120)
+### Dire Maul - West (LFD 36, map 429)
+
+1. [West] **Crescent Key door** **[UNSUPPORTED]** — unsupported: Crescent Key door - two candidates (177221; 179550) in this wing; which one is step 1 is unverified
+2. [West] **Tendris Warpwood** *(optional)* — entry 11489 @ (14.4, 475.8, -23.3)
+3. [West] **Tsu'zee** *(optional)* — entry 11467 @ (128.6, 561.8, -4.3) — rare
+4. [West] **Magister Kalendris** *(optional)* — entry 11487 @ (33.1, 575.6, -4.3)
+5. [West] **Illyanna Ravenoak** *(optional)* — entry 11488 @ (-14.6, 542.1, 28.6) — with Ferra
+6. [West] **Immol'thar** *(optional)* — entry 11496 @ (-38.1, 812.4, -29.5) — 5 pylons
+7. [West] **Prince Tortheldrin** — entry 11486 @ (132.6, 625.9, -48.4)
+### Dire Maul - North (LFD 38, map 429)
+
+1. [North] **Crescent Key door** **[door]** `gameobject` — entry 179549 @ (351.568, 88.6734, -36.393) — Door 179549; lock 1562 = Crescent Key (18249); the only Crescent Key door within 390 yd of this wing's route
+2. [North] **Guard Mol'dar** *(optional)* — entry 14326 @ (410.7, -3.2, -24.6)
+3. [North] **Stomper Kreeg** *(optional)* — entry 14322 @ (491.2, 97.4, -2.5)
+4. [North] **Guard Fengus** *(optional)* — entry 14321 @ (356.8, 258.3, 11.7)
+5. [North] **Guard Slip'kik** *(optional)* — entry 14323 @ (550.4, 533.7, -25.3)
+6. [North] **Captain Kromcrush** *(optional)* — entry 14325 @ (627.6, 481.7, 29.5)
+7. [North] **Cho'Rush the Observer** *(optional)* — entry 14324 @ (834, 489.5, 37.4)
+8. [North] **King Gordok** — entry 11501 @ (828.1, 480.8, 37.3)
+### The Headless Horseman (LFD 285, map 189)
+
+1. **Headless Horseman** **[event]** `unknown` — Hallow's End only
+### Coren Direbrew (LFD 287, map 230)
+
+1. **Coren Direbrew** **[event]** — entry 23872 @ (891.8, -129.2, -49.7) — Brewfest only
+## The Burning Crusade
+
+### The Frost Lord Ahune (LFD 286, map 547, heroic LFD 184)
+
+1. **Lord Ahune** **[event]** `unknown` — Midsummer only
+## Vanilla
+
+### The Crown Chemical Co. (LFD 288, map 33)
+
+1. **Apothecary Hummel** **[event]** — entry 36296 @ (-208.1, 2217.4, 79.8) — Love is in the Air only
+## The Burning Crusade
+
+### Hellfire Ramparts (LFD 136, map 543, heroic LFD 188)
+
+1. **Watchkeeper Gargolmar** — entry 17306 @ (-1187.2, 1530.5, 68.5)
+2. **Vazruden the Herald** — entry 17307 @ (-1378.5, 1698.2, 104.1) — Nazan lands after Vazruden dismounts (script)
+3. **Omor the Unscarred** — entry 17308 @ (-1122.3, 1718.4, 89.4)
+### Blood Furnace (LFD 137, map 542, heroic LFD 187)
+
+1. **The Maker** — entry 17381 @ (327.2, 137.8, 9.6)
+2. **Broggok** **[event]** — entry 17380 @ (455.3, -1.8, 9.6) — cell waves lever
+3. **Keli'dan the Breaker** — entry 17377 @ (326.5, -86, -24.6) — channelers first
+### Shattered Halls (LFD 138, map 540, heroic LFD 189)
+
+1. **Grand Warlock Nethekurse** — entry 16807 @ (172.7, 289.6, -8.1)
+2. **Gauntlet of Flame** **[event]** `unknown` — archers gauntlet
+4. **Warbringer O'mrogg** — entry 16809 @ (375.1, 57.6, -7.2)
+5. **Warchief Kargath Bladefist** — entry 16808 @ (231.2, -83.6, 5)
+### Slave Pens (LFD 140, map 547, heroic LFD 184)
+
+1. **Slave Pens path start to Mennu 1** *(optional)* — entry 1 @ (92.1, -104.0, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+2. **Slave Pens path start to Mennu 2** *(optional)* — entry 1 @ (43.1, -94.4, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+3. **Slave Pens path start to Mennu 3** *(optional)* — entry 1 @ (11.6, -62.8, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+4. **Slave Pens path start to Mennu 4** *(optional)* — entry 1 @ (-29.4, -41.2, -2.1) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+5. **Slave Pens path start to Mennu 5** *(optional)* — entry 1 @ (-71.9, -12.0, -4.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+6. **Slave Pens path start to Mennu 6** *(optional)* — entry 1 @ (-106.6, -21.5, -5.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+7. **Slave Pens path start to Mennu 7** *(optional)* — entry 1 @ (-99.5, -53.5, -1.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+8. **Slave Pens path start to Mennu 8** *(optional)* — entry 1 @ (-92.9, -113.7, -3.1) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+9. **Slave Pens path start to Mennu 9** *(optional)* — entry 1 @ (-62.5, -136.1, -0.9) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+10. **Slave Pens path start to Mennu 10** *(optional)* — entry 1 @ (-45.5, -178.0, -2.9) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+11. **Slave Pens path start to Mennu 11** *(optional)* — entry 1 @ (-24.3, -217.3, -2.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+12. **Slave Pens path start to Mennu 12** *(optional)* — entry 1 @ (-9.5, -258.2, -0.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+13. **Slave Pens path start to Mennu 13** *(optional)* — entry 1 @ (-7.8, -297.1, 2.8) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+14. **Slave Pens path start to Mennu 14** *(optional)* — entry 1 @ (32.0, -323.5, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+15. **Slave Pens path start to Mennu 15** *(optional)* — entry 1 @ (79.5, -334.2, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+16. **Slave Pens path start to Mennu 16** *(optional)* — entry 1 @ (64.5, -372.9, 4.2) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+17. **Mennu the Betrayer** — entry 17941 @ (49.5, -380.2, 3)
+18. **Slave Pens path Mennu to Rokmar 1** *(optional)* — entry 1 @ (79.5, -334.2, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+19. **Slave Pens path Mennu to Rokmar 2** *(optional)* — entry 1 @ (32.0, -323.5, 3.3) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+20. **Slave Pens path Mennu to Rokmar 3** *(optional)* — entry 1 @ (-10.3, -306.7, 2.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+21. **Slave Pens path Mennu to Rokmar 4** *(optional)* — entry 1 @ (-10.7, -330.7, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+22. **Slave Pens path Mennu to Rokmar 5** *(optional)* — entry 1 @ (-15.1, -373.3, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+23. **Slave Pens path Mennu to Rokmar 6** *(optional)* — entry 1 @ (-8.6, -425.8, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+24. **Slave Pens path Mennu to Rokmar 7** *(optional)* — entry 1 @ (-41.5, -452.0, -12.8) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+25. **Slave Pens path Mennu to Rokmar 8** *(optional)* — entry 1 @ (-74.7, -472.0, -13.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+26. **Slave Pens path Mennu to Rokmar 9** *(optional)* — entry 1 @ (-126.6, -481.3, -10.4) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+27. **Slave Pens path Mennu to Rokmar 10** *(optional)* — entry 1 @ (-101.0, -516.9, -9.5) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+28. **Slave Pens path Mennu to Rokmar 11** *(optional)* — entry 1 @ (-96.4, -519.8, -2.0) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+29. **Slave Pens path Mennu to Rokmar 12** *(optional)* — entry 1 @ (-74.1, -488.5, 0.1) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+30. **Slave Pens path Mennu to Rokmar 13** *(optional)* `derived` — entry 1 @ (-42.0, -473.8, -1.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+31. **Slave Pens path Mennu to Rokmar 14** *(optional)* — entry 1 @ (-11.0, -457.1, 2.6) — path anchor; navmesh route is 87 polygons long so one path query fails (offline A* on mmtile polygons)
+32. **Rokmar the Crackler** — entry 17991 @ (18.3, -448.4, 3.1)
+33. **Slave Pens path Rokmar to Quagmirran 1** *(optional)* — entry 1 @ (-33.0, -473.3, -1.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+34. **Slave Pens path Rokmar to Quagmirran 2** *(optional)* — entry 1 @ (-75.3, -481.7, -1.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+35. **Slave Pens path Rokmar to Quagmirran 3** *(optional)* — entry 1 @ (-96.4, -519.8, -2.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+36. **Slave Pens path Rokmar to Quagmirran 4** *(optional)* — entry 1 @ (-88.6, -565.4, -1.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+37. **Slave Pens path Rokmar to Quagmirran 5** *(optional)* — entry 1 @ (-94.0, -607.8, 10.8) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+38. **Slave Pens path Rokmar to Quagmirran 6** *(optional)* — entry 1 @ (-94.0, -655.6, 23.9) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+39. **Slave Pens path Rokmar to Quagmirran 7** *(optional)* — entry 1 @ (-75.6, -692.8, 41.5) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+40. **Slave Pens path Rokmar to Quagmirran 8** *(optional)* — entry 1 @ (-74.7, -735.9, 40.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+41. **Slave Pens path Rokmar to Quagmirran 9** *(optional)* — entry 1 @ (-110.3, -752.5, 37.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+42. **Slave Pens path Rokmar to Quagmirran 10** *(optional)* — entry 1 @ (-152.0, -756.9, 37.6) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+43. **Slave Pens path Rokmar to Quagmirran 11** *(optional)* — entry 1 @ (-182.5, -732.2, 37.4) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+44. **Slave Pens path Rokmar to Quagmirran 12** *(optional)* — entry 1 @ (-211.9, -704.9, 34.2) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+45. **Slave Pens path Rokmar to Quagmirran 13** *(optional)* — entry 1 @ (-246.8, -688.5, 16.2) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+46. **Slave Pens path Rokmar to Quagmirran 14** *(optional)* — entry 1 @ (-289.6, -667.3, 10.0) — path anchor; the route crosses the off-mesh link over the gap at (-212 -705) (offline A* on the mmtile polygons)
+47. **Quagmirran** — entry 17942 @ (-281.1, -667.1, 9.4)
+### Underbog (LFD 146, map 546, heroic LFD 186)
+
+1. **Hungarfen** — entry 17770 @ (-121.3, -388.6, 36.9)
+2. **Ghaz'an** — entry 18105 @ (193.7, -425, 43.5)
+3. **Swamplord Musel'ek** — entry 17826 @ (288.6, -121.8, 29.7) — with Claw
+4. **The Black Stalker** — entry 17882 @ (143.4, 9.1, 27.6)
+### The Steamvault (LFD 147, map 545, heroic LFD 185)
+
+1. **Hydromancer Thespia** — entry 17797 @ (88.4, -316.1, -7.8)
+2. **Mekgineer Steamrigger** — entry 17796 @ (-330.1, -121.5, -8)
+3. **Control panels** **[UNSUPPORTED]** — 2 panels behind first two bosses; unsupported: 2 access panels (184125; 184126) open the Main Chambers Door by script; not a door the leader can open
+4. **Warlord Kalithresh** — entry 17798 @ (-95.4, -552, 8.3)
+### Mana-Tombs (LFD 148, map 557, heroic LFD 179)
+
+1. **Ethereal Scavenger** *(optional)* — entry 18309 @ (-68.0, -31.7, -1.0) — pack at the start, on the way
+2. **Ethereal Scavenger** *(optional)* — entry 18309 @ (-97.9, -59.9, -0.8) — pack that joins Pandemonius as adds
+3. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-67.7, -67.3, -0.8) — pack that joins Pandemonius as adds
+4. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-46.7, -97.8, -0.9) — pack of 7 next to Pandemonius; joins him as adds
+5. **Pandemonius** — entry 18341 @ (-68, -118.9, -1.2)
+6. **Mana Leech** *(optional)* — entry 19306 @ (-8.8, -227.2, 1.9) — pack on the way to Tavarok
+7. **Ethereal Priest** *(optional)* — entry 18317 @ (-32.8, -223.6, -0.2) — pack on the way to Tavarok
+8. **Ethereal Priest** *(optional)* — entry 18317 @ (-111.2, -219.3, -0.2) — pack on the way to Tavarok
+9. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-115.3, -199.5, -1.3) — pack on the way to Tavarok
+10. **Nexus Terror** *(optional)* — entry 19307 @ (-207.6, -258.5, -1.0) — pack on the way to Tavarok
+11. **Ethereal Darkcaster** *(optional)* — entry 18331 @ (-209.6, -245.2, -1.0) — pack on the way to Tavarok
+12. **Ethereal Sorcerer** *(optional)* — entry 18313 @ (-215.4, -223.4, -0.9) — pack on the way to Tavarok
+13. **Tavarok** — entry 18343 @ (-321.7, -222.2, -0.8)
+15. **Ethereal Spellbinder** *(optional)* — entry 18312 @ (-353.0, -70.3, -1.0) — pack on the way to Shaffar
+16. **Nexus Stalker** *(optional)* — entry 18314 @ (-389.2, -73.2, -0.9) — pack on the way to Shaffar
+17. **Ethereal Spellbinder** *(optional)* — entry 18312 @ (-375.6, -37.7, -0.9) — pack on the way to Shaffar
+18. **Ethereal Spellbinder** *(optional)* — entry 18312 @ (-261.0, 7.9, 16.8) — pack on the way to Shaffar
+19. **Nexus-Prince Shaffar** — entry 18344 @ (-184.4, 9.3, 16.8)
+### Auchenai Crypts (LFD 149, map 558, heroic LFD 178)
+
+1. **Shirrak the Dead Watcher** — entry 18371 @ (-50.9, -163.1, 26.4)
+2. **Exarch Maladaar** — entry 18373 @ (68.1, -387.8, 26.6)
+### Sethekk Halls (LFD 150, map 556, heroic LFD 180)
+
+1. **Darkweaver Syth** — entry 18472 @ (-144.8, 173.6, 1.8)
+3. **Talon King Ikiss** — entry 18473 @ (44.7, 287, 25.2)
+### Shadow Labyrinth (LFD 151, map 555, heroic LFD 181)
+
+1. **Ambassador Hellmaw** **[event]** — entry 18731 @ (-156.7, 5, 8.2) — freed after banishers
+2. **Blackheart the Inciter** — entry 18667 @ (-328.2, -39.1, 12.7)
+3. **Grandmaster Vorpil** — entry 18732 @ (-253.5, -263.6, 17.2)
+4. **Murmur** — entry 18708 @ (-157.9, -497.3, 15.9)
+### The Mechanar (LFD 172, map 554, heroic LFD 192)
+
+1. **Gatewatcher Gyro-Kill** — entry 19218 @ (85.5, 20.2, 15)
+2. **Nethermancer Sepethrea** *(optional)* — entry 19221 @ (326.5, 13.2, 27.9)
+3. **Mechano-Lord Capacitus** *(optional)* — entry 19219 @ (208.2, -13, -2.1)
+4. **Gatewatcher Iron-Hand** — entry 19710 @ (181.9, -77.1, 0)
+5. **Elevator** **[UNSUPPORTED]** — after both gatewatchers; unsupported: elevator (Doodad_FactoryElevator01; a transport) - no door object to open
+6. **Pathaleon the Calculator** — entry 19220 @ (139.5, 149.3, 25.7)
+### The Botanica (LFD 173, map 553, heroic LFD 191)
+
+1. **Commander Sarannis** *(optional)* — entry 17976 @ (151, 296, -4.6)
+2. **Warp Splinter** — entry 17977 @ (63.8, 391.9, -27.9)
+3. **Laj** *(optional)* — entry 17980 @ (-204.1, 391.2, -11.2)
+4. **Thorngrin the Tender** *(optional)* — entry 17978 @ (4.9, 596.6, -15.1)
+5. **High Botanist Freywinn** *(optional)* — entry 17975 @ (116.3, 455.6, -4.9)
+### The Arcatraz (LFD 174, map 552, heroic LFD 190)
+
+1. **Zereketh the Unbound** — entry 20870 @ (273.6, -123, -10)
+2. **Wrath-Scryer Soccothrates** — entry 20886 @ (136.2, 168.3, 22.5)
+3. **Dalliah the Doomsayer** — entry 20885 @ (137.2, 128.5, 22.5)
+4. **Warden Mellichar** **[event]** — entry 20904 @ (445.8, -169, 43.6) — cell event -> Harbinger Skyriss
+5. **Harbinger Skyriss** **[event]** `script` — entry 20912 (no static spawn) — script-spawned
+### The Escape From Durnholde (LFD 170, map 560, heroic LFD 183)
+
+1. **Escape from Durnholde** **[UNSUPPORTED]** — event dungeon: barrels -> Lieutenant Drake -> Captain Skarloc -> Thrall escort -> Epoch Hunter
+### The Black Morass (LFD 171, map 269, heroic LFD 182)
+
+1. **The Black Morass** **[UNSUPPORTED]** — event dungeon: 18 waves, Chrono Lord Deja(6) / Temporus(12) / Aeonus(18), protect Medivh
+### Magisters' Terrace (LFD 198, map 585, heroic LFD 201)
+
+1. **Selin Fireheart** — entry 24723 @ (242.1, 0.3, 1.8)
+2. **Vexallus** — entry 24744 @ (231.4, -214.3, -6.3)
+3. **Priestess Delrissa** — entry 24560 @ (126.9, 19.2, -19.9) — council
+4. **Kael'thas Sunstrider** — entry 24664 @ (148.5, 187, -16.6)
+## Wrath of the Lich King
+
+### Utgarde Keep (LFD 202, map 574, heroic LFD 242)
+
+1. **Prince Keleseth** — entry 23953 @ (193.1, 197.5, 40.8)
+2. **Skarvald the Constructor** — entry 24200 @ (109.5, -33.7, 118.9) — with Dalronn the Controller
+3. **Ingvar the Plunderer** — entry 23954 @ (242.7, -333.6, 180.6)
+### Utgarde Pinnacle (LFD 203, map 575, heroic LFD 205)
+
+1. **Svala Sorrowgrave** **[event]** `script` — entry 26668 (no static spawn) — ritual (script-spawned)
+2. **Gortok Palehoof** **[event]** — entry 26687 @ (320.8, -453.1, 104.8) — animal gauntlet
+3. **Skadi the Ruthless** **[event]** — entry 26693 @ (343, -507.3, 104.6) — gauntlet + harpoons
+4. **King Ymiron** — entry 26861 @ (392.8, -286.8, 109.3)
+### The Nexus (LFD 225, map 576, heroic LFD 226)
+
+2. **Grand Magus Telestra** — entry 26731 @ (494.7, 89.1, -16)
+3. **Anomalus** — entry 26763 @ (637.7, -289.1, -9.1)
+4. **Ormorok the Tree-Shaper** — entry 26794 @ (265, -225.4, -9)
+5. **Keristrasza** — entry 26723 @ (301.5, -5.5, -15.5) — freed after previous three
+### The Oculus (LFD 206, map 578, heroic LFD 211)
+
+1. **Drakos the Interrogator** — entry 27654 @ (947.8, 1045.8, 360.1)
+2. **The Oculus** **[UNSUPPORTED]** — vehicle dungeon after Drakos: Varos Cloudstrider -> Mage-Lord Urom -> Ley-Guardian Eregos on drakes
+### The Culling of Stratholme (LFD 209, map 595, heroic LFD 210)
+
+1. **The Culling of Stratholme** **[UNSUPPORTED]** — event dungeon: Arthas escort, Meathook -> Salramm -> Chrono-Lord Epoch -> (Infinite Corruptor H) -> Mal'Ganis
+### Halls of Stone (LFD 208, map 599, heroic LFD 213)
+
+1. **Krystallus** — entry 27977 @ (1008.6, 759.9, 208.7)
+2. **Maiden of Grief** — entry 27975 @ (842.6, 666, 190.1)
+3. **Brann Bronzebeard** **[event]** — entry 28070 @ (1077.4, 474.2, 207.8) — Tribunal of Ages escort, opens Sjonnir door
+4. **Sjonnir The Ironshaper** — entry 27978 @ (1295.2, 667.2, 189.7)
+### Drak'Tharon Keep (LFD 214, map 600, heroic LFD 215)
+
+1. **Trollgore** — entry 26630 @ (-266.2, -660.1, 26.5)
+2. **Novos the Summoner** **[event]** — entry 26631 @ (-379.3, -737.7, 27.3) — waves
+3. **King Dred** — entry 27483 @ (-544.9, -697, 30.3)
+4. **The Prophet Tharon'ja** — entry 26632 @ (-236.8, -675.4, 131.9)
+### Azjol-Nerub (LFD 204, map 601, heroic LFD 241)
+
+1. **Krik'thir the Gatewatcher** — entry 28684 @ (529.6, 646.2, 777.4) — watchers Gashra/Narjil/Silthik first
+2. **Hadronox** *(optional)* — entry 28921 @ (522.5, 544.9, 674.7) — web climb
+3. **Anub'arak** — entry 29120 @ (551, 248.3, 224)
+### Halls of Lightning (LFD 207, map 602, heroic LFD 212)
+
+1. **General Bjarngrim** — entry 28586 @ (1262, -26.9, 33.5) — patrols
+2. **Volkhan** — entry 28587 @ (1332.4, -102.1, 56.8)
+3. **Ionar** — entry 28546 @ (1082, -261.8, 61.3)
+4. **Loken** — entry 28923 @ (1186.5, 33.8, 60.8)
+### Gundrak (LFD 216, map 604, heroic LFD 217)
+
+1. **Slad'ran** — entry 29304 @ (1775.1, 675, 129.3)
+2. **Moorabi** — entry 29305 @ (1772.5, 809.5, 129.3)
+3. **Drakkari Colossus** — entry 29307 @ (1673, 743.5, 143.3)
+4. **Altar bridge** **[UNSUPPORTED]** — 3 altars -> bridge to Gal'darah; unsupported: 3 altars (192518-192520) must be used to raise the bridge (193188); altars are not walked
+5. **Gal'darah** — entry 29306 @ (1914.8, 743.7, 136.6)
+### Violet Hold (LFD 220, map 608, heroic LFD 221)
+
+1. **The Violet Hold** **[UNSUPPORTED]** — event dungeon: 18 waves, 2 random of Erekem/Moragg/Ichoron/Xevozz/Lavanthor/Zuramat, Cyanigosa
+### Ahn'kahet: The Old Kingdom (LFD 218, map 619, heroic LFD 219)
+
+1. **Elder Nadox** *(optional)* — entry 29309 @ (679.9, -905.5, 25.7)
+2. **Jedoga Shadowseeker** *(optional)* — entry 29310 @ (372.3, -705.3, -0.6)
+3. **Prince Taldaram** — entry 29308 @ (528.7, -846, 42) — 2 spheres open door
+5. **Herald Volazj** — entry 29311 @ (519.9, -441.8, 26.4)
+### The Forge of Souls (LFD 251, map 632, heroic LFD 252)
+
+1. **Bronjahm** — entry 36497 @ (5297.3, 2506.5, 686.2)
+2. **Devourer of Souls** — entry 36502 @ (5661.8, 2507.4, 708.9)
+### Trial of the Champion (LFD 245, map 650, heroic LFD 249)
+
+1. **Trial of the Champion** **[UNSUPPORTED]** — event dungeon: jousting Grand Champions -> Eadric/Paletress -> The Black Knight
+### Pit of Saron (LFD 253, map 658, heroic LFD 254)
+
+1. **Forgemaster Garfrost** — entry 36494 @ (712.1, -215.7, 527.1)
+2. **Ick** — entry 36476 @ (852.8, 123.5, 510) — with Krick
+3. **Tunnel gauntlet** **[event]** `unknown` — cave-in, run through
+4. **Scourgelord Tyrannus** — entry 36794 @ (522.3, 226.4, 548) — with Rimefang
+### Halls of Reflection (LFD 255, map 668, heroic LFD 256)
+
+1. **Halls of Reflection** **[UNSUPPORTED]** — event dungeon: 10 waves, Falric(5) / Marwyn(10), Lich King escape
+## The Burning Crusade
+
+3. **Yor** *(heroic only)* — summon, quest
+2. **Anzu** *(heroic only)* — summon, druid quest
+3. **Blood Guard Porung** *(heroic only)*
+## Wrath of the Lich King
+
+6. **Eck the Ferocious** *(heroic only)*
+4. **Amanitar** *(heroic only)*
+1. **Commander Kolurg** *(heroic only)* — Horde sees Kolurg / Alliance sees Commander Stoutbeard

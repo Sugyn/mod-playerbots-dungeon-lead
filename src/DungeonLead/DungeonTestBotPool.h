@@ -1,0 +1,110 @@
+/*
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ */
+
+#ifndef PLAYERBOTS_DUNGEONTESTBOTPOOL_H
+#define PLAYERBOTS_DUNGEONTESTBOTPOOL_H
+
+#include "Common.h"
+
+#include <string>
+#include <vector>
+
+class Player;
+
+// A small pool of deterministically-specced test bots that don't depend on the general bot
+// population's momentary class/spec distribution and don't need a live player session to stay
+// logged in (see docs/architecture.md).
+//
+// Source of identities: the existing upstream AddClass bot pool (account_type=2 in
+// playerbots_account_type, ~50 characters per class, usually idle/offline). Reused as-is - this
+// does NOT create new accounts or characters. Login goes through the existing masterless path
+// (PlayerbotHolder::AddPlayerBot(guid, 0), the same "isRndbot" branch a real random bot uses),
+// never a manually-constructed WorldSession.
+//
+// Roles: Tank, Healer and Dps (arbitrary class, for a full 5-bot party and for CC-capable classes
+// specifically - see AcquireDpsTestBot). Lease ownership is a simple in-memory list.
+namespace DungeonLead
+{
+    enum class TestBotRole : uint8
+    {
+        Tank,
+        Healer,
+        Dps,
+    };
+
+    enum class TestBotLeaseState : uint8
+    {
+        LoggingIn,   // AddPlayerBot() called, waiting for the async login to land
+        Preparing,   // logged in, PlayerbotFactory profile prep running (synchronous once reached)
+        Ready,       // profile applied, role verified at runtime - safe to hand to a test scenario
+        Leased,      // handed out (reserved for future use once a scenario runner exists)
+        Failed,      // login timed out, or role verification failed after prep
+    };
+
+    // Called every world tick from PlayerbotsWorldScript::OnUpdate, next to GuardActiveSessions()/
+    // CanaryTick() - throttles internally (~3s), advances any in-flight lease through
+    // LoggingIn -> Preparing -> Ready/Failed, and times out a login that never lands (30s).
+    void TestBotPoolTick();
+
+    // Reserves one currently-offline AddClass character of the class matching `role` (Tank ->
+    // Warrior/Protection, Healer -> Priest/Holy - see the .cpp), triggers its masterless login,
+    // and starts tracking it as a lease. Returns immediately - login and profile preparation
+    // happen asynchronously via TestBotPoolTick(); check TestBotPoolStatus() for progress. Returns
+    // false (with a reason in outMessage) if no eligible offline character exists or all of them
+    // are already leased.
+    bool AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr);
+
+    // Dps variant: `classId` picks the class explicitly (CLASS_WARRIOR=1 .. CLASS_DRUID=11, same
+    // ids the addclass command uses) since "Dps" alone doesn't determine one - useful for building
+    // a real 5-bot party (2-3 varied dps) or for a CC-capable class specifically (Mage/Warlock/
+    // Rogue/Hunter/Druid). Does not force a talent spec (pure-DPS classes don't need one optimized
+    // spec the way Tank/Healer do) - Randomize()'s own spec choice is left as-is. For Mage,
+    // additionally verifies Polymorph (spell 118) is known before reporting Ready; other classes'
+    // CC is not independently verified.
+    bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr);
+
+    // Forms complete 5-bot parties directly out of every currently idle (`Ready` or `Leased`, not
+    // already in a group) lease and sends them straight into `lfgId`'s dungeon. Deliberately
+    // bypasses the LFG queue/matchmaking pipeline, which is not reliable enough for unattended
+    // tests (queued bots may never match). Instead builds the Group object itself
+    // (Group::Create()+GroupMgr::AddGroup(), one tank + one healer + up to three dps per party,
+    // never a tank-less/healer-less one), teleports every member to the dungeon's entrance
+    // (DungeonRouteMgr::GetEntrance), and starts the session once the party has genuinely
+    // assembled inside - checked every TestBotPoolTick(): everyone alive, on the map, in the tank's
+    // instance, near the tank (DungeonLeadKernel::DecideAssembly; given up after 3 minutes).
+    // Independent of CanaryEnabled/CanaryAllowedLfgIds (those gate the passive/LFG-triggered
+    // paths only) but respects the shared AiPlayerbot.DungeonLead.CanaryMaxConcurrent budget (via
+    // DungeonLead::ActiveCanaryCount(), the same accounting TriggerTargetedTest() uses) - forms as
+    // many parties as fit under that cap, never more. Transitions every bot used into a party to
+    // `Leased`. Returns a summary of how many parties were formed and started, or why there weren't
+    // enough idle tank+healer leases to form even one.
+    std::string RunTestParty(uint32 lfgId, std::vector<std::string> const* only = nullptr);
+
+    // For running several test parties at once (DungeonValidationCampaign slots): whether any of
+    // `names` is still logging in / being prepared, and whether the party led by `tankName` is
+    // assembling or has a running session.
+    bool TestBotsPending(std::vector<std::string> const& names);
+    bool TestPartyActive(std::string const& tankName, bool& assembling);
+
+    // Parties formed by RunTestParty() still assembling (session not started yet). Counted in the
+    // shared canary concurrency budget like a running session.
+    uint32 PendingTestPartyCount();
+
+    // Human-readable dump of every currently-tracked lease and its state.
+    std::string TestBotPoolStatus();
+
+    // Ends a lease: stops any active dungeon-lead session on the bot (never leaves one dangling),
+    // logs it out via the normal LogoutPlayerBot() path, and stops tracking it. `botName` matches
+    // on the character name given at Acquire time (case-sensitive, as returned by TestBotPoolStatus).
+    std::string ReleaseTestBot(std::string const& botName);
+
+    // ReleaseTestBot() for every tracked lease.
+    std::string ReleaseAllTestBots();
+}
+
+#endif

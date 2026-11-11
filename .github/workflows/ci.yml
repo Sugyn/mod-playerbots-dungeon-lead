@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-tests:
+    name: Fast tests and hygiene
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repository hygiene
+        run: python3 tools/check_repo_hygiene.py
+      - name: Route data
+        run: |
+          python3 tools/validate_routes.py
+          python3 tools/check_route_sql.py
+      - name: Kernel and replay tests
+        run: bash tools/run_tests.sh
+
+  compile:
+    name: Compile against pinned revisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      # Keep in step with "Tested with" in README.md.
+      AC_SHA: e7e2e288e7d9ec30e2dfe6f417178a95986fcbb2
+      PLAYERBOTS_SHA: 405f81196161017eebae3ee7a612d786a3ed2a9d
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 3G
+    steps:
+      - name: AzerothCore (mod-playerbots fork)
+        uses: actions/checkout@v4
+        with:
+          repository: mod-playerbots/azerothcore-wotlk
+          ref: ${{ env.AC_SHA }}
+          path: azerothcore
+      - name: mod-playerbots
+        uses: actions/checkout@v4
+        with:
+          repository: mod-playerbots/mod-playerbots
+          ref: ${{ env.PLAYERBOTS_SHA }}
+          path: azerothcore/modules/mod-playerbots
+      - name: This module
+        uses: actions/checkout@v4
+        with:
+          path: azerothcore/modules/mod-dungeon-lead
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build ccache \
+            libmysqlclient-dev libssl-dev libbz2-dev libreadline-dev libncurses-dev libboost-all-dev
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-${{ env.AC_SHA }}-${{ env.PLAYERBOTS_SHA }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ env.AC_SHA }}-${{ env.PLAYERBOTS_SHA }}-
+      - name: Configure
+        run: |
+          cmake -S azerothcore -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DMODULES=static -DTOOLS_BUILD=none -DUSE_COREPCH=OFF -DUSE_SCRIPTPCH=OFF
+      - name: Compile the modules library (no link, no install)
+        run: cmake --build build --target modules
+      - name: Cache statistics
+        if: always()
+        run: ccache --show-stats
+      - name: Save compiler cache
+        # also after a failure or cancellation, so the next run does not start cold
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-${{ env.AC_SHA }}-${{ env.PLAYERBOTS_SHA }}-${{ github.sha }}

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question / compare with another mod
+    url: https://github.com/Sugyn/mod-playerbots-dungeon-lead/discussions/categories/q-a
+    about: Use Discussions for questions - Issues are reserved for reproducible bugs.

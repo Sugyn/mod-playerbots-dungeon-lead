@@ -1,0 +1,178 @@
+/*
+ * Dungeon Lead - a derivative module for mod-playerbots (AzerothCore), adding autonomous 5-man
+ * dungeon leadership. https://github.com/Sugyn/mod-playerbots-dungeon-lead
+ *
+ * Copyright (C) 2026 the Dungeon Lead contributors. Licensed under the GNU General Public
+ * License, version 2, or (at your option) any later version - see LICENSE in this repository.
+ *
+ * DungeonLeadConfig.h
+ *
+ * Own config singleton, reading AiPlayerbot.DungeonLead.* directly via sConfigMgr - mirrors
+ * PlayerbotAIConfig's own field names/defaults exactly (see mod-playerbots src/PlayerbotAIConfig.h)
+ * but as a module-owned class, so nothing in mod-playerbots needs editing to add these fields.
+ * Same lazy-Meyer's-singleton shape as PlayerbotAIConfig itself.
+ */
+
+#ifndef MOD_DUNGEONLEAD_CONFIG_H
+#define MOD_DUNGEONLEAD_CONFIG_H
+
+#include "Config.h"
+#include "Log.h"
+#include <algorithm>
+#include <cmath>
+#include <string>
+
+class DungeonLeadConfig
+{
+public:
+    static DungeonLeadConfig& instance()
+    {
+        static DungeonLeadConfig instance;
+        return instance;
+    }
+
+    uint32 dungeonLeadHealerManaPct;
+    uint32 dungeonLeadStuckSeconds;
+    uint32 dungeonLeadCcTimeoutSeconds;
+    uint32 dungeonLeadCcAbsoluteTimeoutSeconds;
+    uint32 dungeonLeadWipeRecoverySeconds;
+    uint32 dungeonLeadMaxWipesPerRun;
+    bool dungeonLeadDebugDefault;
+    float dungeonLeadLeash;
+    float dungeonLeadArriveDistance;
+    bool dungeonLeadSkipOptional;
+    bool dungeonLeadMarkCc;
+    bool dungeonLeadRangedPull;
+    bool dungeonLeadCanaryEnabled;
+    uint32 dungeonLeadCanaryMaxConcurrent;
+    uint32 dungeonLeadCanaryTimeoutMinutes;
+    std::string dungeonLeadCanaryAllowedLfgIds;
+    std::string dungeonLeadValidationAutostart;
+    uint32 dungeonLeadStepWalkLimitSeconds;
+    uint32 dungeonLeadMaxPartiesPerRun;
+    // Leadership transfer at session start / stop - how long one request may stay unobserved
+    // before it is retried, and how many requests are made before giving up.
+    uint32 dungeonLeadLeadershipAcquireTimeoutSeconds;
+    uint32 dungeonLeadLeadershipReturnTimeoutSeconds;
+    uint32 dungeonLeadLeadershipMaxAttempts;
+    // Pull controller: open a fight once the tank is this close to the pull target, and give a
+    // pull this long to start / to settle before counting it as failed.
+    float dungeonLeadPullRange;
+    uint32 dungeonLeadPullInitiateTimeoutSeconds;
+    uint32 dungeonLeadPullEstablishTimeoutSeconds;
+    uint32 dungeonLeadPullMaxAttempts;
+    // Combat leash: the tank does not chase a target farther than this from where the fight began.
+    float dungeonLeadCombatLeashRadius;
+    // Party cohesion: a member beyond the soft range holds the next pull, beyond the hard range
+    // the leader stops walking too.
+    float dungeonLeadPartySoftRange;
+    float dungeonLeadPartyHardRange;
+    // Post-combat gate: minimum pause between two fights, and the party health the leader waits
+    // for before walking or pulling on (0 = don't wait for health).
+    uint32 dungeonLeadPostCombatMinSeconds;
+    uint32 dungeonLeadPostCombatMinHealthPct;
+    // Recovery controller: how long a recovery acts before escalating, and how long the
+    // escalation gets before the run is stopped as failed.
+    uint32 dungeonLeadRecoveryTimeoutSeconds;
+    uint32 dungeonLeadRecoveryEscalationSeconds;
+    // Boss fights are anchored at the boss's own spot with this leash (instead of CombatLeashRadius).
+    float dungeonLeadBossLeashRadius;
+    // Rounds of attempts a mandatory objective (a boss) gets before the run is stopped as partial;
+    // optional content is skipped after its first failed round instead.
+    uint32 dungeonLeadObjectiveRetryRounds;
+    // How long the leader waits at a closed door/gate for its event, key or boss to open it.
+    uint32 dungeonLeadDoorWaitSeconds;
+    uint32 dungeonLeadEventWaitSeconds;
+    uint32 dungeonLeadValidationParallel;
+
+private:
+    static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
+    {
+        uint32 const v = sConfigMgr->GetOption<uint32>(key, def);
+        uint32 const clamped = std::clamp(v, lo, hi);
+        if (clamped != v)
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} = {} out of range [{}, {}], using {}", key, v, lo, hi,
+                      clamped);
+        return clamped;
+    }
+
+    // A float key out of range or not finite (nan/inf) falls back to the clamp / the default, logged.
+    static float BoundedFloat(char const* key, float def, float lo, float hi)
+    {
+        float const v = sConfigMgr->GetOption<float>(key, def);
+        if (!std::isfinite(v))
+        {
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} = {} is not a number, using {}", key, v, def);
+            return def;
+        }
+        float const clamped = std::clamp(v, lo, hi);
+        if (clamped != v)
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} = {} out of range [{}, {}], using {}", key, v, lo, hi,
+                      clamped);
+        return clamped;
+    }
+
+    DungeonLeadConfig()
+    {
+        // Every key is range-checked; out-of-range values fall back as logged.
+        dungeonLeadHealerManaPct = Bounded("AiPlayerbot.DungeonLead.HealerManaPct", 20, 0, 100);
+        dungeonLeadStuckSeconds = Bounded("AiPlayerbot.DungeonLead.StuckSeconds", 45, 5, 600);
+        dungeonLeadCcTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.CcTimeoutSeconds", 10, 1, 120);
+        dungeonLeadCcAbsoluteTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds", 45, 1, 600);
+        if (dungeonLeadCcAbsoluteTimeoutSeconds < dungeonLeadCcTimeoutSeconds)
+        {
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] CcAbsoluteTimeoutSeconds ({}) below CcTimeoutSeconds ({}), "
+                      "using CcTimeoutSeconds", dungeonLeadCcAbsoluteTimeoutSeconds, dungeonLeadCcTimeoutSeconds);
+            dungeonLeadCcAbsoluteTimeoutSeconds = dungeonLeadCcTimeoutSeconds;
+        }
+        dungeonLeadWipeRecoverySeconds = Bounded("AiPlayerbot.DungeonLead.WipeRecoverySeconds", 300, 30, 3600);
+        dungeonLeadMaxWipesPerRun = Bounded("AiPlayerbot.DungeonLead.MaxWipesPerRun", 3, 0, 20);
+        dungeonLeadLeash = BoundedFloat("AiPlayerbot.DungeonLead.Leash", 60.0f, 10.0f, 300.0f);
+        dungeonLeadArriveDistance = BoundedFloat("AiPlayerbot.DungeonLead.ArriveDistance", 8.0f, 1.0f, 30.0f);
+        dungeonLeadSkipOptional = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.SkipOptional", false);
+        dungeonLeadMarkCc = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.MarkCc", true);
+        dungeonLeadRangedPull = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.RangedPull", true);
+        dungeonLeadDebugDefault = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.DebugDefault", false);
+        dungeonLeadCanaryEnabled = sConfigMgr->GetOption<bool>("AiPlayerbot.DungeonLead.CanaryEnabled", false);
+        dungeonLeadCanaryMaxConcurrent = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.CanaryMaxConcurrent", 1);
+        dungeonLeadCanaryTimeoutMinutes =
+            sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.CanaryTimeoutMinutes", 45);
+        dungeonLeadCanaryAllowedLfgIds =
+            sConfigMgr->GetOption<std::string>("AiPlayerbot.DungeonLead.CanaryAllowedLfgIds", "");
+        dungeonLeadMaxPartiesPerRun = sConfigMgr->GetOption<uint32>("AiPlayerbot.DungeonLead.MaxPartiesPerRun", 5);
+        dungeonLeadLeadershipAcquireTimeoutSeconds =
+            Bounded("AiPlayerbot.DungeonLead.LeadershipAcquireTimeoutSeconds", 5, 1, 60);
+        dungeonLeadLeadershipReturnTimeoutSeconds =
+            Bounded("AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds", 5, 1, 60);
+        dungeonLeadLeadershipMaxAttempts = Bounded("AiPlayerbot.DungeonLead.LeadershipMaxAttempts", 3, 1, 10);
+        dungeonLeadPullRange = float(Bounded("AiPlayerbot.DungeonLead.PullRange", 30, 5, 60));
+        dungeonLeadPullInitiateTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds", 10, 1, 30);
+        dungeonLeadPullEstablishTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds", 8, 1, 60);
+        dungeonLeadPullMaxAttempts = Bounded("AiPlayerbot.DungeonLead.PullMaxAttempts", 2, 1, 5);
+        dungeonLeadCombatLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.CombatLeashRadius", 30, 10, 80));
+        dungeonLeadPartySoftRange = float(Bounded("AiPlayerbot.DungeonLead.PartySoftRange", 40, 10, 150));
+        dungeonLeadPartyHardRange = float(Bounded("AiPlayerbot.DungeonLead.PartyHardRange", 60, 20, 300));
+        dungeonLeadPostCombatMinSeconds = Bounded("AiPlayerbot.DungeonLead.PostCombatMinSeconds", 3, 0, 30);
+        dungeonLeadPostCombatMinHealthPct = Bounded("AiPlayerbot.DungeonLead.PostCombatMinHealthPct", 50, 0, 100);
+        dungeonLeadRecoveryTimeoutSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds", 60, 10, 600);
+        dungeonLeadRecoveryEscalationSeconds = Bounded("AiPlayerbot.DungeonLead.RecoveryEscalationSeconds", 60, 10, 600);
+        dungeonLeadBossLeashRadius = float(Bounded("AiPlayerbot.DungeonLead.BossLeashRadius", 25, 10, 80));
+        dungeonLeadObjectiveRetryRounds = Bounded("AiPlayerbot.DungeonLead.ObjectiveRetryRounds", 2, 1, 5);
+        dungeonLeadDoorWaitSeconds = Bounded("AiPlayerbot.DungeonLead.DoorWaitSeconds", 120, 10, 900);
+        dungeonLeadEventWaitSeconds = Bounded("AiPlayerbot.DungeonLead.EventWaitSeconds", 600, 60, 1800);
+        dungeonLeadValidationParallel = Bounded("AiPlayerbot.DungeonLead.ValidationParallel", 3, 1, 10);
+        dungeonLeadValidationAutostart =
+            sConfigMgr->GetOption<std::string>("AiPlayerbot.DungeonLead.ValidationAutostart", "");
+        dungeonLeadStepWalkLimitSeconds = Bounded("AiPlayerbot.DungeonLead.StepWalkLimitSeconds", 600, 60, 3600);
+        if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
+        {
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "
+                      "using soft + 10", dungeonLeadPartyHardRange, dungeonLeadPartySoftRange);
+            dungeonLeadPartyHardRange = dungeonLeadPartySoftRange + 10.0f;
+        }
+    }
+};
+
+#define sDungeonLeadConfig DungeonLeadConfig::instance()
+
+#endif

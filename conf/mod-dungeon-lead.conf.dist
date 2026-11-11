@@ -1,0 +1,289 @@
+[worldserver]
+
+########################################
+# DUNGEON LEAD SETTINGS
+########################################
+#
+#    AiPlayerbot.DungeonLead.HealerManaPct
+#        Description: Below this healer mana %, the leader holds position instead of pulling/walking on.
+#        Range:       0-100
+#        Default:     20
+
+AiPlayerbot.DungeonLead.HealerManaPct = 20
+
+#    AiPlayerbot.DungeonLead.Leash
+#        Description: Yards from the real player before the leader stops and waits.
+#        Range:       10-300
+#        Default:     60
+
+AiPlayerbot.DungeonLead.Leash = 60
+
+#    AiPlayerbot.DungeonLead.ArriveDistance
+#        Description: Yards counted as "arrived" at a route step.
+#        Range:       1-30
+#        Default:     8
+
+AiPlayerbot.DungeonLead.ArriveDistance = 8
+
+#    AiPlayerbot.DungeonLead.StuckSeconds
+#        Description: Seconds with no progress toward a step before the step counts as failed (never
+#                     teleported to): optional content is skipped, a boss/required objective is
+#                     retried (ObjectiveRetryRounds), then the run ends partial.
+#        Range:       5-600
+#        Default:     45
+
+AiPlayerbot.DungeonLead.StuckSeconds = 45
+
+#    AiPlayerbot.DungeonLead.CcTimeoutSeconds
+#        Description: Combat-aware grace window before a moon-marked CC candidate nobody is
+#                      crowd-controlling is released back into normal targeting.
+#        Range:       1-120
+#        Default:     10
+
+AiPlayerbot.DungeonLead.CcTimeoutSeconds = 10
+
+#    AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds
+#        Description: Absolute ceiling on the above, regardless of whether the candidate ever
+#                      entered combat.
+#        Range:       1-600, not below CcTimeoutSeconds
+#        Default:     45
+
+AiPlayerbot.DungeonLead.CcAbsoluteTimeoutSeconds = 45
+
+#    AiPlayerbot.DungeonLead.WipeRecoverySeconds
+#        Description: Seconds to wait after a wipe before attempting to recover/continue.
+#        Range:       30-3600
+#        Default:     300
+
+AiPlayerbot.DungeonLead.WipeRecoverySeconds = 300
+
+#    AiPlayerbot.DungeonLead.MaxWipesPerRun
+#        Description: How many wipes one run tolerates before giving up. 0 = unlimited.
+#        Range:       0-20
+#        Default:     3
+
+AiPlayerbot.DungeonLead.MaxWipesPerRun = 3
+
+#    AiPlayerbot.DungeonLead.SkipOptional
+#        Description: Skip optional trash pulls (kind=optional) instead of attempting them.
+#                     Required trash, bosses, doors, use/talk steps and path anchors are
+#                     never skipped by this option.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.SkipOptional = 0
+
+#    AiPlayerbot.DungeonLead.MarkCc
+#        Description: Mark a CC candidate with a moon icon near each boss pull.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.MarkCc = 1
+
+#    AiPlayerbot.DungeonLead.DebugDefault
+#        Description: Default state of the per-session "startdungeon debug" verbose log.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.DebugDefault = 0
+
+########################################
+# AUTOBOT CANARY (unattended testing - off by default)
+########################################
+#
+#    AiPlayerbot.DungeonLead.CanaryEnabled
+#        Description: Auto-start dungeon-lead on bot-only groups that queue for an allowed dungeon.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.CanaryEnabled = 0
+
+#    AiPlayerbot.DungeonLead.CanaryAllowedLfgIds
+#        Description: Comma-separated LFG dungeon ids the canary is allowed to act on. Empty = none.
+#        Default:     ""
+
+AiPlayerbot.DungeonLead.CanaryAllowedLfgIds =
+
+#    AiPlayerbot.DungeonLead.CanaryMaxConcurrent
+#        Description: Max simultaneous canary/test-bot-pool sessions sharing one concurrency budget.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.CanaryMaxConcurrent = 1
+
+#    AiPlayerbot.DungeonLead.CanaryTimeoutMinutes
+#        Description: Force-stop a canary session that never reaches a terminal outcome.
+#        Default:     45
+
+AiPlayerbot.DungeonLead.CanaryTimeoutMinutes = 45
+
+#    AiPlayerbot.DungeonLead.MaxPartiesPerRun
+#        Description: Cap on parties formed by one DungeonTestBotPool "run" call, to avoid a
+#                      same-tick login/group/teleport burst.
+#        Default:     5
+
+AiPlayerbot.DungeonLead.MaxPartiesPerRun = 5
+
+#    AiPlayerbot.DungeonLead.LeadershipAcquireTimeoutSeconds
+#        Description: How long a session waits to observe the tank as group leader after
+#                      requesting the transfer, before requesting it again. Range 1-60.
+#        Default:     5
+
+AiPlayerbot.DungeonLead.LeadershipAcquireTimeoutSeconds = 5
+
+#    AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds
+#        Description: Same for handing leadership back to the original leader on stop. Range 1-60.
+#        Default:     5
+
+AiPlayerbot.DungeonLead.LeadershipReturnTimeoutSeconds = 5
+
+#    AiPlayerbot.DungeonLead.LeadershipMaxAttempts
+#        Description: Leadership requests per transfer before giving up (start is aborted,
+#                      handback is logged as failed). Range 1-10.
+#        Default:     3
+
+AiPlayerbot.DungeonLead.LeadershipMaxAttempts = 3
+
+#    AiPlayerbot.DungeonLead.PullRange
+#        Description: The leader starts a pull once it is this many yards from the pull target
+#                      (and the party is ready). Range 5-60.
+#        Default:     30
+
+AiPlayerbot.DungeonLead.PullRange = 30
+
+#    AiPlayerbot.DungeonLead.RangedPull
+#        Description: Trash is pulled with mod-playerbots' ranged pull ("pull rti target": shoot,
+#                      throw, judgement, faerie fire...) and the tank waits at the spot it pulled
+#                      from, so the fight is held away from the other packs (creatures in combat
+#                      call allies within 10 yd every few seconds). Falls back to running in when
+#                      the ranged pull is not possible. Bosses are always pulled by attacking.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.RangedPull = 1
+
+#    AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds
+#        Description: How long after ordering the attack the tank must be in combat before the
+#                      pull counts as failed. Includes running in from PullRange (measured ~4 s
+#                      for 26 yd) and the 2 s controller tick. Range 1-30.
+#        Default:     10
+
+AiPlayerbot.DungeonLead.PullInitiateTimeoutSeconds = 10
+
+#    AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds
+#        Description: How long the tank may be fighting before the pack has to be engaged on it.
+#                      Range 1-60.
+#        Default:     8
+
+AiPlayerbot.DungeonLead.PullEstablishTimeoutSeconds = 8
+
+#    AiPlayerbot.DungeonLead.PullMaxAttempts
+#        Description: Pulls tried on one pack before it is skipped (reported, never silent; a
+#                      skipped boss makes the run Partial). Range 1-5.
+#        Default:     2
+
+AiPlayerbot.DungeonLead.PullMaxAttempts = 2
+
+#    AiPlayerbot.DungeonLead.CombatLeashRadius
+#        Description: During a fight the leading tank does not chase a target that is more than
+#                      this many yards from where the fight began (a fleeing mob must not pull
+#                      the party into the next pack). Range 10-80.
+#        Default:     30
+
+AiPlayerbot.DungeonLead.CombatLeashRadius = 30
+
+#    AiPlayerbot.DungeonLead.PartySoftRange
+#        Description: A party member farther than this many yards from the leader holds the next
+#                      pull (the leader may still walk). Range 10-150.
+#        Default:     40
+
+AiPlayerbot.DungeonLead.PartySoftRange = 40
+
+#    AiPlayerbot.DungeonLead.PartyHardRange
+#        Description: A party member farther than this stops the leader from walking on as well.
+#                      Must be above PartySoftRange. Range 20-300. (The real player is held to
+#                      the tighter Leash instead.)
+#        Default:     60
+
+AiPlayerbot.DungeonLead.PartyHardRange = 60
+
+#    AiPlayerbot.DungeonLead.PostCombatMinSeconds
+#        Description: Shortest pause after a fight before the leader re-checks the party and moves
+#                      on - there is always a deliberate decision between two packs. Range 0-30.
+#        Default:     3
+
+AiPlayerbot.DungeonLead.PostCombatMinSeconds = 3
+
+#    AiPlayerbot.DungeonLead.PostCombatMinHealthPct
+#        Description: Out of combat, the leader waits while anyone in the party (itself included)
+#                      is below this health %. 0 turns the check off. Range 0-100.
+#        Default:     50
+
+AiPlayerbot.DungeonLead.PostCombatMinHealthPct = 50
+
+#    AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds
+#        Description: How long the leader tries to fix a party problem itself (walk back to a
+#                      straggler, wait for a lost member or a resurrection) before escalating.
+#                      Range 10-600.
+#        Default:     60
+
+AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds = 60
+
+#    AiPlayerbot.DungeonLead.RecoveryEscalationSeconds
+#        Description: How long the escalation (a bot member brought to the leader - never a real
+#                      player) gets before the run is stopped and reported as failed. Range 10-600.
+#        Default:     60
+
+AiPlayerbot.DungeonLead.RecoveryEscalationSeconds = 60
+
+#    AiPlayerbot.DungeonLead.BossLeashRadius
+#        Description: A boss fight is anchored at the boss's own spot; the leading tank doesn't
+#                      chase anything farther than this many yards from it. Range 10-80.
+#        Default:     25
+
+AiPlayerbot.DungeonLead.BossLeashRadius = 25
+
+#    AiPlayerbot.DungeonLead.ObjectiveRetryRounds
+#        Description: Rounds of attempts a boss gets (each round = PullMaxAttempts pulls, or one
+#                      give-up of the route walk) before the run is stopped as partial. A boss is
+#                      never skipped; optional trash and events are skipped after one failed
+#                      round. Range 1-5.
+#        Default:     2
+
+AiPlayerbot.DungeonLead.ObjectiveRetryRounds = 2
+
+#    AiPlayerbot.DungeonLead.DoorWaitSeconds
+#        Description: When a closed door or gate blocks the way, how long the leader waits for it
+#                      to open (an event, a key, a boss death) before the step counts as failed.
+#                      Range 10-900.
+#        Default:     120
+
+AiPlayerbot.DungeonLead.DoorWaitSeconds = 120
+
+#    AiPlayerbot.DungeonLead.EventWaitSeconds
+#        Description: How long a "use" or "talk" route step may wait for its event (a key in the
+#                      party, the NPC offering its gossip option) before it counts as failed. Only
+#                      time spent waiting at the step counts, not fights. Range 60-1800.
+#        Default:     600
+
+AiPlayerbot.DungeonLead.EventWaitSeconds = 600
+
+#    AiPlayerbot.DungeonLead.ValidationParallel
+#        Description: How many dungeons `.dungeonlead validate` runs at the same time, each with its
+#                      own test party of 5 bots (also capped by CanaryMaxConcurrent). Range 1-10.
+#        Default:     3
+
+AiPlayerbot.DungeonLead.ValidationParallel = 3
+
+#    AiPlayerbot.DungeonLead.StepWalkLimitSeconds
+#        Description: Walking time one route step (travel, trash, boss) may take before it counts
+#                     as failed (optional: skipped; boss/required: retried, then the run ends
+#                     partial). Only consecutive walking counts - fights, waits and pauses do not.
+#                     Catches a walk that keeps making progress without ever finishing the step.
+#        Range:       60-3600
+#        Default:     600
+
+AiPlayerbot.DungeonLead.StepWalkLimitSeconds = 600
+
+#    AiPlayerbot.DungeonLead.ValidationAutostart
+#        Description: Comma-separated LFG ids for one `.dungeonlead validate` campaign started
+#                      automatically 2 minutes after the world starts (once per process), in this
+#                      order; an id listed twice is run twice. For an unattended test server
+#                      without console or SOAP access. Empty = off.
+#        Default:     "" (off)
+
+AiPlayerbot.DungeonLead.ValidationAutostart = ""
