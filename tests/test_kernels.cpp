@@ -1800,6 +1800,14 @@ void TestDropDecision()
     Check(LeaderUnstuckHelps(true, false), "leader off the navmesh: back to the last good spot");
     Check(LeaderUnstuckHelps(false, true), "no floor under the leader: back to the last good spot");
     Check(!LeaderUnstuckHelps(false, false), "leader on the navmesh, objective out of reach: no teleport, the step fails");
+    Check(LeaderOffMesh(true, false, false), "polygon near the leader but too far: off the mesh");
+    Check(LeaderOffMesh(false, true, true), "no polygon at all, and the one-yard probe fails too: off the mesh");
+    Check(!LeaderOffMesh(false, true, false), "no path to an objective off the mesh, leader's own spot fine: on the mesh");
+    Check(!LeaderOffMesh(false, false, false), "path found: on the mesh");
+    Check(NextDropProbeOffset(false, true, 5) == 5, "probe ran out at bearing 5: the next one starts there");
+    Check(NextDropProbeOffset(false, true, 0) == 0, "ran out at the objective's own bearing: start there again");
+    Check(NextDropProbeOffset(true, true, 5) == 0, "a drop found: back to the objective's bearing");
+    Check(NextDropProbeOffset(false, false, 7) == 0, "all bearings judged: back to the objective's bearing");
     DropFacts f;
     f.pathEndsShort = true;
     f.endGap = 30.f;

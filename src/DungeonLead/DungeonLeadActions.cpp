@@ -3796,6 +3796,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
         int pathProbes = 0;
         bool found = false;
         bool outOfProbes = false;
+        int bearingOutOfProbes = 0;
         for (int i = 0; i < 12 && !found; ++i)
         {
             int const k = (i + st.dropProbeOffset) % 12;
@@ -3852,6 +3853,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                     else
                     {
                         outOfProbes = true;
+                        bearingOutOfProbes = k;
                         break;  // out of path searches for this probe: the bearing is not judged
                     }
                 }
@@ -3869,7 +3871,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                 break;  // the nearest floor below the edge on this bearing
             }
         }
-        st.dropProbeOffset = outOfProbes && !found ? uint8((st.dropProbeOffset + kDropMaxPathProbes) % 12) : 0;
+        st.dropProbeOffset = NextDropProbeOffset(found, outOfProbes, bearingOutOfProbes);
     }
     f = chosen;
 
@@ -4134,15 +4136,26 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         float const backDist = bot->GetExactDist(st.lastGoodX, st.lastGoodY, st.lastGoodZ);
         // no ground at all under it (INVALID_HEIGHT): it is inside the rock, any good spot is better
         bool const noGround = ground <= INVALID_HEIGHT + 1.0f;
+        bool const mayGoBack = !st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround);
         bool startOffMesh = false;
-        if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround))
+        if (mayGoBack && !noGround)
         {
+            // FARFROMPOLY_START: a polygon near the leader, but too far. No polygon at all gives a
+            // bare NOPATH, which an objective off the mesh gives too: a one-yard probe tells them apart.
             PathGenerator probe(bot);
             probe.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
-            startOffMesh = probe.GetPathType() & PATHFIND_FARFROMPOLY_START;
+            PathType const pt = probe.GetPathType();
+            bool selfProbeFails = false;
+            if ((pt & PATHFIND_NOPATH) && !(pt & PATHFIND_FARFROMPOLY_START))
+            {
+                PathGenerator self(bot);
+                self.CalculatePath(bot->GetPositionX() + 1.0f, bot->GetPositionY(), bot->GetPositionZ());
+                selfProbeFails = self.GetPathType() & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH);
+            }
+            startOffMesh = DungeonLeadKernel::LeaderOffMesh(pt & PATHFIND_FARFROMPOLY_START, pt & PATHFIND_NOPATH,
+                                                            selfProbeFails);
         }
-        if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround) &&
-            DungeonLeadKernel::LeaderUnstuckHelps(startOffMesh, noGround))
+        if (mayGoBack && DungeonLeadKernel::LeaderUnstuckHelps(startOffMesh, noGround))
         {
             st.unstuckUsed = true;
             std::string const detail =

@@ -1448,6 +1448,21 @@ namespace DungeonLeadKernel
         return startOffMesh || noGround;
     }
 
+    // The leader stands off the navmesh: a polygon near it but too far (FARFROMPOLY_START), or no
+    // polygon at all - a path to the objective that finds none (NOPATH) and a one-yard path from
+    // the leader's own spot that fails as well. NOPATH alone may be an objective off the mesh.
+    inline bool LeaderOffMesh(bool farFromPolyStart, bool noPathToObjective, bool selfProbeFails)
+    {
+        return farFromPolyStart || (noPathToObjective && selfProbeFails);
+    }
+
+    // The bearing the next ledge probe starts from: where the last one ran out of path searches
+    // before judging it (a bearing can spend several on walkable steps), otherwise the objective's.
+    inline uint8_t NextDropProbeOffset(bool found, bool outOfProbes, int bearingOutOfProbes)
+    {
+        return (found || !outOfProbes) ? 0 : uint8_t(((bearingOutOfProbes % 12) + 12) % 12);
+    }
+
     struct DropFacts
     {
         bool pathEndsShort = false;     // the path to the objective ends short of it (no link down)
