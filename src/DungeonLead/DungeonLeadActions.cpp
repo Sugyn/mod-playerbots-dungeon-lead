@@ -3781,7 +3781,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
             PathGenerator back(bot);
             back.CalculatePath(px, py, floorZ, ex, ey, ez, false);
             G3D::Vector3 const ke = back.GetActualEndPosition();
-            f.connectedBack = back.GetPathType() == PATHFIND_NORMAL && G3D::Vector3(ex, ey, ez).distance(ke) <= 3.0f;
+            f.connectedBack = back.GetPathType() == PATHFIND_NORMAL && (G3D::Vector3(ex, ey, ez) - ke).length() <= 3.0f;
             lx = px;
             ly = py;
             lz = floorZ;
