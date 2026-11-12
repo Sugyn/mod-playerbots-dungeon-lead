@@ -3709,6 +3709,19 @@ bool DungeonLeadNextAction::MoveAlongPath(Movement::PointsArray points, float pa
 
 namespace
 {
+    // A landing below a ledge seen from a unit on it: out at head height to the point above the
+    // landing, then straight down. One ray from the head to a landing far below cuts through the
+    // ledge the unit stands on.
+    bool DropLandingInSight(Unit* unit, float toX, float toY, float toZ)
+    {
+        Map* const map = unit->GetMap();
+        float const headZ = unit->GetPositionZ() + 1.5f;
+        return map->isInLineOfSight(unit->GetPositionX(), unit->GetPositionY(), headZ, toX, toY, headZ,
+                                    unit->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing) &&
+               map->isInLineOfSight(toX, toY, headZ, toX, toY, toZ + 1.5f, unit->GetPhaseMask(),
+                                    LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing);
+    }
+
     // Lowest health of the living party members, in percent (100 without a group).
     uint8 PartyMinHealthPct(Player* bot)
     {
@@ -3813,9 +3826,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                 DropVerdict cv = DecideDrop(cheap);
                 if (cv == DropVerdict::Drop)
                 {
-                    c.landingInSight = bot->GetMap()->isInLineOfSight(ex, ey, ez + 1.5f, px, py, landZ + 1.5f,
-                                                                      bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
-                                                                      VMAP::ModelIgnoreFlags::Nothing);
+                    c.landingInSight = DropLandingInSight(bot, px, py, landZ);
                     if (c.landingInSight && pathProbes < kDropMaxPathProbes)
                     {
                         ++pathProbes;
@@ -4012,9 +4023,7 @@ void DungeonLead::FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st)
         float const level = m->GetPositionZ() - st.dropFromZ;
         if (!DungeonLeadKernel::MemberFollowsDrop(since, above, toEdge, level))
             continue;
-        if (!m->GetMap()->isInLineOfSight(m->GetPositionX(), m->GetPositionY(), m->GetPositionZ() + 1.5f, st.dropToX,
-                                          st.dropToY, st.dropToZ + 1.5f, m->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
-                                          VMAP::ModelIgnoreFlags::Nothing))
+        if (!DropLandingInSight(m, st.dropToX, st.dropToY, st.dropToZ))
             continue;
         st.dropMembersSent.emplace_back(m->GetGUID(), getMSTime());
         RecordEventV2(botAI, "drop",
