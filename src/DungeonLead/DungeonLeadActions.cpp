@@ -3711,15 +3711,28 @@ namespace
 {
     // A landing below a ledge seen from a unit on it: out at head height to the point above the
     // landing, then straight down. One ray from the head to a landing far below cuts through the
-    // ledge the unit stands on.
-    bool DropLandingInSight(Unit* unit, float toX, float toY, float toZ)
+    // ledge the unit stands on. Small doodads (M2 models: roots, vines, branches) do not count -
+    // a falling body goes past them, as units walking off such ledges do; buildings and rock
+    // (WMO models) do, and the height lookup already found no floor between the ledge and the
+    // landing.
+    // Which ray is blocked, for the refusal's telemetry: "" (none), "out" or "down".
+    char const* DropSightBlocked(Unit* unit, float toX, float toY, float toZ)
     {
         Map* const map = unit->GetMap();
         float const headZ = unit->GetPositionZ() + 1.5f;
-        return map->isInLineOfSight(unit->GetPositionX(), unit->GetPositionY(), headZ, toX, toY, headZ,
-                                    unit->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing) &&
-               map->isInLineOfSight(toX, toY, headZ, toX, toY, toZ + 1.5f, unit->GetPhaseMask(),
-                                    LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing);
+        auto const checks = LineOfSightChecks(LINEOFSIGHT_CHECK_VMAP | LINEOFSIGHT_CHECK_GOBJECT_WMO);
+        if (!map->isInLineOfSight(unit->GetPositionX(), unit->GetPositionY(), headZ, toX, toY, headZ,
+                                  unit->GetPhaseMask(), checks, VMAP::ModelIgnoreFlags::M2))
+            return "out";
+        if (!map->isInLineOfSight(toX, toY, headZ, toX, toY, toZ + 1.5f, unit->GetPhaseMask(), checks,
+                                  VMAP::ModelIgnoreFlags::M2))
+            return "down";
+        return "";
+    }
+
+    bool DropLandingInSight(Unit* unit, float toX, float toY, float toZ)
+    {
+        return !*DropSightBlocked(unit, toX, toY, toZ);
     }
 
     // Lowest health of the living party members, in percent (100 without a group).
@@ -3788,6 +3801,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
     // round, so steps nearby cannot hide a ledge behind them. The first candidate that may drop
     // wins; otherwise the refusal that got furthest is reported.
     DropFacts chosen = f;
+    char const* chosenBlocked = "";
     DropVerdict v = DecideDrop(f);  // out of attempts / party hurt need no landing
     float lx = 0.f, ly = 0.f, lz = 0.f;
     if (v != DropVerdict::OutOfAttempts && v != DropVerdict::PartyHurt)
@@ -3809,6 +3823,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                 if (floorZ <= INVALID_HEIGHT || ez - floorZ < kDropMinHeight)
                     continue;  // no floor, or still the ledge itself
                 DropFacts c = f;
+                char const* blocked = "";
                 c.landingFound = true;
                 c.horizontal = s;
                 float landZ = floorZ;
@@ -3827,7 +3842,8 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                 DropVerdict cv = DecideDrop(cheap);
                 if (cv == DropVerdict::Drop)
                 {
-                    c.landingInSight = DropLandingInSight(bot, px, py, landZ);
+                    blocked = DropSightBlocked(bot, px, py, landZ);
+                    c.landingInSight = !*blocked;
                     if (c.landingInSight && pathProbes < kDropMaxPathProbes)
                     {
                         ++pathProbes;
@@ -3861,6 +3877,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                 {
                     v = cv;
                     chosen = c;
+                    chosenBlocked = blocked;
                     lx = px;
                     ly = py;
                     lz = landZ;
@@ -3886,6 +3903,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
             .Num("gain", f.gain)
             .Num("end_gap", f.endGap)
             .Bool("in_sight", f.landingInSight)
+            .Str("sight_blocked", chosenBlocked)
             .Bool("on_mesh", f.landingOnMesh)
             .Bool("below_complete", f.belowComplete)
             .Bool("connected", f.connectedBack)
