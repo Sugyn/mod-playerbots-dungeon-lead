@@ -187,7 +187,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     DungeonLeadKernel::Readiness const ready = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
     f.partyReady = ready.status == DungeonLeadKernel::ReadyStatus::Ready;
     f.targetMarked = skull && skull->IsAlive() && (skull->GetGUID() == st.targetPrimary || IsPackMember(pack, skull));
-    f.leaderInCombat = bot->IsInCombat();
+    f.leaderInCombat = DungeonPartyState::LeaderFightsEnemy(bot);
     f.orderRefused = st.pullOrderRefused;
     // Patrols only matter once the pull is about to be made (in range, party ready).
     Creature* patrol = nullptr;

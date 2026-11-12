@@ -349,7 +349,10 @@ namespace
         }
         p += "}";
 
-        st.lastEventTs = getMSTime();
+        // Liveness counts progress events only: diagnostics and position samples of a leader that
+        // stands (or shuffles) in place say nothing has moved on.
+        if (event != "walk_blocked" && event != "position_sample")
+            st.lastEventTs = getMSTime();
         JsonLine j;
         j.Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
             .Num("event_seq", uint32_t(++st.eventSeq))
@@ -699,36 +702,8 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
     Player* bot = botAI->GetBot();
     uint32 const now = getMSTime();
 
-    // Diagnostics: Travelling, but the leader's combat flag keeps the route walk idle.
-    bool const walkBlocked = st.state == DungeonLeadKernel::LeadState::Travelling && bot->IsAlive() &&
-                             bot->IsInCombat() && !party.facts.selfInCombat;
-    if (!walkBlocked)
-    {
-        st.walkBlockedSince = 0;
-        st.walkBlockedReportTs = 0;
-    }
-    else
-    {
-        if (!st.walkBlockedSince)
-            st.walkBlockedSince = now;
-        uint32 const blockedMs = getMSTimeDiff(st.walkBlockedSince, now);
-        if (DungeonLeadKernel::ReportWalkBlocked(blockedMs, st.walkBlockedReportTs != 0,
-                                                 st.walkBlockedReportTs ? getMSTimeDiff(st.walkBlockedReportTs, now) : 0))
-        {
-            st.walkBlockedReportTs = now;
-            RecordEventV2(botAI, "walk_blocked",
-                          DungeonLeadKernel::JsonLine()
-                              .Str("reason", "combat_flag_without_enemy")
-                              .Num("blocked_ms", blockedMs)
-                              .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
-                              .Num("attackers", uint32_t(bot->getAttackers().size()))
-                              .Bool("has_victim", bot->GetVictim() != nullptr)
-                              .Raw("refs", CombatRefsJson(bot))
-                              .Done());
-        }
-    }
-
-    // Liveness: no event and no movement for kSessionStallMs ends the run with a snapshot.
+    // Liveness first: no progress event and no movement for kSessionStallMs ends the run with a
+    // snapshot. Waits that are bounded on their own (a door, a step's event) are exempt.
     float const dx = bot->GetPositionX() - st.livenessX, dy = bot->GetPositionY() - st.livenessY,
                 dz = bot->GetPositionZ() - st.livenessZ;
     if (!st.livenessMoveTs || dx * dx + dy * dy + dz * dz >= DungeonLeadKernel::kLivenessMoveYd * DungeonLeadKernel::kLivenessMoveYd)
@@ -742,35 +717,66 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
         st.lastEventTs = now;
     uint32 const sinceEvent = getMSTimeDiff(st.lastEventTs, now);
     uint32 const sinceMove = getMSTimeDiff(st.livenessMoveTs, now);
-    if (!DungeonLeadKernel::LivenessApplies(st.state, st.paused) || !DungeonLeadKernel::SessionStalled(sinceEvent, sinceMove))
-        return true;
+    bool const boundedWait = st.interactionType != DungeonLeadKernel::InteractionType::None || st.interactionIssued ||
+                             (st.eventWaitLastTs && getMSTimeDiff(st.eventWaitLastTs, now) < 15000);
+    if (DungeonLeadKernel::LivenessApplies(st.state, st.paused, boundedWait) &&
+        DungeonLeadKernel::SessionStalled(sinceEvent, sinceMove))
+    {
+        DungeonLeadKernel::Readiness const walkReady = DungeonLeadKernel::EvaluateReadiness(
+            party.facts, DungeonPartyState::Policy(), DungeonLeadKernel::ReadyPurpose::Walk);
+        LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} run={} stalled: no progress event for {} ms, no movement "
+                  "for {} ms (state {}, step {}) - ending the session", bot->GetName(), st.runId, sinceEvent, sinceMove,
+                  DungeonLeadKernel::ToString(st.state), st.stepIndex);
+        st.outcome = DungeonRunOutcome::Failed;
+        st.failureDomain = DungeonFailureDomain::Infrastructure;
+        st.failureReason = DungeonFailureReason::SessionStalled;
+        RecordEvent(botAI, "session_stalled", "no progress event and no movement",
+                    DungeonLeadKernel::JsonLine()
+                        .Num("ms_since_event", sinceEvent)
+                        .Num("ms_since_move", sinceMove)
+                        .Str("objective", DungeonLeadBrain::CurrentObjective(st).Describe())
+                        .Str("readiness", DungeonLeadKernel::ToString(walkReady.status))
+                        .Bool("moving", bot->isMoving())
+                        .Bool("in_combat", bot->IsInCombat())
+                        .Bool("combat_with_enemy", party.facts.selfInCombat)
+                        .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
+                        .Raw("refs", CombatRefsJson(bot))
+                        .Str("pull_state", DungeonLeadKernel::ToString(st.pullState))
+                        .Num("walk_step_ms", st.walkStepMs)
+                        .Bool("interaction", st.interactionType != DungeonLeadKernel::InteractionType::None)
+                        .Done());
+        RecordRunSummary(botAI, "session_stalled");
+        Stop(botAI, /*giveLeaderBack*/ true);
+        return false;
+    }
 
-    DungeonLeadKernel::Readiness const walkReady = DungeonLeadKernel::EvaluateReadiness(
-        party.facts, DungeonPartyState::Policy(), DungeonLeadKernel::ReadyPurpose::Walk);
-    LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} run={} stalled: no event for {} ms, no movement for {} ms "
-              "(state {}, step {}) - ending the session", bot->GetName(), st.runId, sinceEvent, sinceMove,
-              DungeonLeadKernel::ToString(st.state), st.stepIndex);
-    st.outcome = DungeonRunOutcome::Failed;
-    st.failureDomain = DungeonFailureDomain::Infrastructure;
-    st.failureReason = DungeonFailureReason::SessionStalled;
-    RecordEvent(botAI, "session_stalled", "no event and no movement",
-                DungeonLeadKernel::JsonLine()
-                    .Num("ms_since_event", sinceEvent)
-                    .Num("ms_since_move", sinceMove)
-                    .Str("objective", DungeonLeadBrain::CurrentObjective(st).Describe())
-                    .Str("readiness", DungeonLeadKernel::ToString(walkReady.status))
-                    .Bool("moving", bot->isMoving())
-                    .Bool("in_combat", bot->IsInCombat())
-                    .Bool("combat_with_enemy", party.facts.selfInCombat)
-                    .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
-                    .Raw("refs", CombatRefsJson(bot))
-                    .Str("pull_state", DungeonLeadKernel::ToString(st.pullState))
-                    .Num("walk_step_ms", st.walkStepMs)
-                    .Bool("interaction", st.interactionType != DungeonLeadKernel::InteractionType::None)
-                    .Done());
-    RecordRunSummary(botAI, "session_stalled");
-    Stop(botAI, /*giveLeaderBack*/ true);
-    return false;
+    // Diagnostics: Travelling and standing, while the leader's combat flag has no enemy behind it.
+    bool const walkBlocked = st.state == DungeonLeadKernel::LeadState::Travelling && bot->IsAlive() &&
+                             bot->IsInCombat() && !party.facts.selfInCombat && !bot->isMoving();
+    if (!walkBlocked)
+    {
+        st.walkBlockedSince = 0;
+        st.walkBlockedReportTs = 0;
+        return true;
+    }
+    if (!st.walkBlockedSince)
+        st.walkBlockedSince = now;
+    uint32 const blockedMs = getMSTimeDiff(st.walkBlockedSince, now);
+    if (DungeonLeadKernel::ReportWalkBlocked(blockedMs, st.walkBlockedReportTs != 0,
+                                             st.walkBlockedReportTs ? getMSTimeDiff(st.walkBlockedReportTs, now) : 0))
+    {
+        st.walkBlockedReportTs = now;
+        RecordEventV2(botAI, "walk_blocked",
+                      DungeonLeadKernel::JsonLine()
+                          .Str("reason", "combat_flag_without_enemy")
+                          .Num("blocked_ms", blockedMs)
+                          .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
+                          .Num("attackers", uint32_t(bot->getAttackers().size()))
+                          .Bool("has_victim", bot->GetVictim() != nullptr)
+                          .Raw("refs", CombatRefsJson(bot))
+                          .Done());
+    }
+    return true;
 }
 
 void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st, Group* group)
@@ -1547,7 +1553,7 @@ void DungeonLead::AssistEvent(PlayerbotAI* botAI, DungeonLeadState& st)
     // joins the fight.
     using DungeonLeadKernel::LeadState;
     Player* bot = botAI->GetBot();
-    if (!bot->IsAlive() || bot->IsInCombat() || st.paused || !DungeonLeadKernel::IsActive(st.state) ||
+    if (!bot->IsAlive() || DungeonPartyState::LeaderFightsEnemy(bot) || st.paused || !DungeonLeadKernel::IsActive(st.state) ||
         st.state == LeadState::WipeRecovery || st.state == LeadState::Completing)
         return;
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
@@ -2324,6 +2330,10 @@ bool DungeonLeadNextAction::isUseful()
     if (!DungeonLeadBrain::Update(botAI, party))
         return false;
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    // A combat flag without an enemy only lets a walk the brain wants run; in any other state the
+    // fight's own movement must not be cancelled below.
+    if (bot->IsInCombat() && st.state != DungeonLeadKernel::LeadState::Travelling)
+        return false;
     if (st.paused)
     {
         // "startdungeon pause": stand still until "startdungeon continue" (out of combat here)

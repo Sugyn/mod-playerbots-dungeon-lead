@@ -155,6 +155,8 @@ increments, each with its own entry here.
 | wipe / recovery | `wipe_*`, `recovery_*`, `checkpoint_restore` | `detail` |
 | interaction | `interaction_state`, `door_*`, `use*`, `talk*`, `key_looted`, `area_trigger`, `event_assist` | `detail` |
 | integrity | `unexpected_teleport`, `instance_validity_restored`, `strategy_restored`, `telemetry_dropped` | `detail` |
+| walk_blocked | `walk_blocked` (v2 only, after 30 s, then every 5 min while it lasts) | `reason` (`combat_flag_without_enemy`), `blocked_ms`, `combat_refs`, `attackers`, `has_victim`, `refs[]` (up to three units the leader is in combat with: `unit`, `distance`, `alive`, `evading`, `has_victim`) - the brain says travelling, the leader stands, and its combat flag has no enemy behind it |
+| session_stalled | `session_stalled` | `ms_since_event`, `ms_since_move`, `objective`, `readiness`, `moving`, `in_combat`, `combat_with_enemy`, `combat_refs`, `refs[]`, `pull_state`, `walk_step_ms`, `interaction` (+ `detail`) - no progress event and no leader movement for 5 minutes outside fights and bounded waits; the run ends as failed (`session_stalled`) |
 
 Combat evidence (`fight_*`, `combat_unit_joined`, `mob_died`, `member_*`) comes from the session
 guard on the world thread every ~2 s: the party members' current attackers and alive flags - no

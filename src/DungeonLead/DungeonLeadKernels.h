@@ -536,15 +536,16 @@ namespace DungeonLeadKernel
     // DecideActive below.
     inline bool IsActive(LeadState s) { return s != LeadState::Starting && s != LeadState::Stopping; }
 
-    // Liveness: a session whose leader neither moved nor produced any event for this long is stuck
-    // where no other rule sees it; it ends as session_stalled instead of running into an outside
-    // timeout. Fights, wipe recovery (both bounded on their own), a finished route held for its
-    // player and a pause are exempt.
+    // Liveness: a session whose leader neither moved nor produced a progress event for this long is
+    // stuck where no other rule sees it; it ends as session_stalled instead of running into an
+    // outside timeout. Exempt: what is bounded on its own - fights, wipe recovery, a recovery, a
+    // wait at a door or for a step's event (`boundedWait`) - and a pause or a finished route held
+    // for its player.
     constexpr uint32_t kSessionStallMs = 5 * 60 * 1000;
     constexpr float kLivenessMoveYd = 2.0f;
-    inline bool LivenessApplies(LeadState s, bool paused)
+    inline bool LivenessApplies(LeadState s, bool paused, bool boundedWait)
     {
-        if (paused)
+        if (paused || boundedWait)
             return false;
         switch (s)
         {
@@ -554,7 +555,6 @@ namespace DungeonLeadKernel
             case LeadState::Pulling:
             case LeadState::PostCombat:
             case LeadState::BossPrep:
-            case LeadState::Recovery:
                 return true;
             default:
                 return false;
