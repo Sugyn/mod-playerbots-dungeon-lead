@@ -1412,11 +1412,17 @@ namespace DungeonLeadKernel
     // The navmesh has no link from a ledge down to the floor below it, so the path to an objective
     // down there ends at the edge. A player steps off; a bot never falls on its own (the server
     // applies no gravity to it), so the leader walks to the edge and jumps down to a landing point
-    // on the floor below, then paths on from there. Only short, survivable drops: a client takes
-    // fall damage from 13.5 yd.
+    // on the floor below, then paths on from there. Only drops the party survives: a client takes
+    // fall damage from 13.5 yd, so with a real player in the party a drop onto ground stays below
+    // that. Water of kDropMinWaterDepth takes any fall; bots take no fall damage (the server only
+    // applies it to a client's own fall), so a party of bots only may also drop further onto ground.
     constexpr float kDropMinHeight = 2.0f;        // lower is a step the navmesh already covers
-    constexpr float kDropMaxHeight = 12.0f;
+    constexpr float kDropMaxHeight = 12.0f;       // onto ground, with a real player in the party
+    constexpr float kDropMaxHeightNoFallDamage = 40.0f;  // into water, or a party of bots only
+    constexpr float kDropMinWaterDepth = 2.0f;
     constexpr float kDropMaxHorizontal = 6.0f;    // from the edge to the landing point
+    constexpr uint32_t kDropProbeEveryMs = 3000;  // the ledge probe (several path searches) at most this often
+    constexpr uint8_t kDropStuckAttempts = 2;     // the walk made no progress this often: any nearby ledge counts
     constexpr float kDropMinEndGap = 5.0f;        // the path must end at least this far from the objective
     constexpr float kDropMinGain = 10.0f;         // the landing must bring the objective this much closer
     constexpr uint8_t kDropMinPartyHealthPct = 50;
@@ -1436,8 +1442,10 @@ namespace DungeonLeadKernel
         bool pathEndsShort = false;     // the path to the objective ends short of it (no link down)
         float endGap = 0.f;             // from the leader (at the path's end) to the objective
         float edgeAboveObjective = 0.f; // edge height minus objective height
-        bool landingFound = false;      // a floor point below the edge toward the objective
+        bool landingFound = false;      // a floor point below the edge
         float fallHeight = 0.f;
+        bool landingInWater = false;    // at least kDropMinWaterDepth of water over the floor there
+        bool realPlayerInParty = true;  // someone who takes fall damage
         float horizontal = 0.f;
         bool landingInSight = false;    // nothing solid between the edge and the landing point
         bool landingOnMesh = false;     // the landing point is on the navmesh
@@ -1484,6 +1492,22 @@ namespace DungeonLeadKernel
         return "unknown";
     }
 
+    inline float DropMaxHeight(bool intoWater, bool realPlayerInParty)
+    {
+        return intoWater || !realPlayerInParty ? kDropMaxHeightNoFallDamage : kDropMaxHeight;
+    }
+
+    // Where the walk stands at the end of what the navmesh offers toward the objective: no path at
+    // all (a hole in the mesh; the path generator then returns a straight shortcut that "ends" at
+    // the objective), a partial path that ends where the leader stands, or a partial path the walk
+    // keeps failing to make progress on.
+    inline bool DropPathEndsShort(bool noPath, bool incomplete, float leaderToPathEnd2D, uint8_t stuckAttempts)
+    {
+        if (noPath)
+            return true;
+        return incomplete && (leaderToPathEnd2D <= kDropAtPathEnd || stuckAttempts >= kDropStuckAttempts);
+    }
+
     inline DropVerdict DecideDrop(DropFacts const& f)
     {
         if (!f.pathEndsShort || f.endGap < kDropMinEndGap || f.edgeAboveObjective < kDropMinHeight)
@@ -1494,7 +1518,7 @@ namespace DungeonLeadKernel
             return DropVerdict::PartyHurt;
         if (!f.landingFound || f.fallHeight < kDropMinHeight)
             return DropVerdict::NoLanding;
-        if (f.fallHeight > kDropMaxHeight)
+        if (f.fallHeight > DropMaxHeight(f.landingInWater, f.realPlayerInParty))
             return DropVerdict::TooHigh;
         if (f.horizontal > kDropMaxHorizontal)
             return DropVerdict::TooFar;

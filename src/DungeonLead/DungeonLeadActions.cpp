@@ -3720,6 +3720,19 @@ namespace
         return lowest;
     }
 
+    // Whether anyone in the party takes fall damage: a real player, also one whose character a
+    // bot AI plays (its client still reports the fall).
+    bool PartyHasFallDamage(Player* bot)
+    {
+        if (!DungeonLead::IsBotActor(bot))
+            return true;
+        if (Group* group = bot->GetGroup())
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                if (Player* m = ref->GetSource(); m && !DungeonLead::IsBotActor(m))
+                    return true;
+        return false;
+    }
+
     constexpr float kDropJumpSpeedXY = 8.0f;
     constexpr float kDropJumpSpeedZ = 4.0f;
 }
@@ -3727,7 +3740,8 @@ namespace
 bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition const& dest)
 {
     using namespace DungeonLeadKernel;
-    if (bot->isMoving() || st.dropJumping)
+    // A leader on its way is left alone unless the walk keeps making no progress.
+    if (st.dropJumping || (bot->isMoving() && st.stuckAttempts < kDropStuckAttempts))
         return false;
     float const dx = dest.GetPositionX(), dy = dest.GetPositionY(), dz = dest.GetPositionZ();
     float const ex = bot->GetPositionX(), ey = bot->GetPositionY(), ez = bot->GetPositionZ();
@@ -3736,65 +3750,115 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
     f.edgeAboveObjective = ez - dz;
     if (f.endGap < kDropMinEndGap || f.edgeAboveObjective < kDropMinHeight)
         return false;  // cheap checks first: no path search for an objective that is not below
+    uint32 const now = getMSTime();
+    if (st.dropProbeTs && getMSTimeDiff(st.dropProbeTs, now) < kDropProbeEveryMs)
+        return false;
+    st.dropProbeTs = now;
 
     PathGenerator path(bot);
     path.CalculatePath(dx, dy, dz);
+    PathType const pathType = path.GetPathType();
     G3D::Vector3 const end = path.GetActualEndPosition();
-    // The walk has gone as far as the navmesh leads: the path stops short of the objective and the
-    // leader already stands at its end. A long but connected route rarely gets here, and the
-    // connected-floors check below catches it when it does.
-    f.pathEndsShort = (path.GetPathType() & (PATHFIND_INCOMPLETE | PATHFIND_NOPATH)) &&
-                      bot->GetExactDist2d(end.x, end.y) <= kDropAtPathEnd;
+    f.pathEndsShort = DropPathEndsShort(pathType & PATHFIND_NOPATH, pathType & PATHFIND_INCOMPLETE,
+                                        bot->GetExactDist2d(end.x, end.y), st.stuckAttempts);
     if (!f.pathEndsShort)
         return false;
     f.attemptsOnStep = st.dropAttempts;
     f.partyMinHealthPct = PartyMinHealthPct(bot);
+    f.realPlayerInParty = PartyHasFallDamage(bot);
+
+    // Ledge probe: on 12 bearings, the objective's first and then outwards to behind the leader,
+    // the first point within kDropMaxHorizontal where the floor (or deep water) lies a drop below.
+    // A candidate is judged on the cheap facts first; path searches only for one that passes them,
+    // at most kMaxPathProbes per probe. The first candidate that may drop wins; otherwise the
+    // refusal that got furthest is reported.
+    constexpr int kMaxPathProbes = 4;
+    DropFacts chosen = f;
+    DropVerdict v = DecideDrop(f);  // out of attempts / party hurt need no landing
     float lx = 0.f, ly = 0.f, lz = 0.f;
-    float hx = dx - ex, hy = dy - ey;
-    float const hl = std::sqrt(hx * hx + hy * hy);
-    if (hl > 0.1f)
+    if (v != DropVerdict::OutOfAttempts && v != DropVerdict::PartyHurt)
     {
-        hx /= hl;
-        hy /= hl;
-        for (float s : {1.5f, 3.0f, 4.5f, 6.0f})
+        float const base = std::atan2(dy - ey, dx - ex);
+        int pathProbes = 0;
+        bool found = false;
+        for (int k = 0; k < 12 && !found; ++k)
         {
-            float const px = ex + hx * s, py = ey + hy * s;
-            float const floorZ = bot->GetMapHeight(px, py, ez + 1.0f);
-            if (floorZ <= INVALID_HEIGHT || ez - floorZ < kDropMinHeight)
-                continue;  // no floor, or still the ledge itself
-            if (bot->GetMapWaterOrGroundLevel(px, py, floorZ + 1.0f) > floorZ + 0.5f)
-                continue;  // water: the floor found is its bottom
-            f.landingFound = true;
-            f.fallHeight = ez - floorZ;
-            f.horizontal = s;
-            f.landingInSight = bot->GetMap()->isInLineOfSight(ex, ey, ez + 1.5f, px, py, floorZ + 1.5f,
-                                                              bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
-                                                              VMAP::ModelIgnoreFlags::Nothing);
-            PathGenerator below(bot);
-            below.CalculatePath(px, py, floorZ, dx, dy, dz, false);
-            PathType const bt = below.GetPathType();
-            f.landingOnMesh = !(bt & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH));
-            G3D::Vector3 const be = below.GetActualEndPosition();
-            float const belowGap = dest.GetExactDist(be.x, be.y, be.z);
-            f.belowComplete = !(bt & PATHFIND_INCOMPLETE) || belowGap <= kDropBelowArrive;
-            f.gain = f.endGap - belowGap;
-            PathGenerator back(bot);
-            back.CalculatePath(px, py, floorZ, ex, ey, ez, false);
-            G3D::Vector3 const ke = back.GetActualEndPosition();
-            f.connectedBack = back.GetPathType() == PATHFIND_NORMAL && (G3D::Vector3(ex, ey, ez) - ke).length() <= 3.0f;
-            lx = px;
-            ly = py;
-            lz = floorZ;
-            break;  // the nearest floor below the edge
+            float const angle = base + ((k % 2) ? 1.f : -1.f) * float((k + 1) / 2) * float(M_PI) / 6.f;
+            float const hx = std::cos(angle), hy = std::sin(angle);
+            for (float s : {1.5f, 3.0f, 4.5f, 6.0f})
+            {
+                float const px = ex + hx * s, py = ey + hy * s;
+                float const floorZ = bot->GetMapHeight(px, py, ez + 1.0f);
+                if (floorZ <= INVALID_HEIGHT || ez - floorZ < kDropMinHeight)
+                    continue;  // no floor, or still the ledge itself
+                DropFacts c = f;
+                c.landingFound = true;
+                c.horizontal = s;
+                float landZ = floorZ;
+                float const waterZ = bot->GetMapWaterOrGroundLevel(px, py, floorZ + 1.0f);
+                if (waterZ > floorZ + 0.5f)
+                {
+                    c.landingInWater = waterZ - floorZ >= kDropMinWaterDepth;
+                    landZ = waterZ;  // jump onto the surface
+                }
+                c.fallHeight = ez - landZ;
+                // the cheap facts, with the path facts assumed fine
+                DropFacts cheap = c;
+                cheap.landingInSight = cheap.landingOnMesh = cheap.belowComplete = true;
+                cheap.connectedBack = false;
+                cheap.gain = kDropMinGain;
+                DropVerdict cv = DecideDrop(cheap);
+                if (cv == DropVerdict::Drop)
+                {
+                    c.landingInSight = bot->GetMap()->isInLineOfSight(ex, ey, ez + 1.5f, px, py, landZ + 1.5f,
+                                                                      bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
+                                                                      VMAP::ModelIgnoreFlags::Nothing);
+                    if (c.landingInSight && pathProbes < kMaxPathProbes)
+                    {
+                        ++pathProbes;
+                        PathGenerator below(bot);
+                        below.CalculatePath(px, py, floorZ, dx, dy, dz, false);
+                        PathType const bt = below.GetPathType();
+                        c.landingOnMesh = !(bt & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH));
+                        G3D::Vector3 const be = below.GetActualEndPosition();
+                        float const belowGap = dest.GetExactDist(be.x, be.y, be.z);
+                        c.belowComplete = !(bt & PATHFIND_INCOMPLETE) || belowGap <= kDropBelowArrive;
+                        c.gain = f.endGap - belowGap;
+                        PathGenerator back(bot);
+                        back.CalculatePath(px, py, floorZ, ex, ey, ez, false);
+                        G3D::Vector3 const ke = back.GetActualEndPosition();
+                        c.connectedBack = back.GetPathType() == PATHFIND_NORMAL &&
+                                          (G3D::Vector3(ex, ey, ez) - ke).length() <= 3.0f;
+                        cv = DecideDrop(c);
+                    }
+                    else if (!c.landingInSight)
+                        cv = DropVerdict::NotInSight;
+                    else
+                        break;  // out of path searches for this probe: the bearing is not judged
+                }
+                // the refusal that got furthest (later verdicts pass more checks), or the drop
+                if (cv == DropVerdict::Drop || v == DropVerdict::NoLanding || uint8(cv) > uint8(v))
+                {
+                    v = cv;
+                    chosen = c;
+                    lx = px;
+                    ly = py;
+                    lz = landZ;
+                }
+                found = cv == DropVerdict::Drop;
+                break;  // the nearest floor below the edge on this bearing
+            }
         }
     }
+    f = chosen;
 
-    DropVerdict const v = DecideDrop(f);
     if (v == DropVerdict::NotNeeded)
         return false;
     auto facts = [&](JsonLine j) {
         return j.Str("verdict", ToString(v))
             .Num("fall", f.fallHeight)
+            .Bool("water", f.landingInWater)
+            .Bool("fall_damage", f.realPlayerInParty)
             .Num("horizontal", f.horizontal)
             .Num("gain", f.gain)
             .Num("end_gap", f.endGap)

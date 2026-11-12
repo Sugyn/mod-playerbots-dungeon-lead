@@ -229,6 +229,7 @@ struct DungeonLeadState
     float dropFromX = 0.f, dropFromY = 0.f, dropFromZ = 0.f;
     float dropToX = 0.f, dropToY = 0.f, dropToZ = 0.f;
     uint32 dropDoneTs = 0;
+    uint32 dropProbeTs = 0;
     std::vector<ObjectGuid> dropMembersSent;
     // use/talk steps: time spent waiting at the step for its event (route walk ticks only), and
     // the last gossip attempt.
@@ -442,6 +443,7 @@ struct DungeonLeadState
         dropAttempts = 0;
         dropLastRefused = 0;
         dropDoneTs = 0;
+        dropProbeTs = 0;
         dropMembersSent.clear();
         firedAreaTriggers.clear();
         lastPathLogTs = 0;
