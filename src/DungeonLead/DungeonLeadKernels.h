@@ -377,6 +377,16 @@ namespace DungeonLeadKernel
     // never resume. Whatever is still out there is met on the way.
     constexpr uint32_t kStaleCombatMs = 20000;
 
+    // An attacker counts as an enemy behind the combat flag only within kStaleCombatFarYd of the
+    // member. Dungeon mobs do not leash by distance: a boss that keeps a revived member on its
+    // threat list from the far end of the instance, and never comes, is no fight to wait for.
+    // One that does come is an enemy again once it is this close.
+    constexpr float kStaleCombatFarYd = 60.0f;
+    inline bool AttackerCounts(bool sameMap, float distance)
+    {
+        return sameMap && distance <= kStaleCombatFarYd;
+    }
+
     // Diagnostics: the brain says Travelling, the leader stands outside any bounded wait, and its
     // combat flag has no enemy behind it. Reported once it lasts kWalkBlockedReportMs, then again
     // every kWalkBlockedRepeatMs while it lasts.

@@ -16,6 +16,7 @@ while the module is in alpha.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 - When the navmesh has no path onward, the leader no longer walks back to the route stop it just came from (it looped there, e.g. at Roogug in Razorfen Kraul); it searches forward instead.
 - A leader held in combat by a creature far away (for example a boss behind a closed door) no longer stands still on its route: the walk, doors, pulls and event help follow the same combat rule as the session's decisions.
+- A party member that a boss keeps on its threat list from the far end of the instance (after a wipe, the boss neither comes nor leaves combat) no longer keeps the party waiting "in combat": an attacker more than 60 yards away does not count as a fight.
 
 ### Changed
 

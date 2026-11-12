@@ -21,12 +21,19 @@
 
 namespace
 {
-    // In combat and either attacked or attacking - or not for long (DungeonLeadKernel::CombatCounts).
-    // The per-member clock lives in the leader's session state; outside a session the plain flag.
+    // In combat and either attacked from nearby or attacking - or not for long
+    // (DungeonLeadKernel::CombatCounts, AttackerCounts). The per-member clock lives in the leader's
+    // session state; outside a session the plain flag.
     bool CombatWithEnemy(Player* leader, Player* member)
     {
         bool const inCombat = member->IsInCombat();
-        bool const hasEnemy = !member->getAttackers().empty() || member->GetVictim() != nullptr;
+        bool const attackedNearby = std::any_of(member->getAttackers().begin(), member->getAttackers().end(),
+            [member](Unit* attacker)
+            {
+                bool const sameMap = attacker && attacker->IsInWorld() && attacker->GetMap() == member->GetMap();
+                return DungeonLeadKernel::AttackerCounts(sameMap, sameMap ? member->GetDistance(attacker) : 0.0f);
+            });
+        bool const hasEnemy = attackedNearby || member->GetVictim() != nullptr;
         if (!sDungeonRouteMgr.HasState(leader->GetGUID()))
             return inCombat;
         DungeonLeadState& st = sDungeonRouteMgr.State(leader->GetGUID());
