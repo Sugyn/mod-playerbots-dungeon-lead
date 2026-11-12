@@ -1665,6 +1665,22 @@ namespace
         Check(LivenessApplies(LeadState::Travelling, false, false), "liveness watches a travelling session");
         Check(LivenessApplies(LeadState::WaitingReady, false, false), "and a waiting one");
         Check(!LivenessApplies(LeadState::Travelling, true, false), "not a paused one");
+        Check(LivenessApplies(LeadState::PrePull, false, false) && LivenessApplies(LeadState::Pulling, false, false),
+              "it watches pull preparation and the pull itself");
+        Check(LivenessApplies(LeadState::PostCombat, false, false) && LivenessApplies(LeadState::BossPrep, false, false),
+              "and the post-combat gate and boss preparation");
+        Check(!LivenessApplies(LeadState::Starting, false, false) && !LivenessApplies(LeadState::Stopping, false, false),
+              "leadership start and hand-back have their own limits");
+        Check(!LivenessApplies(LeadState::Travelling, false, true), "a bounded wait is exempt");
+        Check(LivenessBoundedWait(true, false, false, 0), "an interaction in progress is a bounded wait");
+        Check(LivenessBoundedWait(false, true, false, 0), "so is an issued interaction");
+        Check(LivenessBoundedWait(false, false, true, 14999), "so is an event wait that ticked just now");
+        Check(!LivenessBoundedWait(false, false, true, 15000), "an event wait that stopped ticking is not");
+        Check(!LivenessBoundedWait(false, false, false, 0), "a finished interaction is no wait at all");
+        Check(LivenessCountsEvent("state_transition") && LivenessCountsEvent("mob_died"), "progress events count");
+        Check(!LivenessCountsEvent("position_sample") && !LivenessCountsEvent("walk_blocked") &&
+                  !LivenessCountsEvent("path_decision"),
+              "samples, diagnostics and re-pathing in place do not");
         Check(!LivenessApplies(LeadState::Travelling, false, true), "not a wait at a door or for an event");
         Check(!LivenessApplies(LeadState::Combat, false, false) && !LivenessApplies(LeadState::BossCombat, false, false),
               "not a fight");

@@ -349,9 +349,8 @@ namespace
         }
         p += "}";
 
-        // Liveness counts progress events only: diagnostics and position samples of a leader that
-        // stands (or shuffles) in place say nothing has moved on.
-        if (event != "walk_blocked" && event != "position_sample")
+        // Liveness counts progress events only.
+        if (DungeonLeadKernel::LivenessCountsEvent(event))
             st.lastEventTs = getMSTime();
         JsonLine j;
         j.Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
@@ -677,7 +676,10 @@ namespace
         for (auto const& [guid, ref] : bot->GetCombatManager().GetPvECombatRefs())
             if (Unit* other = ref->GetOther(bot))
                 refs.emplace_back(other->IsInMap(bot) ? bot->GetDistance(other) : -1.0f, other);
-        std::sort(refs.begin(), refs.end(), [](auto const& a, auto const& b) { return a.first < b.first; });
+        // off-map references (distance -1) last
+        std::sort(refs.begin(), refs.end(), [](auto const& a, auto const& b) {
+            return (a.first < 0.0f) != (b.first < 0.0f) ? b.first < 0.0f : a.first < b.first;
+        });
         std::string out = "[";
         for (std::size_t i = 0; i < refs.size() && i < 3; ++i)
         {
@@ -703,24 +705,26 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
     uint32 const now = getMSTime();
 
     // Liveness first: no progress event and no movement for kSessionStallMs ends the run with a
-    // snapshot. Waits that are bounded on their own (a door, a step's event) are exempt.
+    // snapshot. Waits that are bounded on their own (a door, a step's event) are exempt, and time
+    // spent exempt does not count: both clocks restart while liveness does not apply.
+    bool const boundedWait = DungeonLeadKernel::LivenessBoundedWait(
+        DungeonLeadKernel::InteractionActive(st.interactionState), st.interactionIssued, st.eventWaitLastTs != 0,
+        st.eventWaitLastTs ? getMSTimeDiff(st.eventWaitLastTs, now) : 0);
+    bool const watched = DungeonLeadKernel::LivenessApplies(st.state, st.paused, boundedWait);
     float const dx = bot->GetPositionX() - st.livenessX, dy = bot->GetPositionY() - st.livenessY,
                 dz = bot->GetPositionZ() - st.livenessZ;
-    if (!st.livenessMoveTs || dx * dx + dy * dy + dz * dz >= DungeonLeadKernel::kLivenessMoveYd * DungeonLeadKernel::kLivenessMoveYd)
+    if (!watched || !st.livenessMoveTs || dx * dx + dy * dy + dz * dz >= DungeonLeadKernel::kLivenessMoveYd * DungeonLeadKernel::kLivenessMoveYd)
     {
         st.livenessMoveTs = now;
         st.livenessX = bot->GetPositionX();
         st.livenessY = bot->GetPositionY();
         st.livenessZ = bot->GetPositionZ();
     }
-    if (!st.lastEventTs)
+    if (!watched || !st.lastEventTs)
         st.lastEventTs = now;
     uint32 const sinceEvent = getMSTimeDiff(st.lastEventTs, now);
     uint32 const sinceMove = getMSTimeDiff(st.livenessMoveTs, now);
-    bool const boundedWait = st.interactionType != DungeonLeadKernel::InteractionType::None || st.interactionIssued ||
-                             (st.eventWaitLastTs && getMSTimeDiff(st.eventWaitLastTs, now) < 15000);
-    if (DungeonLeadKernel::LivenessApplies(st.state, st.paused, boundedWait) &&
-        DungeonLeadKernel::SessionStalled(sinceEvent, sinceMove))
+    if (watched && DungeonLeadKernel::SessionStalled(sinceEvent, sinceMove))
     {
         DungeonLeadKernel::Readiness const walkReady = DungeonLeadKernel::EvaluateReadiness(
             party.facts, DungeonPartyState::Policy(), DungeonLeadKernel::ReadyPurpose::Walk);
@@ -743,16 +747,17 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
                         .Raw("refs", CombatRefsJson(bot))
                         .Str("pull_state", DungeonLeadKernel::ToString(st.pullState))
                         .Num("walk_step_ms", st.walkStepMs)
-                        .Bool("interaction", st.interactionType != DungeonLeadKernel::InteractionType::None)
+                        .Str("interaction", DungeonLeadKernel::ToString(st.interactionState))
                         .Done());
         RecordRunSummary(botAI, "session_stalled");
         Stop(botAI, /*giveLeaderBack*/ true);
         return false;
     }
 
-    // Diagnostics: Travelling and standing, while the leader's combat flag has no enemy behind it.
-    bool const walkBlocked = st.state == DungeonLeadKernel::LeadState::Travelling && bot->IsAlive() &&
-                             bot->IsInCombat() && !party.facts.selfInCombat && !bot->isMoving();
+    // Diagnostics: Travelling and standing outside a bounded wait, while the leader's combat flag
+    // has no enemy behind it.
+    bool const walkBlocked = st.state == DungeonLeadKernel::LeadState::Travelling && !boundedWait && !st.paused &&
+                             bot->IsAlive() && bot->IsInCombat() && !party.facts.selfInCombat && !bot->isMoving();
     if (!walkBlocked)
     {
         st.walkBlockedSince = 0;
@@ -768,7 +773,8 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
         st.walkBlockedReportTs = now;
         RecordEventV2(botAI, "walk_blocked",
                       DungeonLeadKernel::JsonLine()
-                          .Str("reason", "combat_flag_without_enemy")
+                          .Str("detail", "standing with a combat flag without an enemy")
+                          .Str("reason", "standing_with_stale_combat")
                           .Num("blocked_ms", blockedMs)
                           .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
                           .Num("attackers", uint32_t(bot->getAttackers().size()))
@@ -3274,7 +3280,7 @@ bool DungeonLeadNextAction::EventWaitExpired(DungeonLeadState& st)
     {
         uint32 const delta = getMSTimeDiff(st.eventWaitLastTs, now);
         // consecutive walk ticks (a talk step asks every 5 s); a longer gap was a fight or a recovery
-        if (delta < 15000)
+        if (delta < DungeonLeadKernel::kEventWaitGapMs)
             st.eventWaitMs += delta;
     }
     st.eventWaitLastTs = now;

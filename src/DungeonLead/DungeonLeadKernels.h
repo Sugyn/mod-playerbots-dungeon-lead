@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace DungeonLeadKernel
@@ -376,9 +377,9 @@ namespace DungeonLeadKernel
     // never resume. Whatever is still out there is met on the way.
     constexpr uint32_t kStaleCombatMs = 20000;
 
-    // The route walk is gated by the leader's combat flag; the brain by CombatCounts. A flag that
-    // outlives its enemy leaves the brain Travelling and the walk idle. Reported once it lasts
-    // kWalkBlockedReportMs, then again every kWalkBlockedRepeatMs while it lasts.
+    // Diagnostics: the brain says Travelling, the leader stands outside any bounded wait, and its
+    // combat flag has no enemy behind it. Reported once it lasts kWalkBlockedReportMs, then again
+    // every kWalkBlockedRepeatMs while it lasts.
     constexpr uint32_t kWalkBlockedReportMs = 30 * 1000;
     constexpr uint32_t kWalkBlockedRepeatMs = 5 * 60 * 1000;
     inline bool ReportWalkBlocked(uint32_t msBlocked, bool reportedBefore, uint32_t msSinceReport)
@@ -543,6 +544,22 @@ namespace DungeonLeadKernel
     // for its player.
     constexpr uint32_t kSessionStallMs = 5 * 60 * 1000;
     constexpr float kLivenessMoveYd = 2.0f;
+    // Walk ticks of a step's event wait closer than this belong to one wait (a talk step asks every
+    // 5 s); a longer gap was a fight or a recovery.
+    constexpr uint32_t kEventWaitGapMs = 15000;
+    // Events that say nothing has moved on do not count as progress: diagnostics, position samples
+    // and path decisions of a leader that stands (or re-paths) in place. Movement counts on its own.
+    inline bool LivenessCountsEvent(std::string_view event)
+    {
+        return event != "walk_blocked" && event != "position_sample" && event != "path_decision";
+    }
+    // A wait that is bounded on its own: an interaction in progress or issued, or a step's event
+    // wait that ticked within kEventWaitGapMs.
+    inline bool LivenessBoundedWait(bool interactionActive, bool interactionIssued, bool eventWaitTicked,
+                                    uint32_t msSinceEventWaitTick)
+    {
+        return interactionActive || interactionIssued || (eventWaitTicked && msSinceEventWaitTick < kEventWaitGapMs);
+    }
     inline bool LivenessApplies(LeadState s, bool paused, bool boundedWait)
     {
         if (paused || boundedWait)

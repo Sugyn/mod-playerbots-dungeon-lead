@@ -25,7 +25,7 @@ while the module is in alpha.
 
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
 - A session whose leader makes no progress and writes no event for five minutes ends with the reason `session_stalled` and a snapshot of its state, instead of running until an outside time limit.
-- A `walk_blocked` telemetry event reports a route walk held up by a combat flag without an enemy, with the creatures that hold it.
+- A `walk_blocked` telemetry event reports a travelling leader that stands while its combat flag has no enemy behind it, with the creatures that hold the flag.
 
 ## [0.15.0-alpha] - 2026-11-10
 
