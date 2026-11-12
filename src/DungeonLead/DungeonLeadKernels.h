@@ -271,6 +271,14 @@ namespace DungeonLeadKernel
         return sessionRequestedByPlayer && !masterIsBot;
     }
 
+    // Only a session the AutoBot Canary started on its own has nobody to wait for; every other
+    // origin (the chat command and any later way a player starts a run) keeps its real master.
+    // Readiness evaluated outside a session counts as requested by a player.
+    inline bool SessionRequestedByPlayer(bool hasSession, bool autoCanary)
+    {
+        return !hasSession || !autoCanary;
+    }
+
     inline bool MasterUnavailable(PartyFacts const& f)
     {
         MasterFacts const& m = f.master;

@@ -63,7 +63,8 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
     DungeonLeadState* st = haveSession ? &sDungeonRouteMgr.State(bot->GetGUID()) : nullptr;
 
     Player* master = leaderAI->GetMaster();
-    bool const requestedByPlayer = !st || st->origin == DungeonLeadSessionOrigin::Manual;
+    bool const requestedByPlayer =
+        DungeonLeadKernel::SessionRequestedByPlayer(st != nullptr, st && st->origin == DungeonLeadSessionOrigin::AutoCanary);
     if (master && (master == bot || !DungeonLeadKernel::MasterGatesParty(requestedByPlayer, DungeonLead::IsBotActor(master))))
         master = nullptr;
     ObjectGuid masterGuid;

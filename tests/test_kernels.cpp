@@ -1654,6 +1654,9 @@ namespace
         Check(MasterGatesParty(true, false), "a player who asked for the session is waited for");
         Check(!MasterGatesParty(true, true), "a bot that mod-playerbots made master is not");
         Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
+        Check(SessionRequestedByPlayer(false, false), "readiness outside a session waits for the player");
+        Check(SessionRequestedByPlayer(true, false), "a session a player started keeps its master");
+        Check(!SessionRequestedByPlayer(true, true), "an AutoBot Canary session has no master");
     }
 
     void TestLeaderOffGround()
