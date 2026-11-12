@@ -536,6 +536,35 @@ namespace DungeonLeadKernel
     // DecideActive below.
     inline bool IsActive(LeadState s) { return s != LeadState::Starting && s != LeadState::Stopping; }
 
+    // Liveness: a session whose leader neither moved nor produced any event for this long is stuck
+    // where no other rule sees it; it ends as session_stalled instead of running into an outside
+    // timeout. Fights, wipe recovery (both bounded on their own), a finished route held for its
+    // player and a pause are exempt.
+    constexpr uint32_t kSessionStallMs = 5 * 60 * 1000;
+    constexpr float kLivenessMoveYd = 2.0f;
+    inline bool LivenessApplies(LeadState s, bool paused)
+    {
+        if (paused)
+            return false;
+        switch (s)
+        {
+            case LeadState::WaitingReady:
+            case LeadState::Travelling:
+            case LeadState::PrePull:
+            case LeadState::Pulling:
+            case LeadState::PostCombat:
+            case LeadState::BossPrep:
+            case LeadState::Recovery:
+                return true;
+            default:
+                return false;
+        }
+    }
+    inline bool SessionStalled(uint32_t msSinceEvent, uint32_t msSinceMove, uint32_t limitMs = kSessionStallMs)
+    {
+        return msSinceEvent >= limitMs && msSinceMove >= limitMs;
+    }
+
     // Whether the brain's current state allows a fight to be opened (grind's opportunistic pulls
     // and the pull controller's own): only while working the route or already fighting - never
     // while waiting, recovering, after a wipe, done, or outside an active session.

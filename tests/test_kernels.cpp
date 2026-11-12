@@ -1659,6 +1659,16 @@ namespace
         Check(ReportWalkBlocked(30000, false, 0), "a block of 30 s is reported");
         Check(!ReportWalkBlocked(120000, true, 60000), "not again within the repeat interval");
         Check(ReportWalkBlocked(400000, true, 300000), "again after the repeat interval");
+        Check(!SessionStalled(299999, 400000), "an event within 5 min keeps the session alive");
+        Check(!SessionStalled(400000, 299999), "movement within 5 min keeps the session alive");
+        Check(SessionStalled(300000, 300000), "5 min without event and movement is a stall");
+        Check(LivenessApplies(LeadState::Travelling, false), "liveness watches a travelling session");
+        Check(LivenessApplies(LeadState::WaitingReady, false), "and a waiting one");
+        Check(!LivenessApplies(LeadState::Travelling, true), "not a paused one");
+        Check(!LivenessApplies(LeadState::Combat, false) && !LivenessApplies(LeadState::BossCombat, false),
+              "not a fight");
+        Check(!LivenessApplies(LeadState::WipeRecovery, false), "not a wipe recovery (bounded on its own)");
+        Check(!LivenessApplies(LeadState::Completing, false), "not a finished route held for its player");
         Check(SessionRequestedByPlayer(true, false), "a session a player started keeps its master");
         Check(!SessionRequestedByPlayer(true, true), "an AutoBot Canary session has no master");
     }

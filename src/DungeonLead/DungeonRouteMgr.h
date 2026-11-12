@@ -123,7 +123,9 @@ enum class DungeonFailureReason : uint8
     // A mandatory-by-kind row (boss/required/door/use/talk) has no resolved position -
     // invalid/unresolved route data, not a live-run failure. See FailObjective's call site in the
     // step-advance skip loop (DungeonLeadNextAction::Execute).
-    RouteDataInvalid
+    RouteDataInvalid,
+    // No event and no leader movement for DungeonLeadKernel::kSessionStallMs (liveness rule).
+    SessionStalled
 };
 
 char const* ToString(DungeonRunOutcome v);
@@ -313,6 +315,8 @@ struct DungeonLeadState
     uint32 sampleStep = 0;
     uint32 escalationDeferSince = 0;  // recovery escalation waiting for the leader to be on the ground
     uint32 lastEventTs = 0;         // getMSTime() of this session's last v2 event
+    uint32 livenessMoveTs = 0;      // last time the leader moved kLivenessMoveYd from the mark below
+    float livenessX = 0.f, livenessY = 0.f, livenessZ = 0.f;
     uint32 walkBlockedSince = 0;    // Travelling, but the leader's combat flag keeps the walk idle
     uint32 walkBlockedReportTs = 0; // last walk_blocked event (0 = none in this episode)
     std::map<uint64, uint8> stragglerBrought;  // times each bot was brought to the leader (recovery escalation)

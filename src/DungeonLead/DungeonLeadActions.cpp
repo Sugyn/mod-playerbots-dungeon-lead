@@ -727,7 +727,50 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
                               .Done());
         }
     }
-    return true;
+
+    // Liveness: no event and no movement for kSessionStallMs ends the run with a snapshot.
+    float const dx = bot->GetPositionX() - st.livenessX, dy = bot->GetPositionY() - st.livenessY,
+                dz = bot->GetPositionZ() - st.livenessZ;
+    if (!st.livenessMoveTs || dx * dx + dy * dy + dz * dz >= DungeonLeadKernel::kLivenessMoveYd * DungeonLeadKernel::kLivenessMoveYd)
+    {
+        st.livenessMoveTs = now;
+        st.livenessX = bot->GetPositionX();
+        st.livenessY = bot->GetPositionY();
+        st.livenessZ = bot->GetPositionZ();
+    }
+    if (!st.lastEventTs)
+        st.lastEventTs = now;
+    uint32 const sinceEvent = getMSTimeDiff(st.lastEventTs, now);
+    uint32 const sinceMove = getMSTimeDiff(st.livenessMoveTs, now);
+    if (!DungeonLeadKernel::LivenessApplies(st.state, st.paused) || !DungeonLeadKernel::SessionStalled(sinceEvent, sinceMove))
+        return true;
+
+    DungeonLeadKernel::Readiness const walkReady = DungeonLeadKernel::EvaluateReadiness(
+        party.facts, DungeonPartyState::Policy(), DungeonLeadKernel::ReadyPurpose::Walk);
+    LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} run={} stalled: no event for {} ms, no movement for {} ms "
+              "(state {}, step {}) - ending the session", bot->GetName(), st.runId, sinceEvent, sinceMove,
+              DungeonLeadKernel::ToString(st.state), st.stepIndex);
+    st.outcome = DungeonRunOutcome::Failed;
+    st.failureDomain = DungeonFailureDomain::Infrastructure;
+    st.failureReason = DungeonFailureReason::SessionStalled;
+    RecordEvent(botAI, "session_stalled", "no event and no movement",
+                DungeonLeadKernel::JsonLine()
+                    .Num("ms_since_event", sinceEvent)
+                    .Num("ms_since_move", sinceMove)
+                    .Str("objective", DungeonLeadBrain::CurrentObjective(st).Describe())
+                    .Str("readiness", DungeonLeadKernel::ToString(walkReady.status))
+                    .Bool("moving", bot->isMoving())
+                    .Bool("in_combat", bot->IsInCombat())
+                    .Bool("combat_with_enemy", party.facts.selfInCombat)
+                    .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
+                    .Raw("refs", CombatRefsJson(bot))
+                    .Str("pull_state", DungeonLeadKernel::ToString(st.pullState))
+                    .Num("walk_step_ms", st.walkStepMs)
+                    .Bool("interaction", st.interactionType != DungeonLeadKernel::InteractionType::None)
+                    .Done());
+    RecordRunSummary(botAI, "session_stalled");
+    Stop(botAI, /*giveLeaderBack*/ true);
+    return false;
 }
 
 void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st, Group* group)
