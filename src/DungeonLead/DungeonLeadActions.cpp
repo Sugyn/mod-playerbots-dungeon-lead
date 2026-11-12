@@ -3864,6 +3864,8 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                     lz = landZ;
                 }
                 found = cv == DropVerdict::Drop;
+                if (cv == DropVerdict::Connected)
+                    continue;  // a step down the leader can walk: a deeper floor may lie further out
                 break;  // the nearest floor below the edge on this bearing
             }
         }
@@ -4132,7 +4134,15 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         float const backDist = bot->GetExactDist(st.lastGoodX, st.lastGoodY, st.lastGoodZ);
         // no ground at all under it (INVALID_HEIGHT): it is inside the rock, any good spot is better
         bool const noGround = ground <= INVALID_HEIGHT + 1.0f;
+        bool startOffMesh = false;
         if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround))
+        {
+            PathGenerator probe(bot);
+            probe.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+            startOffMesh = probe.GetPathType() & PATHFIND_FARFROMPOLY_START;
+        }
+        if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround) &&
+            DungeonLeadKernel::LeaderUnstuckHelps(startOffMesh, noGround))
         {
             st.unstuckUsed = true;
             std::string const detail =

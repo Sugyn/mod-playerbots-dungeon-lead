@@ -1797,6 +1797,9 @@ namespace
 
 void TestDropDecision()
 {
+    Check(LeaderUnstuckHelps(true, false), "leader off the navmesh: back to the last good spot");
+    Check(LeaderUnstuckHelps(false, true), "no floor under the leader: back to the last good spot");
+    Check(!LeaderUnstuckHelps(false, false), "leader on the navmesh, objective out of reach: no teleport, the step fails");
     DropFacts f;
     f.pathEndsShort = true;
     f.endGap = 30.f;

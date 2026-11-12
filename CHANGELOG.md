@@ -24,6 +24,7 @@ while the module is in alpha.
 
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
 - When the navmesh ends on a ledge above the objective, the leader jumps down to the floor below instead of being moved back (only drops the party survives: onto ground below fall-damage height when a real player is in the party, into deep water, or further for a party of bots only, which takes no fall damage), and bot members on the ledge follow; a `drop` telemetry event records each jump and each refused one.
+- A leader stuck on a route step is teleported back to its last good spot only when it stands off the navmesh or with no floor under it; on the navmesh, with the objective out of reach, the step fails or is skipped at once.
 
 ## [0.15.0-alpha] - 2026-11-10
 

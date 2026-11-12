@@ -1439,6 +1439,15 @@ namespace DungeonLeadKernel
     constexpr float kDropMemberReach = 10.0f;
     constexpr float kDropMemberLevel = 3.0f;
 
+    // A leader stuck on a step goes back to the last spot its walk made progress from only when
+    // it cannot path from where it stands: off the navmesh, or with no floor under it (inside the
+    // rock, on a ledge the map does not know). A leader on the navmesh whose objective simply
+    // cannot be reached gains nothing from the teleport; the step fails (or is skipped) at once.
+    inline bool LeaderUnstuckHelps(bool startOffMesh, bool noGround)
+    {
+        return startOffMesh || noGround;
+    }
+
     struct DropFacts
     {
         bool pathEndsShort = false;     // the path to the objective ends short of it (no link down)
