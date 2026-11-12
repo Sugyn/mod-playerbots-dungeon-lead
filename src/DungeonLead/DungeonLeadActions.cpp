@@ -2216,13 +2216,13 @@ bool DungeonLeadNextAction::isUseful()
     if (st.paused)
     {
         // "startdungeon pause": stand still until "startdungeon continue" (out of combat here)
-        if (bot->isMoving())
+        if (bot->isMoving() && !st.dropJumping)  // never cut a jump short in the air
             bot->StopMoving();
         return false;
     }
     if (st.state == DungeonLeadKernel::LeadState::Travelling && DungeonPullController::StopForPull(botAI, st))
     {
-        if (bot->isMoving())
+        if (bot->isMoving() && !st.dropJumping)  // never cut a jump short in the air
             bot->StopMoving();
         return false;  // in pull range: the pull controller takes it from here
     }
@@ -2320,7 +2320,7 @@ bool DungeonLeadNextAction::isUseful()
         // don't just refuse a new move - a move already committed on a previous tick keeps
         // playing out on its own spline otherwise, so the tank visibly "runs off" from a party
         // member who just sat down to drink or pulled something
-        if (bot->isMoving())
+        if (bot->isMoving() && !st.dropJumping)  // never cut a jump short in the air
             bot->StopMoving();
         return false;
     }
@@ -2514,7 +2514,6 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.stuckAttempts = 0;
     st.stuckTs = 0;
     st.unstuckUsed = false;
-    st.dropJumping = false;
     st.dropAttempts = 0;
     st.dropLastRefused = 0;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
@@ -2577,7 +2576,6 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.stuckTs = 0;
     st.stuckAttempts = 0;
     st.unstuckUsed = false;
-    st.dropJumping = false;
     st.dropAttempts = 0;
     st.dropLastRefused = 0;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
@@ -3729,54 +3727,65 @@ namespace
 bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition const& dest)
 {
     using namespace DungeonLeadKernel;
-    if (bot->isMoving())
+    if (bot->isMoving() || st.dropJumping)
         return false;
     float const dx = dest.GetPositionX(), dy = dest.GetPositionY(), dz = dest.GetPositionZ();
+    float const ex = bot->GetPositionX(), ey = bot->GetPositionY(), ez = bot->GetPositionZ();
+    DropFacts f;
+    f.endGap = dest.GetExactDist(ex, ey, ez);
+    f.edgeAboveObjective = ez - dz;
+    if (f.endGap < kDropMinEndGap || f.edgeAboveObjective < kDropMinHeight)
+        return false;  // cheap checks first: no path search for an objective that is not below
+
     PathGenerator path(bot);
     path.CalculatePath(dx, dy, dz);
     G3D::Vector3 const end = path.GetActualEndPosition();
-
-    DropFacts f;
-    // The walk has gone as far as the navmesh leads: the path stops short of the objective and
-    // the leader already stands at its end. A long but connected route never gets here.
+    // The walk has gone as far as the navmesh leads: the path stops short of the objective and the
+    // leader already stands at its end. A long but connected route rarely gets here, and the
+    // connected-floors check below catches it when it does.
     f.pathEndsShort = (path.GetPathType() & (PATHFIND_INCOMPLETE | PATHFIND_NOPATH)) &&
-                      bot->GetExactDist2d(end.x, end.y) <= 2.0f * kDropEdgeReach;
-    float const ex = bot->GetPositionX(), ey = bot->GetPositionY(), ez = bot->GetPositionZ();
-    f.endGap = dest.GetExactDist(ex, ey, ez);
-    f.edgeAboveObjective = ez - dz;
+                      bot->GetExactDist2d(end.x, end.y) <= kDropAtPathEnd;
+    if (!f.pathEndsShort)
+        return false;
     f.attemptsOnStep = st.dropAttempts;
     f.partyMinHealthPct = PartyMinHealthPct(bot);
     float lx = 0.f, ly = 0.f, lz = 0.f;
-    if (f.pathEndsShort && f.endGap >= kDropMinEndGap && f.edgeAboveObjective >= kDropMinHeight)
+    float hx = dx - ex, hy = dy - ey;
+    float const hl = std::sqrt(hx * hx + hy * hy);
+    if (hl > 0.1f)
     {
-        float hx = dx - ex, hy = dy - ey;
-        float const hl = std::sqrt(hx * hx + hy * hy);
-        if (hl > 0.1f)
+        hx /= hl;
+        hy /= hl;
+        for (float s : {1.5f, 3.0f, 4.5f, 6.0f})
         {
-            hx /= hl;
-            hy /= hl;
-            for (float s : {1.5f, 3.0f, 4.5f, 6.0f})
-            {
-                float const px = ex + hx * s, py = ey + hy * s;
-                float const floorZ = bot->GetMapHeight(px, py, ez + 1.0f);
-                if (floorZ <= INVALID_HEIGHT || ez - floorZ < kDropMinHeight)
-                    continue;  // no floor, or still the ledge itself
-                f.landingFound = true;
-                f.fallHeight = ez - floorZ;
-                f.horizontal = s;
-                f.landingInSight = bot->GetMap()->isInLineOfSight(ex, ey, ez + 1.5f, px, py, floorZ + 1.5f,
-                                                                  bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
-                                                                  VMAP::ModelIgnoreFlags::Nothing);
-                PathGenerator below(bot);
-                below.CalculatePath(px, py, floorZ, dx, dy, dz, false);
-                f.landingOnMesh = !(below.GetPathType() & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH));
-                G3D::Vector3 const be = below.GetActualEndPosition();
-                f.gain = f.endGap - dest.GetExactDist(be.x, be.y, be.z);
-                lx = px;
-                ly = py;
-                lz = floorZ;
-                break;  // the nearest floor below the edge
-            }
+            float const px = ex + hx * s, py = ey + hy * s;
+            float const floorZ = bot->GetMapHeight(px, py, ez + 1.0f);
+            if (floorZ <= INVALID_HEIGHT || ez - floorZ < kDropMinHeight)
+                continue;  // no floor, or still the ledge itself
+            if (bot->GetMapWaterOrGroundLevel(px, py, floorZ + 1.0f) > floorZ + 0.5f)
+                continue;  // water: the floor found is its bottom
+            f.landingFound = true;
+            f.fallHeight = ez - floorZ;
+            f.horizontal = s;
+            f.landingInSight = bot->GetMap()->isInLineOfSight(ex, ey, ez + 1.5f, px, py, floorZ + 1.5f,
+                                                              bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
+                                                              VMAP::ModelIgnoreFlags::Nothing);
+            PathGenerator below(bot);
+            below.CalculatePath(px, py, floorZ, dx, dy, dz, false);
+            PathType const bt = below.GetPathType();
+            f.landingOnMesh = !(bt & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH));
+            G3D::Vector3 const be = below.GetActualEndPosition();
+            float const belowGap = dest.GetExactDist(be.x, be.y, be.z);
+            f.belowComplete = !(bt & PATHFIND_INCOMPLETE) || belowGap <= kDropBelowArrive;
+            f.gain = f.endGap - belowGap;
+            PathGenerator back(bot);
+            back.CalculatePath(px, py, floorZ, ex, ey, ez, false);
+            G3D::Vector3 const ke = back.GetActualEndPosition();
+            f.connectedBack = back.GetPathType() == PATHFIND_NORMAL && G3D::Vector3(ex, ey, ez).distance(ke) <= 3.0f;
+            lx = px;
+            ly = py;
+            lz = floorZ;
+            break;  // the nearest floor below the edge
         }
     }
 
@@ -3791,6 +3800,8 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
             .Num("end_gap", f.endGap)
             .Bool("in_sight", f.landingInSight)
             .Bool("on_mesh", f.landingOnMesh)
+            .Bool("below_complete", f.belowComplete)
+            .Bool("connected", f.connectedBack)
             .Num("party_min_health", uint32_t(f.partyMinHealthPct))
             .Num("attempt", uint32_t(f.attemptsOnStep))
             .Num("to_x", lx)
@@ -3824,44 +3835,70 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
     return true;
 }
 
+namespace
+{
+    // The leader's jump is over: landed (the members may follow, the walk measures progress afresh
+    // and the landing becomes the last good spot - never the ledge it left) or given up.
+    void EndDrop(PlayerbotAI* botAI, DungeonLeadState& st, bool landed)
+    {
+        Player* bot = botAI->GetBot();
+        uint32 const ms = GetMSTimeDiffToNow(st.dropJumpTs);
+        st.dropJumping = false;
+        if (landed)
+        {
+            st.dropDoneTs = getMSTime();
+            st.dropMembersSent.clear();
+            st.bestDist = 0.f;
+            st.lastGoodSet = true;
+            st.lastGoodX = bot->GetPositionX();
+            st.lastGoodY = bot->GetPositionY();
+            st.lastGoodZ = bot->GetPositionZ();
+        }
+        DungeonLead::RecordEventV2(botAI, "drop",
+                                   DungeonLeadKernel::JsonLine()
+                                       .Str("phase", landed ? "landed" : "gave_up")
+                                       .Str("who", "leader")
+                                       .Num("ms", ms)
+                                       .Num("z", bot->GetPositionZ())
+                                       .Num("to_z", st.dropToZ)
+                                       .Done());
+    }
+
+    bool DropLanded(Player* bot, DungeonLeadState const& st)
+    {
+        return !bot->isMoving() && std::fabs(bot->GetPositionZ() - st.dropToZ) <= DungeonLeadKernel::kDropLandedZ;
+    }
+}
+
 bool DungeonLeadNextAction::AdvanceDrop(DungeonLeadState& st)
 {
-    using DungeonLeadKernel::JsonLine;
     if (!st.dropJumping)
         return false;
-    uint32 const ms = GetMSTimeDiffToNow(st.dropJumpTs);
     st.stuckTs = getMSTime();  // a drop in flight is not being stuck
     st.stuckAttempts = 0;
-    bool const landed = !bot->isMoving() && std::fabs(bot->GetPositionZ() - st.dropToZ) <= DungeonLeadKernel::kDropLandedZ;
-    if (!landed && ms < DungeonLeadKernel::kDropJumpMaxMs)
+    bool const landed = DropLanded(bot, st);
+    if (!landed && GetMSTimeDiffToNow(st.dropJumpTs) < DungeonLeadKernel::kDropJumpMaxMs)
         return true;
-    st.dropJumping = false;
-    if (landed)
-    {
-        st.dropDoneTs = getMSTime();
-        st.dropMembersSent.clear();
-        st.bestDist = 0.f;  // progress is measured afresh from the floor below
-    }
-    DungeonLead::RecordEventV2(botAI, "drop",
-                               JsonLine()
-                                   .Str("phase", landed ? "landed" : "gave_up")
-                                   .Str("who", "leader")
-                                   .Num("ms", ms)
-                                   .Num("z", bot->GetPositionZ())
-                                   .Num("to_z", st.dropToZ)
-                                   .Done());
+    EndDrop(botAI, st, landed);
     return false;
 }
 
 void DungeonLead::FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st)
 {
     using DungeonLeadKernel::JsonLine;
+    Player* bot = botAI->GetBot();
+    // The landing is also seen from here: the walk may not run right after it (a fight, a step
+    // the leader reached in the air).
+    if (st.dropJumping && (DropLanded(bot, st) || GetMSTimeDiffToNow(st.dropJumpTs) >= DungeonLeadKernel::kDropJumpMaxMs))
+        EndDrop(botAI, st, DropLanded(bot, st));
     if (!st.dropDoneTs)
         return;
     uint32 const since = GetMSTimeDiffToNow(st.dropDoneTs);
     if (since > DungeonLeadKernel::kDropMemberWindowMs)
+    {
+        st.dropDoneTs = 0;
         return;
-    Player* bot = botAI->GetBot();
+    }
     Group* group = bot->GetGroup();
     if (!group)
         return;
@@ -3874,7 +3911,12 @@ void DungeonLead::FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st)
             continue;
         float const above = m->GetPositionZ() - st.dropToZ;
         float const toEdge = m->GetExactDist2d(st.dropFromX, st.dropFromY);
-        if (!DungeonLeadKernel::MemberFollowsDrop(since, above, toEdge) || m->IsInCombat())
+        float const level = m->GetPositionZ() - st.dropFromZ;
+        if (!DungeonLeadKernel::MemberFollowsDrop(since, above, toEdge, level))
+            continue;
+        if (!m->GetMap()->isInLineOfSight(m->GetPositionX(), m->GetPositionY(), m->GetPositionZ() + 1.5f, st.dropToX,
+                                          st.dropToY, st.dropToZ + 1.5f, m->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
+                                          VMAP::ModelIgnoreFlags::Nothing))
             continue;
         st.dropMembersSent.push_back(m->GetGUID());
         RecordEventV2(botAI, "drop",

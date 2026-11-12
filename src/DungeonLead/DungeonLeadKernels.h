@@ -1421,18 +1421,20 @@ namespace DungeonLeadKernel
     constexpr float kDropMinGain = 10.0f;         // the landing must bring the objective this much closer
     constexpr uint8_t kDropMinPartyHealthPct = 50;
     constexpr uint8_t kDropMaxAttemptsPerStep = 2;
-    constexpr uint32_t kDropWalkMaxMs = 20000;    // to reach the edge
     constexpr uint32_t kDropJumpMaxMs = 8000;     // to land
-    constexpr float kDropEdgeReach = 2.0f;        // close enough to the edge to jump
+    constexpr float kDropAtPathEnd = 4.0f;        // the leader stands this close to where its path ends
+    constexpr float kDropBelowArrive = 8.0f;      // a path from the landing that ends this close counts as arriving
     constexpr float kDropLandedZ = 3.0f;          // landed: within this height of the landing point
-    // Members that stand near the edge after the leader dropped follow it down for this long.
+    // Members still on the ledge follow the leader down for this long after it landed: within
+    // reach of its jump point, at the ledge's height and with the landing in sight.
     constexpr uint32_t kDropMemberWindowMs = 120000;
     constexpr float kDropMemberReach = 10.0f;
+    constexpr float kDropMemberLevel = 3.0f;
 
     struct DropFacts
     {
         bool pathEndsShort = false;     // the path to the objective ends short of it (no link down)
-        float endGap = 0.f;             // from that path's end (the edge) to the objective
+        float endGap = 0.f;             // from the leader (at the path's end) to the objective
         float edgeAboveObjective = 0.f; // edge height minus objective height
         bool landingFound = false;      // a floor point below the edge toward the objective
         float fallHeight = 0.f;
@@ -1440,6 +1442,8 @@ namespace DungeonLeadKernel
         bool landingInSight = false;    // nothing solid between the edge and the landing point
         bool landingOnMesh = false;     // the landing point is on the navmesh
         float gain = 0.f;               // objective distance from the edge minus from the landing's path end
+        bool belowComplete = false;     // the path from the landing reaches the objective
+        bool connectedBack = false;     // a plain path leads from the landing back up to the edge
         uint8_t partyMinHealthPct = 100;  // lowest health of the living party members
         uint8_t attemptsOnStep = 0;
     };
@@ -1455,6 +1459,8 @@ namespace DungeonLeadKernel
         TooFar,
         NotInSight,
         OffMesh,
+        Connected,      // the two floors are linked: the walk will find the way down
+        BelowIncomplete,
         NoGain
     };
 
@@ -1471,6 +1477,8 @@ namespace DungeonLeadKernel
             case DropVerdict::TooFar:        return "too_far";
             case DropVerdict::NotInSight:    return "not_in_sight";
             case DropVerdict::OffMesh:       return "off_mesh";
+            case DropVerdict::Connected:     return "connected";
+            case DropVerdict::BelowIncomplete: return "below_incomplete";
             case DropVerdict::NoGain:        return "no_gain";
         }
         return "unknown";
@@ -1494,6 +1502,10 @@ namespace DungeonLeadKernel
             return DropVerdict::NotInSight;
         if (!f.landingOnMesh)
             return DropVerdict::OffMesh;
+        if (f.connectedBack)
+            return DropVerdict::Connected;
+        if (!f.belowComplete)
+            return DropVerdict::BelowIncomplete;
         if (f.gain < kDropMinGain)
             return DropVerdict::NoGain;
         return DropVerdict::Drop;
@@ -1501,10 +1513,11 @@ namespace DungeonLeadKernel
 
     // A member still above the landing (by more than a step) and within reach of the edge the
     // leader dropped from, while that drop is recent, follows it down.
-    inline bool MemberFollowsDrop(uint32_t msSinceDrop, float memberAboveLanding, float memberToEdge2D)
+    inline bool MemberFollowsDrop(uint32_t msSinceDrop, float memberAboveLanding, float memberToEdge2D,
+                                  float memberLevelToEdge)
     {
         return msSinceDrop <= kDropMemberWindowMs && memberAboveLanding >= kDropMinHeight &&
-               memberToEdge2D <= kDropMemberReach;
+               memberToEdge2D <= kDropMemberReach && std::fabs(memberLevelToEdge) <= kDropMemberLevel;
     }
 
     inline EscalationGate DecideEscalationGate(bool leaderOffGround, uint32_t msDeferred, bool haveLastGood)

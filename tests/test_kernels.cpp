@@ -1807,6 +1807,7 @@ void TestDropDecision()
     f.landingInSight = true;
     f.landingOnMesh = true;
     f.gain = 25.f;
+    f.belowComplete = true;
     Check(DecideDrop(f) == DropVerdict::Drop, "a short, clear drop toward the objective is taken");
     DropFacts g = f;
     g.pathEndsShort = false;
@@ -1841,10 +1842,17 @@ void TestDropDecision()
     g = f;
     g.gain = 5.f;
     Check(DecideDrop(g) == DropVerdict::NoGain, "a drop that does not bring the objective closer is not taken");
-    Check(MemberFollowsDrop(30000, 6.f, 4.f), "a member at the edge follows a recent drop");
-    Check(!MemberFollowsDrop(30000, 1.f, 4.f), "a member already below does not");
-    Check(!MemberFollowsDrop(30000, 6.f, 15.f), "a member far from the edge does not");
-    Check(!MemberFollowsDrop(kDropMemberWindowMs + 1, 6.f, 4.f), "an old drop is not followed");
+    g = f;
+    g.connectedBack = true;
+    Check(DecideDrop(g) == DropVerdict::Connected, "linked floors are walked, not jumped");
+    g = f;
+    g.belowComplete = false;
+    Check(DecideDrop(g) == DropVerdict::BelowIncomplete, "the floor below must lead to the objective");
+    Check(MemberFollowsDrop(30000, 6.f, 4.f, 0.5f), "a member at the edge follows a recent drop");
+    Check(!MemberFollowsDrop(30000, 1.f, 4.f, 0.f), "a member already below does not");
+    Check(!MemberFollowsDrop(30000, 6.f, 15.f, 0.f), "a member far from the edge does not");
+    Check(!MemberFollowsDrop(30000, 6.f, 4.f, 8.f), "a member on another floor does not");
+    Check(!MemberFollowsDrop(kDropMemberWindowMs + 1, 6.f, 4.f, 0.f), "an old drop is not followed");
 }
 
 int main()

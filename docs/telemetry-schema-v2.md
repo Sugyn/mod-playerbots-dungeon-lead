@@ -155,6 +155,7 @@ increments, each with its own entry here.
 | wipe / recovery | `wipe_*`, `recovery_*`, `checkpoint_restore` | `detail` |
 | interaction | `interaction_state`, `door_*`, `use*`, `talk*`, `key_looted`, `area_trigger`, `event_assist` | `detail` |
 | integrity | `unexpected_teleport`, `instance_validity_restored`, `strategy_restored`, `telemetry_dropped` | `detail` |
+| drop | `drop` (v2 only) | `phase` (`jump`, `landed`, `gave_up`, `refused` - once per verdict and step), `who` (`leader` or the member's name); leader jump/refused: `verdict`, `fall`, `horizontal`, `gain`, `end_gap`, `in_sight`, `on_mesh`, `below_complete`, `connected`, `party_min_health`, `attempt`, `to_x/y/z`; landed/gave_up: `ms`, `z`, `to_z`; member jump: `fall`, `to_edge` - the path to the objective ends at a ledge above it and the leader jumps down to the floor below; bot members on the ledge follow |
 
 Combat evidence (`fight_*`, `combat_unit_joined`, `mob_died`, `member_*`) comes from the session
 guard on the world thread every ~2 s: the party members' current attackers and alive flags - no
