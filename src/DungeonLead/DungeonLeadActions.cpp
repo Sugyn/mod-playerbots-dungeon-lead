@@ -2314,7 +2314,7 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
 // ---------------------------------------------------------------------------------------------
 bool DungeonLeadNextAction::isUseful()
 {
-    if (!bot || !botAI || !bot->IsAlive() || bot->IsInCombat())
+    if (!bot || !botAI || !bot->IsAlive() || DungeonPartyState::LeaderFightsEnemy(bot))
         return false;
     if (!DungeonLead::InFiveMan(bot))
         return false;

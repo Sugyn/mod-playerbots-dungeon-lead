@@ -37,6 +37,11 @@ struct DungeonPartySnapshot
 namespace DungeonPartyState
 {
     DungeonPartySnapshot Evaluate(PlayerbotAI* leaderAI);
+
+    // The leader's own combat as the brain counts it (DungeonLeadKernel::CombatCounts): a combat
+    // flag that has had no enemy for kStaleCombatMs does not count. The route walk and its trigger
+    // use this, not the raw flag, so they never disagree with the brain about whether to walk.
+    bool LeaderFightsEnemy(Player* leader);
     DungeonLeadKernel::ReadinessPolicy Policy();  // from DungeonLeadConfig
     DungeonLeadKernel::Readiness Readiness(DungeonPartySnapshot const& snap, DungeonLeadKernel::ReadyPurpose purpose);
 }

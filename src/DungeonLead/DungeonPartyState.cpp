@@ -47,6 +47,11 @@ namespace
     }
 }
 
+bool DungeonPartyState::LeaderFightsEnemy(Player* leader)
+{
+    return CombatWithEnemy(leader, leader);
+}
+
 DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
 {
     DungeonPartySnapshot snap;
