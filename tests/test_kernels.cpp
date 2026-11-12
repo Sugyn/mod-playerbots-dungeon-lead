@@ -184,10 +184,13 @@ namespace
         Check(CombatCounts(true, false, 5000), "combat flag, no enemy for a moment: still counts");
         Check(!CombatCounts(true, false, kStaleCombatMs), "combat flag with no enemy for 20 s: stale, the walk resumes");
         Check(!CombatCounts(false, false, 0), "not in combat");
-        Check(AttackerCounts(true, 35.0f), "attacker at range: an enemy");
-        Check(AttackerCounts(true, kStaleCombatFarYd), "attacker at the far bound: still an enemy");
-        Check(!AttackerCounts(true, 285.0f), "boss holding a revived member from across the instance: no enemy");
-        Check(!AttackerCounts(false, 0.0f), "attacker on another map: no enemy");
+        Check(EnemyCounts(true, 35.0f), "attacker at range: an enemy");
+        Check(EnemyCounts(true, kStaleCombatFarYd), "attacker at the far bound: still an enemy");
+        Check(!EnemyCounts(true, 285.0f), "boss holding a revived member from across the instance: no enemy");
+        Check(!EnemyCounts(false, 0.0f), "unit on another map: no enemy");
+        Check(!CombatCounts(true, EnemyCounts(true, 285.0f), kStaleCombatMs), "held from 285 yd for 20 s: stale, the party walks on");
+        Check(CombatCounts(true, EnemyCounts(true, 285.0f), 5000), "held from 285 yd for a moment: still counts");
+        Check(CombatCounts(true, EnemyCounts(true, 40.0f), kStaleCombatMs), "attacker back within 40 yd: a fight again");
 
         Check(Walk(Party()) == ReadyStatus::Ready, "healthy party -> Ready");
 

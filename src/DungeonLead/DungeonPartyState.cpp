@@ -21,19 +21,24 @@
 
 namespace
 {
-    // In combat and either attacked from nearby or attacking - or not for long
-    // (DungeonLeadKernel::CombatCounts, AttackerCounts). The per-member clock lives in the leader's
-    // session state; outside a session the plain flag.
+    // In combat and either attacked or attacking nearby - or not for long
+    // (DungeonLeadKernel::CombatCounts, EnemyCounts). The per-member clock lives in the leader's
+    // session state; outside a session the plain flag. A member on another map is not scanned (its
+    // units belong to another map's update); it has no enemy here.
     bool CombatWithEnemy(Player* leader, Player* member)
     {
         bool const inCombat = member->IsInCombat();
-        bool const attackedNearby = std::any_of(member->getAttackers().begin(), member->getAttackers().end(),
-            [member](Unit* attacker)
+        bool hasEnemy = false;
+        if (member->GetMap() == leader->GetMap())
+        {
+            auto const near = [member](Unit* unit)
             {
-                bool const sameMap = attacker && attacker->IsInWorld() && attacker->GetMap() == member->GetMap();
-                return DungeonLeadKernel::AttackerCounts(sameMap, sameMap ? member->GetDistance(attacker) : 0.0f);
-            });
-        bool const hasEnemy = attackedNearby || member->GetVictim() != nullptr;
+                bool const sameMap = unit && unit->IsInWorld() && unit->GetMap() == member->GetMap();
+                return DungeonLeadKernel::EnemyCounts(sameMap, sameMap ? member->GetDistance(unit) : 0.0f);
+            };
+            hasEnemy = near(member->GetVictim()) ||
+                       std::any_of(member->getAttackers().begin(), member->getAttackers().end(), near);
+        }
         if (!sDungeonRouteMgr.HasState(leader->GetGUID()))
             return inCombat;
         DungeonLeadState& st = sDungeonRouteMgr.State(leader->GetGUID());

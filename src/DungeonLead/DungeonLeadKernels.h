@@ -377,12 +377,13 @@ namespace DungeonLeadKernel
     // never resume. Whatever is still out there is met on the way.
     constexpr uint32_t kStaleCombatMs = 20000;
 
-    // An attacker counts as an enemy behind the combat flag only within kStaleCombatFarYd of the
-    // member. Dungeon mobs do not leash by distance: a boss that keeps a revived member on its
-    // threat list from the far end of the instance, and never comes, is no fight to wait for.
-    // One that does come is an enemy again once it is this close.
+    // An attacker or the member's own victim counts as an enemy behind the combat flag only on the
+    // member's map and within kStaleCombatFarYd of it. Dungeon mobs do not leash by distance: a
+    // boss that keeps a revived member on its threat list from the far end of the instance, and
+    // never comes, is no fight to wait for. One that does come is an enemy again once it is this
+    // close, and the stale clock starts over.
     constexpr float kStaleCombatFarYd = 60.0f;
-    inline bool AttackerCounts(bool sameMap, float distance)
+    inline bool EnemyCounts(bool sameMap, float distance)
     {
         return sameMap && distance <= kStaleCombatFarYd;
     }
