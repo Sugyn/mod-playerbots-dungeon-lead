@@ -15,6 +15,7 @@ while the module is in alpha.
 - An optional named mob that is not alive in the instance (a rare that did not spawn, or one that already died elsewhere) is skipped at once instead of the leader walking to its spot and waiting there.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 - When the navmesh has no path onward, the leader no longer walks back to the route stop it just came from (it looped there, e.g. at Roogug in Razorfen Kraul); it searches forward instead.
+- A leader held in combat by a creature far away (for example a boss behind a closed door) no longer stands still on its route: the walk, doors, pulls and event help follow the same combat rule as the session's decisions.
 
 ### Changed
 
@@ -23,6 +24,8 @@ while the module is in alpha.
 ### Added
 
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
+- A session whose leader makes no progress and writes no event for five minutes ends with the reason `session_stalled` and a snapshot of its state, instead of running until an outside time limit.
+- A `walk_blocked` telemetry event reports a route walk held up by a combat flag without an enemy, with the creatures that hold it.
 
 ## [0.15.0-alpha] - 2026-11-10
 
