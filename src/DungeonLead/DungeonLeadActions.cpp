@@ -349,6 +349,7 @@ namespace
         }
         p += "}";
 
+        st.lastEventTs = getMSTime();
         JsonLine j;
         j.Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
             .Num("event_seq", uint32_t(++st.eventSeq))
@@ -661,6 +662,72 @@ void DungeonLead::SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st)
                       .Bool("in_combat", bot->IsInCombat())
                       .Raw("far_followers", FarFollowers(bot))
                       .Done());
+}
+
+namespace
+{
+    // Up to three units the leader is in combat with (combat references), nearest first: who keeps
+    // the combat flag up when no enemy is in reach.
+    std::string CombatRefsJson(Player* bot)
+    {
+        std::vector<std::pair<float, Unit*>> refs;
+        for (auto const& [guid, ref] : bot->GetCombatManager().GetPvECombatRefs())
+            if (Unit* other = ref->GetOther(bot))
+                refs.emplace_back(other->IsInMap(bot) ? bot->GetDistance(other) : -1.0f, other);
+        std::sort(refs.begin(), refs.end(), [](auto const& a, auto const& b) { return a.first < b.first; });
+        std::string out = "[";
+        for (std::size_t i = 0; i < refs.size() && i < 3; ++i)
+        {
+            Unit* u = refs[i].second;
+            Creature* c = u->ToCreature();
+            if (i)
+                out += ",";
+            out += DungeonLeadKernel::JsonLine()
+                       .Raw("unit", UnitJson(u))
+                       .Num("distance", refs[i].first)
+                       .Bool("alive", u->IsAlive())
+                       .Bool("evading", c && c->IsInEvadeMode())
+                       .Bool("has_victim", u->GetVictim() != nullptr)
+                       .Done();
+        }
+        return out + "]";
+    }
+}
+
+bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPartySnapshot const& party)
+{
+    Player* bot = botAI->GetBot();
+    uint32 const now = getMSTime();
+
+    // Diagnostics: Travelling, but the leader's combat flag keeps the route walk idle.
+    bool const walkBlocked = st.state == DungeonLeadKernel::LeadState::Travelling && bot->IsAlive() &&
+                             bot->IsInCombat() && !party.facts.selfInCombat;
+    if (!walkBlocked)
+    {
+        st.walkBlockedSince = 0;
+        st.walkBlockedReportTs = 0;
+    }
+    else
+    {
+        if (!st.walkBlockedSince)
+            st.walkBlockedSince = now;
+        uint32 const blockedMs = getMSTimeDiff(st.walkBlockedSince, now);
+        if (DungeonLeadKernel::ReportWalkBlocked(blockedMs, st.walkBlockedReportTs != 0,
+                                                 st.walkBlockedReportTs ? getMSTimeDiff(st.walkBlockedReportTs, now) : 0))
+        {
+            st.walkBlockedReportTs = now;
+            RecordEventV2(botAI, "walk_blocked",
+                          DungeonLeadKernel::JsonLine()
+                              .Str("reason", "combat_flag_without_enemy")
+                              .Num("blocked_ms", blockedMs)
+                              .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
+                              .Num("attackers", uint32_t(bot->getAttackers().size()))
+                              .Bool("has_victim", bot->GetVictim() != nullptr)
+                              .Raw("refs", CombatRefsJson(bot))
+                              .Done());
+        }
+    }
+    return true;
 }
 
 void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st, Group* group)
@@ -1705,6 +1772,8 @@ void DungeonLead::GuardActiveSessions()
             continue;  // session ended (recovery failed)
         if (!DungeonLeadBrain::Update(botAI, party))
             continue;  // session ended (wipe give-up)
+        if (!DungeonLead::WatchSessionLiveness(botAI, st, party))
+            continue;  // session ended (stalled)
         if (!bot->IsAlive())
             continue;  // nothing below applies to a corpse
 

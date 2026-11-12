@@ -1655,6 +1655,10 @@ namespace
         Check(!MasterGatesParty(true, true), "a bot that mod-playerbots made master is not");
         Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
         Check(SessionRequestedByPlayer(false, false), "readiness outside a session waits for the player");
+        Check(!ReportWalkBlocked(29000, false, 0), "a short block is not reported");
+        Check(ReportWalkBlocked(30000, false, 0), "a block of 30 s is reported");
+        Check(!ReportWalkBlocked(120000, true, 60000), "not again within the repeat interval");
+        Check(ReportWalkBlocked(400000, true, 300000), "again after the repeat interval");
         Check(SessionRequestedByPlayer(true, false), "a session a player started keeps its master");
         Check(!SessionRequestedByPlayer(true, true), "an AutoBot Canary session has no master");
     }

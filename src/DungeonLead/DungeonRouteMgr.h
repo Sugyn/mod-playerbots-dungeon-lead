@@ -312,6 +312,9 @@ struct DungeonLeadState
     DungeonLeadKernel::LeadState sampleState = DungeonLeadKernel::LeadState::WaitingReady;
     uint32 sampleStep = 0;
     uint32 escalationDeferSince = 0;  // recovery escalation waiting for the leader to be on the ground
+    uint32 lastEventTs = 0;         // getMSTime() of this session's last v2 event
+    uint32 walkBlockedSince = 0;    // Travelling, but the leader's combat flag keeps the walk idle
+    uint32 walkBlockedReportTs = 0; // last walk_blocked event (0 = none in this episode)
     std::map<uint64, uint8> stragglerBrought;  // times each bot was brought to the leader (recovery escalation)
     ObjectGuid stragglerGuid;          // the straggler whose stillness is timed (recovery, PartyFragmented)
     uint32 stragglerStillSince = 0;    // since when it has not moved (0 = moving / not timed)

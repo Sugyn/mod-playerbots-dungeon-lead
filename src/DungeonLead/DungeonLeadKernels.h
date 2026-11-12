@@ -376,6 +376,18 @@ namespace DungeonLeadKernel
     // never resume. Whatever is still out there is met on the way.
     constexpr uint32_t kStaleCombatMs = 20000;
 
+    // The route walk is gated by the leader's combat flag; the brain by CombatCounts. A flag that
+    // outlives its enemy leaves the brain Travelling and the walk idle. Reported once it lasts
+    // kWalkBlockedReportMs, then again every kWalkBlockedRepeatMs while it lasts.
+    constexpr uint32_t kWalkBlockedReportMs = 30 * 1000;
+    constexpr uint32_t kWalkBlockedRepeatMs = 5 * 60 * 1000;
+    inline bool ReportWalkBlocked(uint32_t msBlocked, bool reportedBefore, uint32_t msSinceReport)
+    {
+        if (msBlocked < kWalkBlockedReportMs)
+            return false;
+        return !reportedBefore || msSinceReport >= kWalkBlockedRepeatMs;
+    }
+
     inline bool CombatCounts(bool inCombat, bool hasEnemy, uint32_t msWithoutEnemy)
     {
         return inCombat && (hasEnemy || msWithoutEnemy < kStaleCombatMs);
