@@ -23,6 +23,7 @@ while the module is in alpha.
 ### Added
 
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
+- When the navmesh ends on a ledge above the objective, the leader jumps down to the floor below (short, survivable drops only) instead of being moved back, and bot members on the ledge follow; a `drop` telemetry event records each jump and each refused one.
 
 ## [0.15.0-alpha] - 2026-11-10
 
