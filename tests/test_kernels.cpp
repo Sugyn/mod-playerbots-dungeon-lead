@@ -1795,8 +1795,61 @@ namespace
     }
 }
 
+void TestDropDecision()
+{
+    DropFacts f;
+    f.pathEndsShort = true;
+    f.endGap = 30.f;
+    f.edgeAboveObjective = 8.f;
+    f.landingFound = true;
+    f.fallHeight = 7.f;
+    f.horizontal = 3.f;
+    f.landingInSight = true;
+    f.landingOnMesh = true;
+    f.gain = 25.f;
+    Check(DecideDrop(f) == DropVerdict::Drop, "a short, clear drop toward the objective is taken");
+    DropFacts g = f;
+    g.pathEndsShort = false;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "a path that reaches the objective needs no drop");
+    g = f;
+    g.edgeAboveObjective = 1.f;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "an objective not below the edge needs no drop");
+    g = f;
+    g.endGap = 3.f;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "a path ending next to the objective needs no drop");
+    g = f;
+    g.attemptsOnStep = kDropMaxAttemptsPerStep;
+    Check(DecideDrop(g) == DropVerdict::OutOfAttempts, "attempts per step are bounded");
+    g = f;
+    g.partyMinHealthPct = 30;
+    Check(DecideDrop(g) == DropVerdict::PartyHurt, "a hurt party does not drop");
+    g = f;
+    g.landingFound = false;
+    Check(DecideDrop(g) == DropVerdict::NoLanding, "no floor below, no drop");
+    g = f;
+    g.fallHeight = 13.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "a fall that would hurt a player is not taken");
+    g = f;
+    g.horizontal = 7.f;
+    Check(DecideDrop(g) == DropVerdict::TooFar, "a landing far from the edge is not taken");
+    g = f;
+    g.landingInSight = false;
+    Check(DecideDrop(g) == DropVerdict::NotInSight, "nothing solid may lie between edge and landing");
+    g = f;
+    g.landingOnMesh = false;
+    Check(DecideDrop(g) == DropVerdict::OffMesh, "the landing must be walkable");
+    g = f;
+    g.gain = 5.f;
+    Check(DecideDrop(g) == DropVerdict::NoGain, "a drop that does not bring the objective closer is not taken");
+    Check(MemberFollowsDrop(30000, 6.f, 4.f), "a member at the edge follows a recent drop");
+    Check(!MemberFollowsDrop(30000, 1.f, 4.f), "a member already below does not");
+    Check(!MemberFollowsDrop(30000, 6.f, 15.f), "a member far from the edge does not");
+    Check(!MemberFollowsDrop(kDropMemberWindowMs + 1, 6.f, 4.f), "an old drop is not followed");
+}
+
 int main()
 {
+    TestDropDecision();
     TestLeadership();
     TestHealer();
     TestReadiness();

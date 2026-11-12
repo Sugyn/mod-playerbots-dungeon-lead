@@ -141,6 +141,10 @@ namespace DungeonLead
                      std::string const& payload = "");
     // A schema v2 event with no CSV row (position_sample: too frequent for the v1 file).
     void RecordEventV2(PlayerbotAI* botAI, std::string const& event, std::string const& payload);
+    // From GuardActiveSessions(): bot members still on the ledge the leader jumped down from follow
+    // it down (DungeonLeadKernel::MemberFollowsDrop), once each per drop.
+    void FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st);
+
     // From GuardActiveSessions(): a position_sample for the leader when the sampling policy says so.
     void SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st);
     // From GuardActiveSessions() (world thread, ~2 s): schema v2 combat evidence - fight_started /
@@ -193,6 +197,12 @@ private:
     // Move along exactly these accepted path points (MotionMaster::MoveSplinePath), with
     // the same "last movement" bookkeeping MovementAction::MoveTo does.
     bool MoveAlongPath(Movement::PointsArray points, float pathLength);
+    // Drop handling (DungeonLeadKernel::DecideDrop): the walk has reached the end of a path that
+    // stops above the objective; jump down to the floor below. TryStartDrop returns true when it
+    // started a jump; AdvanceDrop holds the walk while one is in flight and returns false once it
+    // is over (landed or given up).
+    bool TryStartDrop(DungeonLeadState& st, WorldPosition const& dest);
+    bool AdvanceDrop(DungeonLeadState& st);
     bool WalkDoorStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
     bool WalkUseStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);
     bool WalkTalkStep(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step);

@@ -219,6 +219,17 @@ struct DungeonLeadState
     bool lastGoodSet = false;
     float lastGoodX = 0.f, lastGoodY = 0.f, lastGoodZ = 0.f;
     bool unstuckUsed = false;
+    // Drop handling (MoveRouteTo): a jump in flight from the ledge to a landing point below, the
+    // attempts on the current step, the last refused verdict (logged once), and the last landed drop
+    // for the members to follow (DungeonLead::FollowDrop).
+    bool dropJumping = false;
+    uint32 dropJumpTs = 0;
+    uint8 dropAttempts = 0;
+    uint8 dropLastRefused = 0;
+    float dropFromX = 0.f, dropFromY = 0.f, dropFromZ = 0.f;
+    float dropToX = 0.f, dropToY = 0.f, dropToZ = 0.f;
+    uint32 dropDoneTs = 0;
+    std::vector<ObjectGuid> dropMembersSent;
     // use/talk steps: time spent waiting at the step for its event (route walk ticks only), and
     // the last gossip attempt.
     uint32 eventWaitMs = 0;
@@ -427,6 +438,11 @@ struct DungeonLeadState
         bestDist = 0.f;
         lastGoodSet = false;
         unstuckUsed = false;
+        dropJumping = false;
+        dropAttempts = 0;
+        dropLastRefused = 0;
+        dropDoneTs = 0;
+        dropMembersSent.clear();
         firedAreaTriggers.clear();
         lastPathLogTs = 0;
         noRouteTold = false;
