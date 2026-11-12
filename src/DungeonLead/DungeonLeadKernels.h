@@ -1419,10 +1419,12 @@ namespace DungeonLeadKernel
     constexpr float kDropMinHeight = 2.0f;        // lower is a step the navmesh already covers
     constexpr float kDropMaxHeight = 12.0f;       // onto ground, with a real player in the party
     constexpr float kDropMaxHeightNoFallDamage = 40.0f;  // into water, or a party of bots only
-    constexpr float kDropMinWaterDepth = 2.0f;
+    constexpr float kDropMinWaterDepth = 2.0f;        // a bot is caught by this much water
+    constexpr float kDropMinWaterDepthPlayer = 4.0f;  // a player's client swims before it touches ground
     constexpr float kDropMaxHorizontal = 6.0f;    // from the edge to the landing point
-    constexpr uint32_t kDropProbeEveryMs = 3000;  // the ledge probe (several path searches) at most this often
-    constexpr uint8_t kDropStuckAttempts = 2;     // the walk made no progress this often: any nearby ledge counts
+    constexpr uint32_t kDropProbeEveryMs = 3000;  // the ledge probe (up to 9 path searches) at most this often
+    constexpr int kDropMaxPathProbes = 4;          // landing candidates per probe judged with path searches
+    constexpr uint32_t kDropNoProgressMs = 15000;  // the walk made no progress this long: any nearby ledge counts
     constexpr float kDropMinEndGap = 5.0f;        // the path must end at least this far from the objective
     constexpr float kDropMinGain = 10.0f;         // the landing must bring the objective this much closer
     constexpr uint8_t kDropMinPartyHealthPct = 50;
@@ -1444,14 +1446,14 @@ namespace DungeonLeadKernel
         float edgeAboveObjective = 0.f; // edge height minus objective height
         bool landingFound = false;      // a floor point below the edge
         float fallHeight = 0.f;
-        bool landingInWater = false;    // at least kDropMinWaterDepth of water over the floor there
-        bool realPlayerInParty = true;  // someone who takes fall damage
+        bool landingInWater = false;    // deep enough water over the floor there (DropWaterIsDeep)
+        bool fallDamageInParty = true;  // someone in the party takes fall damage (a real player or a self-bot)
         float horizontal = 0.f;
         bool landingInSight = false;    // nothing solid between the edge and the landing point
         bool landingOnMesh = false;     // the landing point is on the navmesh
         float gain = 0.f;               // objective distance from the edge minus from the landing's path end
         bool belowComplete = false;     // the path from the landing reaches the objective
-        bool connectedBack = false;     // a plain path leads from the landing back up to the edge
+        bool connectedBack = false;     // the landing's floor is linked to the edge, or that is not ruled out
         uint8_t partyMinHealthPct = 100;  // lowest health of the living party members
         uint8_t attemptsOnStep = 0;
     };
@@ -1492,20 +1494,36 @@ namespace DungeonLeadKernel
         return "unknown";
     }
 
-    inline float DropMaxHeight(bool intoWater, bool realPlayerInParty)
+    inline float DropMaxHeight(bool intoWater, bool fallDamageInParty)
     {
-        return intoWater || !realPlayerInParty ? kDropMaxHeightNoFallDamage : kDropMaxHeight;
+        return intoWater || !fallDamageInParty ? kDropMaxHeightNoFallDamage : kDropMaxHeight;
+    }
+
+    inline bool DropWaterIsDeep(float depth, bool fallDamageInParty)
+    {
+        return depth >= (fallDamageInParty ? kDropMinWaterDepthPlayer : kDropMinWaterDepth);
+    }
+
+    // Whether the floor below is ruled out as linked to the edge, from a path searched from the
+    // landing back up to the edge: no path at all, or a partial one that stops below the edge
+    // (the closest the lower floor gets). A complete path is a link; any other partial path may be
+    // a long link Detour ran out of nodes on, which is not ruled out.
+    inline bool DropFloorsSeparate(bool backNoPath, bool backIncomplete, float endToEdge2D, float endBelowEdge)
+    {
+        if (backNoPath)
+            return true;
+        return backIncomplete && endBelowEdge >= kDropMinHeight && endToEdge2D <= kDropMaxHorizontal + 2.0f;
     }
 
     // Where the walk stands at the end of what the navmesh offers toward the objective: no path at
     // all (a hole in the mesh; the path generator then returns a straight shortcut that "ends" at
     // the objective), a partial path that ends where the leader stands, or a partial path the walk
     // keeps failing to make progress on.
-    inline bool DropPathEndsShort(bool noPath, bool incomplete, float leaderToPathEnd2D, uint8_t stuckAttempts)
+    inline bool DropPathEndsShort(bool noPath, bool incomplete, float leaderToPathEnd2D, uint32_t msWithoutProgress)
     {
         if (noPath)
             return true;
-        return incomplete && (leaderToPathEnd2D <= kDropAtPathEnd || stuckAttempts >= kDropStuckAttempts);
+        return incomplete && (leaderToPathEnd2D <= kDropAtPathEnd || msWithoutProgress >= kDropNoProgressMs);
     }
 
     inline DropVerdict DecideDrop(DropFacts const& f)
@@ -1518,7 +1536,7 @@ namespace DungeonLeadKernel
             return DropVerdict::PartyHurt;
         if (!f.landingFound || f.fallHeight < kDropMinHeight)
             return DropVerdict::NoLanding;
-        if (f.fallHeight > DropMaxHeight(f.landingInWater, f.realPlayerInParty))
+        if (f.fallHeight > DropMaxHeight(f.landingInWater, f.fallDamageInParty))
             return DropVerdict::TooHigh;
         if (f.horizontal > kDropMaxHorizontal)
             return DropVerdict::TooFar;
@@ -1533,6 +1551,15 @@ namespace DungeonLeadKernel
         if (f.gain < kDropMinGain)
             return DropVerdict::NoGain;
         return DropVerdict::Drop;
+    }
+
+    // Of two landing candidates: a drop wins; otherwise the refusal that got further through the
+    // checks (DecideDrop checks in enum order) is the one worth reporting.
+    inline bool PreferDropCandidate(DropVerdict current, DropVerdict candidate)
+    {
+        if (current == DropVerdict::Drop)
+            return false;
+        return candidate == DropVerdict::Drop || uint8_t(candidate) > uint8_t(current);
     }
 
     // A member still above the landing (by more than a step) and within reach of the edge the

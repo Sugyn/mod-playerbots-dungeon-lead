@@ -1836,7 +1836,7 @@ void TestDropDecision()
     g.fallHeight = 41.f;
     Check(DecideDrop(g) == DropVerdict::TooHigh, "but not an arbitrary one");
     g = f;
-    g.realPlayerInParty = false;
+    g.fallDamageInParty = false;
     g.fallHeight = 34.f;
     Check(DecideDrop(g) == DropVerdict::Drop, "a party of bots only takes no fall damage");
     g.fallHeight = 41.f;
@@ -1844,7 +1844,29 @@ void TestDropDecision()
     Check(DropPathEndsShort(true, false, 100.f, 0), "no path at all: the navmesh ends here");
     Check(DropPathEndsShort(false, true, 3.f, 0), "a partial path that ends where the leader stands");
     Check(!DropPathEndsShort(false, true, 20.f, 0), "a partial path that still leads on is walked");
-    Check(DropPathEndsShort(false, true, 20.f, kDropStuckAttempts), "unless the walk keeps making no progress on it");
+    Check(DropPathEndsShort(false, true, 20.f, kDropNoProgressMs), "unless the walk keeps making no progress on it");
+    Check(!DropPathEndsShort(false, true, 20.f, kDropNoProgressMs - 1), "a short pause in progress is not that");
+    Check(DropMaxHeight(false, true) == kDropMaxHeight && DropMaxHeight(true, true) == kDropMaxHeightNoFallDamage &&
+              DropMaxHeight(false, false) == kDropMaxHeightNoFallDamage,
+          "the height limit: ground with fall damage, or water / bots only");
+    Check(DropWaterIsDeep(2.f, false) && !DropWaterIsDeep(3.f, true) && DropWaterIsDeep(4.f, true),
+          "a player needs deeper water than a bot");
+    Check(DropFloorsSeparate(true, false, 50.f, 0.f), "no path back up: the floors are separate");
+    Check(DropFloorsSeparate(false, true, 3.f, 30.f), "a partial path that stops below the edge: separate");
+    Check(!DropFloorsSeparate(false, true, 40.f, 30.f), "a partial path that stops elsewhere may be a long link");
+    Check(!DropFloorsSeparate(false, true, 3.f, 0.5f), "a partial path that reaches the edge's level is a link");
+    Check(!DropFloorsSeparate(false, false, 0.f, 0.f), "a complete path is a link");
+    Check(PreferDropCandidate(DropVerdict::NoLanding, DropVerdict::TooHigh), "a refusal that got further is kept");
+    Check(!PreferDropCandidate(DropVerdict::Connected, DropVerdict::TooHigh), "not one that stopped earlier");
+    Check(PreferDropCandidate(DropVerdict::NoGain, DropVerdict::Drop), "a drop always wins");
+    Check(!PreferDropCandidate(DropVerdict::Drop, DropVerdict::NoGain), "and is never replaced");
+    g = f;
+    g.fallDamageInParty = false;
+    g.landingInWater = true;
+    g.fallHeight = 39.f;
+    Check(DecideDrop(g) == DropVerdict::Drop, "bots into water within the long limit");
+    g.fallHeight = 45.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "not beyond it");
     Check(!DropPathEndsShort(false, false, 0.f, 5), "a complete path never ends short");
     g = f;
     g.horizontal = 7.f;

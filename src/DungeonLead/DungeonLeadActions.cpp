@@ -3741,7 +3741,8 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
 {
     using namespace DungeonLeadKernel;
     // A leader on its way is left alone unless the walk keeps making no progress.
-    if (st.dropJumping || (bot->isMoving() && st.stuckAttempts < kDropStuckAttempts))
+    uint32 const msWithoutProgress = st.stuckTs ? GetMSTimeDiffToNow(st.stuckTs) : 0;
+    if (st.dropJumping || (bot->isMoving() && msWithoutProgress < kDropNoProgressMs))
         return false;
     float const dx = dest.GetPositionX(), dy = dest.GetPositionY(), dz = dest.GetPositionZ();
     float const ex = bot->GetPositionX(), ey = bot->GetPositionY(), ez = bot->GetPositionZ();
@@ -3760,19 +3761,19 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
     PathType const pathType = path.GetPathType();
     G3D::Vector3 const end = path.GetActualEndPosition();
     f.pathEndsShort = DropPathEndsShort(pathType & PATHFIND_NOPATH, pathType & PATHFIND_INCOMPLETE,
-                                        bot->GetExactDist2d(end.x, end.y), st.stuckAttempts);
+                                        bot->GetExactDist2d(end.x, end.y), msWithoutProgress);
     if (!f.pathEndsShort)
         return false;
     f.attemptsOnStep = st.dropAttempts;
     f.partyMinHealthPct = PartyMinHealthPct(bot);
-    f.realPlayerInParty = PartyHasFallDamage(bot);
+    f.fallDamageInParty = PartyHasFallDamage(bot);
 
     // Ledge probe: on 12 bearings, the objective's first and then outwards to behind the leader,
     // the first point within kDropMaxHorizontal where the floor (or deep water) lies a drop below.
     // A candidate is judged on the cheap facts first; path searches only for one that passes them,
-    // at most kMaxPathProbes per probe. The first candidate that may drop wins; otherwise the
-    // refusal that got furthest is reported.
-    constexpr int kMaxPathProbes = 4;
+    // for at most kDropMaxPathProbes per probe; when they run out, the next probe starts further
+    // round, so steps nearby cannot hide a ledge behind them. The first candidate that may drop
+    // wins; otherwise the refusal that got furthest is reported.
     DropFacts chosen = f;
     DropVerdict v = DecideDrop(f);  // out of attempts / party hurt need no landing
     float lx = 0.f, ly = 0.f, lz = 0.f;
@@ -3781,8 +3782,10 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
         float const base = std::atan2(dy - ey, dx - ex);
         int pathProbes = 0;
         bool found = false;
-        for (int k = 0; k < 12 && !found; ++k)
+        bool outOfProbes = false;
+        for (int i = 0; i < 12 && !found; ++i)
         {
+            int const k = (i + st.dropProbeOffset) % 12;
             float const angle = base + ((k % 2) ? 1.f : -1.f) * float((k + 1) / 2) * float(M_PI) / 6.f;
             float const hx = std::cos(angle), hy = std::sin(angle);
             for (float s : {1.5f, 3.0f, 4.5f, 6.0f})
@@ -3796,12 +3799,12 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                 c.horizontal = s;
                 float landZ = floorZ;
                 float const waterZ = bot->GetMapWaterOrGroundLevel(px, py, floorZ + 1.0f);
-                if (waterZ > floorZ + 0.5f)
-                {
-                    c.landingInWater = waterZ - floorZ >= kDropMinWaterDepth;
-                    landZ = waterZ;  // jump onto the surface
-                }
-                c.fallHeight = ez - landZ;
+                c.landingInWater = waterZ > floorZ + 0.5f && DropWaterIsDeep(waterZ - floorZ, f.fallDamageInParty);
+                if (c.landingInWater)
+                    landZ = waterZ;  // jump onto the surface; the paths start there too
+                c.fallHeight = ez - floorZ;  // shallow water does not soften the fall
+                if (c.landingInWater)
+                    c.fallHeight = ez - waterZ;
                 // the cheap facts, with the path facts assumed fine
                 DropFacts cheap = c;
                 cheap.landingInSight = cheap.landingOnMesh = cheap.belowComplete = true;
@@ -3813,11 +3816,11 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                     c.landingInSight = bot->GetMap()->isInLineOfSight(ex, ey, ez + 1.5f, px, py, landZ + 1.5f,
                                                                       bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
                                                                       VMAP::ModelIgnoreFlags::Nothing);
-                    if (c.landingInSight && pathProbes < kMaxPathProbes)
+                    if (c.landingInSight && pathProbes < kDropMaxPathProbes)
                     {
                         ++pathProbes;
                         PathGenerator below(bot);
-                        below.CalculatePath(px, py, floorZ, dx, dy, dz, false);
+                        below.CalculatePath(px, py, landZ, dx, dy, dz, false);
                         PathType const bt = below.GetPathType();
                         c.landingOnMesh = !(bt & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH));
                         G3D::Vector3 const be = below.GetActualEndPosition();
@@ -3825,19 +3828,23 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                         c.belowComplete = !(bt & PATHFIND_INCOMPLETE) || belowGap <= kDropBelowArrive;
                         c.gain = f.endGap - belowGap;
                         PathGenerator back(bot);
-                        back.CalculatePath(px, py, floorZ, ex, ey, ez, false);
+                        back.CalculatePath(px, py, landZ, ex, ey, ez, false);
+                        PathType const kt = back.GetPathType();
                         G3D::Vector3 const ke = back.GetActualEndPosition();
-                        c.connectedBack = back.GetPathType() == PATHFIND_NORMAL &&
-                                          (G3D::Vector3(ex, ey, ez) - ke).length() <= 3.0f;
+                        float const kx = ke.x - ex, ky = ke.y - ey;
+                        c.connectedBack = !DropFloorsSeparate(kt & PATHFIND_NOPATH, kt & PATHFIND_INCOMPLETE,
+                                                              std::sqrt(kx * kx + ky * ky), ez - ke.z);
                         cv = DecideDrop(c);
                     }
                     else if (!c.landingInSight)
                         cv = DropVerdict::NotInSight;
                     else
+                    {
+                        outOfProbes = true;
                         break;  // out of path searches for this probe: the bearing is not judged
+                    }
                 }
-                // the refusal that got furthest (later verdicts pass more checks), or the drop
-                if (cv == DropVerdict::Drop || v == DropVerdict::NoLanding || uint8(cv) > uint8(v))
+                if (PreferDropCandidate(v, cv))
                 {
                     v = cv;
                     chosen = c;
@@ -3849,6 +3856,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
                 break;  // the nearest floor below the edge on this bearing
             }
         }
+        st.dropProbeOffset = outOfProbes && !found ? uint8((st.dropProbeOffset + kDropMaxPathProbes) % 12) : 0;
     }
     f = chosen;
 
@@ -3858,7 +3866,7 @@ bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition con
         return j.Str("verdict", ToString(v))
             .Num("fall", f.fallHeight)
             .Bool("water", f.landingInWater)
-            .Bool("fall_damage", f.realPlayerInParty)
+            .Bool("fall_damage", f.fallDamageInParty)
             .Num("horizontal", f.horizontal)
             .Num("gain", f.gain)
             .Num("end_gap", f.endGap)
@@ -3957,21 +3965,47 @@ void DungeonLead::FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st)
         EndDrop(botAI, st, DropLanded(bot, st));
     if (!st.dropDoneTs)
         return;
+    Group* group = bot->GetGroup();
+    if (!group)
+        return;
+    // A member's jump that has not brought it down in time (its own movement can cut a long jump
+    // short, and a bot has no gravity to finish it) ends with the member put on the landing.
+    for (auto& [guid, jumpTs] : st.dropMembersSent)
+    {
+        if (!jumpTs || GetMSTimeDiffToNow(jumpTs) < DungeonLeadKernel::kDropJumpMaxMs)
+            continue;
+        jumpTs = 0;
+        Player* m = ObjectAccessor::FindPlayer(guid);
+        if (!m || !m->IsAlive() || !m->IsInMap(bot) || m->isMoving())
+            continue;
+        float const ground = m->GetMapHeight(m->GetPositionX(), m->GetPositionY(), m->GetPositionZ());
+        bool const inAir = ground <= INVALID_HEIGHT || m->GetPositionZ() - ground > DungeonLeadKernel::kDropLandedZ;
+        if (!inAir || std::fabs(m->GetPositionZ() - st.dropToZ) <= DungeonLeadKernel::kDropLandedZ)
+            continue;
+        RecordEventV2(botAI, "drop",
+                      JsonLine()
+                          .Str("phase", "placed")
+                          .Str("who", m->GetName())
+                          .Num("z", m->GetPositionZ())
+                          .Num("to_z", st.dropToZ)
+                          .Done());
+        m->NearTeleportTo(st.dropToX, st.dropToY, st.dropToZ, m->GetOrientation());
+    }
     uint32 const since = GetMSTimeDiffToNow(st.dropDoneTs);
-    if (since > DungeonLeadKernel::kDropMemberWindowMs)
+    if (since > DungeonLeadKernel::kDropMemberWindowMs + DungeonLeadKernel::kDropJumpMaxMs)
     {
         st.dropDoneTs = 0;
         return;
     }
-    Group* group = bot->GetGroup();
-    if (!group)
-        return;
+    if (since > DungeonLeadKernel::kDropMemberWindowMs)
+        return;  // no new jumps; the last ones may still need placing
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* m = ref->GetSource();
         if (!m || m == bot || !m->IsAlive() || !m->IsInMap(bot) || !DungeonLead::IsBotActor(m))
             continue;
-        if (std::find(st.dropMembersSent.begin(), st.dropMembersSent.end(), m->GetGUID()) != st.dropMembersSent.end())
+        if (std::any_of(st.dropMembersSent.begin(), st.dropMembersSent.end(),
+                        [&](auto const& sent) { return sent.first == m->GetGUID(); }))
             continue;
         float const above = m->GetPositionZ() - st.dropToZ;
         float const toEdge = m->GetExactDist2d(st.dropFromX, st.dropFromY);
@@ -3982,7 +4016,7 @@ void DungeonLead::FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st)
                                           st.dropToY, st.dropToZ + 1.5f, m->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS,
                                           VMAP::ModelIgnoreFlags::Nothing))
             continue;
-        st.dropMembersSent.push_back(m->GetGUID());
+        st.dropMembersSent.emplace_back(m->GetGUID(), getMSTime());
         RecordEventV2(botAI, "drop",
                       JsonLine()
                           .Str("phase", "jump")

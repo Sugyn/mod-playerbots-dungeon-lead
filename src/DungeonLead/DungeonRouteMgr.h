@@ -230,7 +230,8 @@ struct DungeonLeadState
     float dropToX = 0.f, dropToY = 0.f, dropToZ = 0.f;
     uint32 dropDoneTs = 0;
     uint32 dropProbeTs = 0;
-    std::vector<ObjectGuid> dropMembersSent;
+    uint8 dropProbeOffset = 0;  // first bearing of the next ledge probe
+    std::vector<std::pair<ObjectGuid, uint32>> dropMembersSent;  // member, getMSTime() of its jump (0: landed)
     // use/talk steps: time spent waiting at the step for its event (route walk ticks only), and
     // the last gossip attempt.
     uint32 eventWaitMs = 0;
@@ -444,6 +445,7 @@ struct DungeonLeadState
         dropLastRefused = 0;
         dropDoneTs = 0;
         dropProbeTs = 0;
+        dropProbeOffset = 0;
         dropMembersSent.clear();
         firedAreaTriggers.clear();
         lastPathLogTs = 0;
