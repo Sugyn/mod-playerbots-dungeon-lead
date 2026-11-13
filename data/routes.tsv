@@ -7,8 +7,8 @@
 4	-	3	boss	Jergosh the Invoker
 4	-	4	boss	Bazzalan	upper walkway
 # Wailing Caverns (src: warcraft.wiki.gg/Wailing_Caverns)
-# The boss order below matches the 15-step route in dungeon_routes.csv/SQL, resolved against
-# offline path checks. This resolver cannot represent the 6 "* (bridge)" navigation-anchor rows the
+# The boss order below matches the 16-step route in dungeon_routes.csv/SQL, resolved against
+# offline path checks. This resolver cannot represent the 7 "* (bridge)" navigation-anchor rows the
 # route also has (source=derived, entry=1 stock waypoint template, fixed path-checked x/y/z, not a
 # resolvable creature spawn) - resolve_routes.py refuses to overwrite dungeon_routes.csv rather
 # than silently drop them. Do not "fix" that refusal by --force-regenerating from this file;
