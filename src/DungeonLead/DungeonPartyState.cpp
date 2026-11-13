@@ -92,6 +92,7 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
         f.master.alive = master->IsAlive();
         f.master.inGroup = !group || group->IsMember(master->GetGUID());
         f.master.sameMap = master->GetMap() == bot->GetMap();
+        f.master.away = master->isAFK();
         if (f.master.sameMap)
             f.master.distance = bot->GetDistance(master);
         masterGuid = master->GetGUID();

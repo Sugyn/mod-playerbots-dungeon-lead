@@ -710,7 +710,11 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
     bool const boundedWait = DungeonLeadKernel::LivenessBoundedWait(
         DungeonLeadKernel::InteractionActive(st.interactionState), st.interactionIssued, st.eventWaitLastTs != 0,
         st.eventWaitLastTs ? getMSTimeDiff(st.eventWaitLastTs, now) : 0);
-    bool const watched = DungeonLeadKernel::LivenessApplies(st.state, st.paused, boundedWait);
+    // A session waiting for its real player is never ended here (AutoBot Canary sessions have none).
+    bool const waitsForPlayer = DungeonLeadKernel::LivenessWaitsForPlayer(
+        DungeonLeadKernel::SessionRequestedByPlayer(true, st.origin == DungeonLeadSessionOrigin::AutoCanary), party.facts,
+        DungeonPartyState::Policy());
+    bool const watched = DungeonLeadKernel::LivenessApplies(st.state, st.paused, boundedWait, waitsForPlayer);
     float const dx = bot->GetPositionX() - st.livenessX, dy = bot->GetPositionY() - st.livenessY,
                 dz = bot->GetPositionZ() - st.livenessZ;
     if (!watched || !st.livenessMoveTs || dx * dx + dy * dy + dz * dz >= DungeonLeadKernel::kLivenessMoveYd * DungeonLeadKernel::kLivenessMoveYd)

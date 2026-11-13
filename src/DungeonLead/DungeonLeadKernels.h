@@ -192,6 +192,7 @@ namespace DungeonLeadKernel
         bool inGroup = true;    // still a member (true when the leader has no group at all)
         bool sameMap = false;
         float distance = 0.0f;
+        bool away = false;  // marked away (AFK)
     };
 
     struct PartyFacts
@@ -292,6 +293,17 @@ namespace DungeonLeadKernel
         if (!m.assigned || !m.alive)
             return false;
         return !m.sameMap || m.distance > p.leash;
+    }
+
+    // Liveness never ends a session that waits for its real player, however long the player is
+    // gone: a session a player started (not an AutoBot Canary one) whose master holds the party
+    // (dead, offline, out of the group or too far - readiness waits for them) or is marked away.
+    // A session without a real master stays watched.
+    inline bool LivenessWaitsForPlayer(bool sessionRequestedByPlayer, PartyFacts const& f, ReadinessPolicy const& p)
+    {
+        if (!sessionRequestedByPlayer || !f.master.assigned)
+            return false;
+        return MasterUnavailable(f) || MasterTooFar(f, p) || f.master.away;
     }
 
     // ---------------------------------------------------------------------------------------
@@ -551,8 +563,8 @@ namespace DungeonLeadKernel
     // Liveness: a session whose leader neither moved nor produced a progress event for this long is
     // stuck where no other rule sees it; it ends as session_stalled instead of running into an
     // outside timeout. Exempt: what is bounded on its own - fights, wipe recovery, a recovery, a
-    // wait at a door or for a step's event (`boundedWait`) - and a pause or a finished route held
-    // for its player.
+    // wait at a door or for a step's event (`boundedWait`) - a pause, a finished route held for its
+    // player, and a session waiting for its real player (`waitsForPlayer`, LivenessWaitsForPlayer).
     constexpr uint32_t kSessionStallMs = 5 * 60 * 1000;
     constexpr float kLivenessMoveYd = 2.0f;
     // Walk ticks of a step's event wait closer than this belong to one wait (a talk step asks every
@@ -571,9 +583,9 @@ namespace DungeonLeadKernel
     {
         return interactionActive || interactionIssued || (eventWaitTicked && msSinceEventWaitTick < kEventWaitGapMs);
     }
-    inline bool LivenessApplies(LeadState s, bool paused, bool boundedWait)
+    inline bool LivenessApplies(LeadState s, bool paused, bool boundedWait, bool waitsForPlayer = false)
     {
-        if (paused || boundedWait)
+        if (paused || boundedWait || waitsForPlayer)
             return false;
         switch (s)
         {
