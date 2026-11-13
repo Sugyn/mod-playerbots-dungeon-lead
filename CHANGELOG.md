@@ -19,6 +19,7 @@ while the module is in alpha.
 ### Changed
 
 - Wailing Caverns: two waypoints on the lower level lead from the Pythas approach towards Lord Pythas, where the direct path along the upper ledge leaves the navmesh (route update 0001).
+- Wailing Caverns: the first of those two waypoints, which the navmesh does not reach from the Pythas approach, is removed; the lower-path waypoint leads on to Lord Pythas (route update 0002).
 
 ### Added
 
