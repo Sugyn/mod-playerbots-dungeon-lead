@@ -1209,6 +1209,7 @@ namespace
         Check(DoorOnPathCandidate(32.f, 11.f, 25.f), "a door by the destination is checked from afar");
         Check(DoorOnPathCandidate(10.f, 60.f, 25.f), "a door near the leader is checked");
         Check(!DoorOnPathCandidate(40.f, 40.f, 25.f), "a door far from both is not");
+        Check(!DoorOnPathCandidate(70.f, 11.f, 25.f), "a door by the destination is not stopped at from far away");
         // from the walkway above the cells down to the next boss - crosses a cell's plane 8.6 yd
         // from the cell door: not through the door
         Check(!SegmentCrossesDoor(-244.14f, 2134.41f, -0.375f, -237.35f, 2133.24f, -252.09f, 2123.11f, 3.5f),
