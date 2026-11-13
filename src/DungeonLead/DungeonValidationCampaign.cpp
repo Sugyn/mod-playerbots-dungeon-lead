@@ -41,6 +41,7 @@ namespace
     {
         Phase phase = Phase::Idle;
         uint32 lfg = 0;
+        uint32 pass = 0;  // which pass over the dungeon list this run belongs to (1 = first)
         uint32 phaseTs = 0;
         bool started = false;
         bool retried = false;           // this dungeon already went back to the queue once
@@ -58,9 +59,18 @@ namespace
     // found while a wipe recovery teleports it, and releasing the bots then kills a live run.
     constexpr uint32 kEndedConfirmMs = 30000;
 
+    struct Queued
+    {
+        uint32 lfg = 0;
+        uint32 pass = 0;
+    };
+
     bool g_running = false;
-    std::deque<uint32> g_queue;
+    std::deque<Queued> g_queue;
     std::deque<uint32> g_retry;  // dungeons requeued once, in queue order
+    std::vector<uint32> g_list;  // the campaign's dungeon list, queued again on refill
+    uint32 g_passes = 0;         // passes queued so far
+    uint32 g_repeat = 1;         // ValidationRepeat at campaign start (0 = until stopped)
     std::vector<Slot> g_slots;
     uint32 g_total = 0;
     uint32 g_lastTick = 0;
@@ -114,6 +124,31 @@ namespace
         VLog("release " + released);
     }
 
+    void QueuePass()
+    {
+        ++g_passes;
+        for (uint32 id : g_list)
+            g_queue.push_back({id, g_passes});
+    }
+
+    // ValidationRepeat: the list goes back into the queue as soon as the queue runs empty, so a
+    // slot that finishes a run starts the next one instead of idling until the campaign's last
+    // and longest runs end.
+    void RefillQueue()
+    {
+        if (!g_queue.empty() || !DungeonLeadKernel::ValidationRefills(g_passes, g_repeat))
+            return;
+        QueuePass();
+        VLog("refill: pass " + std::to_string(g_passes) + " queued (" + std::to_string(g_list.size()) + " dungeons)");
+        DungeonLead::RecordCampaign(DungeonLeadKernel::JsonLine()
+                                        .Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
+                                        .Str("record", "campaign_refill")
+                                        .Str("campaign_id", g_campaignId)
+                                        .Num("pass", uint32_t(g_passes))
+                                        .Num("runs_done", uint32_t(g_results.size()))
+                                        .Done());
+    }
+
     void TickSlot(size_t i, Slot& slot)
     {
         uint32 const inPhase = GetMSTimeDiffToNow(slot.phaseTs);
@@ -123,7 +158,8 @@ namespace
             case Phase::Idle:
                 if (g_queue.empty())
                     return;
-                slot.lfg = g_queue.front();
+                slot.lfg = g_queue.front().lfg;
+                slot.pass = g_queue.front().pass;
                 g_queue.pop_front();
                 slot.retried = false;
                 if (!g_retry.empty() && g_retry.front() == slot.lfg)
@@ -192,7 +228,7 @@ namespace
                                                     .Num("lfg_id", uint32_t(slot.lfg))
                                                     .Str("reason", "party_never_started")
                                                     .Done());
-                    g_queue.push_back(slot.lfg);
+                    g_queue.push_back({slot.lfg, slot.pass});
                     g_retry.push_back(slot.lfg);
                     Enter(slot, Phase::Release);
                     return;
@@ -204,6 +240,7 @@ namespace
                                                 .Str("record", "run_result")
                                                 .Str("campaign_id", g_campaignId)
                                                 .Num("lfg_id", uint32_t(slot.lfg))
+                                                .Num("pass", uint32_t(slot.pass))
                                                 .Str("tank", slot.bots.empty() ? "" : slot.bots.front())
                                                 .Bool("started", slot.started)
                                                 .Bool("ended", slot.started && gone)
@@ -232,11 +269,17 @@ std::string DungeonLead::StartValidation(std::vector<uint32> const& lfgIds)
     if (DungeonLead::ActiveCanaryCount() > 0)
         return "A test/canary session is still running - wait for it or release it first";
 
-    g_queue.assign(lfgIds.begin(), lfgIds.end());
+    g_list = lfgIds;
+    g_repeat = sDungeonLeadConfig.dungeonLeadValidationRepeat;
+    g_passes = 0;
+    g_queue.clear();
+    QueuePass();
     g_retry.clear();
-    g_total = uint32(lfgIds.size());
+    // runs planned in total; 0 = until stopped
+    g_total = g_repeat ? uint32(lfgIds.size()) * g_repeat : 0;
+    uint32 const planned = g_repeat ? g_total : sDungeonLeadConfig.dungeonLeadValidationParallel;
     uint32 const parallel = std::max<uint32>(
-        1, std::min({sDungeonLeadConfig.dungeonLeadValidationParallel, sDungeonLeadConfig.dungeonLeadCanaryMaxConcurrent, g_total}));
+        1, std::min({sDungeonLeadConfig.dungeonLeadValidationParallel, sDungeonLeadConfig.dungeonLeadCanaryMaxConcurrent, planned}));
     g_slots.assign(parallel, Slot());
     g_results.clear();
     g_lastTick = 0;
@@ -258,19 +301,23 @@ std::string DungeonLead::StartValidation(std::vector<uint32> const& lfgIds)
                                     .Str("validation_profile", kValidationProfile)
                                     .Num("parallelism", uint32_t(parallel))
                                     .Num("timeout_minutes", uint32_t(sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes))
+                                    .Num("repeat", uint32_t(g_repeat))
                                     .Raw("dungeons", "[" + idsJson + "]")
                                     .Raw("context", DungeonLead::ContextJson())
                                     .Done());
-    VLog("campaign start " + g_campaignId + ": " + ids + " (" + std::to_string(parallel) + " at a time)");
-    return "Validation campaign started: " + std::to_string(g_total) + " dungeon(s), " + std::to_string(parallel) +
-           " at a time, " + std::to_string(sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes) + " min per run at most";
+    std::string const passes = g_repeat ? std::to_string(g_repeat) + " pass(es)" : "repeated until stopped";
+    VLog("campaign start " + g_campaignId + ": " + ids + " (" + std::to_string(parallel) + " at a time, " + passes + ")");
+    return "Validation campaign started: " + std::to_string(lfgIds.size()) + " dungeon(s), " + passes + ", " +
+           std::to_string(parallel) + " at a time, " + std::to_string(sDungeonLeadConfig.dungeonLeadCanaryTimeoutMinutes) +
+           " min per run at most";
 }
 
 std::string DungeonLead::StopValidation()
 {
     if (!g_running)
         return "No validation campaign running";
-    VLog("campaign stopped by command, " + std::to_string(g_results.size()) + "/" + std::to_string(g_total) + " done");
+    VLog("campaign stopped by command, " + std::to_string(g_results.size()) + " run(s) done in " +
+         std::to_string(g_passes) + " pass(es)");
     for (Slot& slot : g_slots)
         if (!slot.bots.empty())
             ReleaseSlot(slot);
@@ -286,8 +333,9 @@ std::string DungeonLead::ValidationStatus()
         return g_results.empty() ? "No validation campaign running"
                                  : "Last campaign: " + std::to_string(g_results.size()) + " result(s)";
     static char const* const names[] = {"idle", "acquire", "assemble", "running", "release"};
-    std::string out = "Validation " + std::to_string(g_results.size()) + "/" + std::to_string(g_total) + " done, " +
-                      std::to_string(g_queue.size()) + " queued";
+    std::string out = "Validation " + std::to_string(g_results.size()) + "/" +
+                      (g_total ? std::to_string(g_total) : std::string("until stopped")) + " done, pass " +
+                      std::to_string(g_passes) + ", " + std::to_string(g_queue.size()) + " queued";
     for (size_t i = 0; i < g_slots.size(); ++i)
         if (g_slots[i].phase != Phase::Idle)
             out += " | " + SlotName(i, g_slots[i]) + " " + names[int(g_slots[i].phase)] + " " +
@@ -327,6 +375,7 @@ void DungeonLead::ValidationTick()
         return;
     g_lastTick = getMSTime();
 
+    RefillQueue();
     for (size_t i = 0; i < g_slots.size(); ++i)
         TickSlot(i, g_slots[i]);
 

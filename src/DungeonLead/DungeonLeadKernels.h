@@ -279,6 +279,14 @@ namespace DungeonLeadKernel
         return !hasSession || !autoCanary;
     }
 
+    // Validation campaign refill: when the queue runs empty, the dungeon list is queued again while
+    // passes remain (repeat 0 = until the campaign is stopped or the server restarts). Slots that
+    // finish a run take the next queued dungeon, so the server stays at the campaign's parallelism.
+    inline bool ValidationRefills(uint32_t passesQueued, uint32_t repeat)
+    {
+        return repeat == 0 || passesQueued < repeat;
+    }
+
     inline bool MasterUnavailable(PartyFacts const& f)
     {
         MasterFacts const& m = f.master;

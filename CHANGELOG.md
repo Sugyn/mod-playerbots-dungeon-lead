@@ -23,6 +23,7 @@ while the module is in alpha.
 ### Added
 
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
+- `AiPlayerbot.DungeonLead.ValidationRepeat` runs a validation campaign's dungeon list several times (0 = until stopped): when the queue runs empty the list is queued again, so slots that finish a run keep starting new ones instead of waiting for the campaign's longest runs.
 
 ## [0.15.0-alpha] - 2026-11-10
 

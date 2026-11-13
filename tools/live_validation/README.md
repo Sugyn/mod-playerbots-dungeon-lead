@@ -23,7 +23,9 @@ From the worldserver console or SOAP (GM level):
 ```
 
 Without console or SOAP access, `AiPlayerbot.DungeonLead.ValidationAutostart = "4,6,1,8"` starts
-the same campaign 2 minutes after the world starts.
+the same campaign 2 minutes after the world starts. `AiPlayerbot.DungeonLead.ValidationRepeat`
+queues the list again whenever the queue runs empty (0 = until stopped), so freed slots keep
+starting runs and the server stays at the campaign's parallelism.
 
 `DungeonLeadDebug.log` gets `[DungeonLead][Validation]` lines; each dungeon ends with
 `RESULT lfg=<id> started=<0|1> ended=<0|1> minutes=<n>` and the campaign with

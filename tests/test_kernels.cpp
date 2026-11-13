@@ -1659,6 +1659,16 @@ namespace
         Check(!SessionRequestedByPlayer(true, true), "an AutoBot Canary session has no master");
     }
 
+    void TestValidationRefill()
+    {
+        Check(!ValidationRefills(1, 1), "repeat 1: one pass, no refill");
+        Check(ValidationRefills(1, 3), "repeat 3: the list is queued again after the first pass");
+        Check(ValidationRefills(2, 3), "repeat 3: and after the second");
+        Check(!ValidationRefills(3, 3), "repeat 3: not after the third");
+        Check(ValidationRefills(1, 0), "repeat 0: refill until stopped");
+        Check(ValidationRefills(500, 0), "repeat 0: also after many passes");
+    }
+
     void TestLeaderOffGround()
     {
         Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
@@ -1833,6 +1843,7 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestValidationRefill();
     TestSpawnSpots();
     TestRouteWaypointFallback();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);

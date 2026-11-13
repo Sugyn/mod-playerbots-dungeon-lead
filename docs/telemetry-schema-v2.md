@@ -105,10 +105,12 @@ the process.
 and `campaign_id`:
 
 - `campaign_started`: `started_at`, `commit_sha`, `module_version`, `validation_profile`,
-  `parallelism`, `timeout_minutes`, `dungeons` (LFG ids, in queue order), `context` (run context).
-- `run_result`: `lfg_id`, `tank`, `started`, `ended` (false = the campaign stopped a run that was
-  still active - a campaign failure, not a dungeon one), `minutes`.
+  `parallelism`, `timeout_minutes`, `repeat` (passes over the list, 0 = until stopped), `dungeons`
+  (LFG ids, in queue order), `context` (run context).
+- `run_result`: `lfg_id`, `pass` (1 = first pass over the list), `tank`, `started`, `ended` (false =
+  the campaign stopped a run that was still active - a campaign failure, not a dungeon one), `minutes`.
 - `run_requeued`: `lfg_id`, `reason`.
+- `campaign_refill`: `pass` (the pass just queued), `runs_done`.
 - `campaign_finished`: `finished_at`, `runs`.
 - `heartbeat` (no `campaign_id`; once a minute while the world tick runs): `time` (server local
   time), `active_sessions`, `queued_lines`, `lost_lines` (cumulative lines that left the buffer
