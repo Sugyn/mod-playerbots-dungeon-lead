@@ -3008,12 +3008,13 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
                                      .Num("entry", uint32_t(step.entry))
                                      .Num("spots", uint32_t(step.spawnSpots.size()))
                                      .Done());
-        if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+        if (DungeonRoute const* absentRoute = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
         {
-            DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
-            if (pack.Exists())
-                DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
+            DungeonPack const absentPack = DungeonPacks::ForStep(*absentRoute, st.stepIndex, st.spotIndex);
+            if (absentPack.Exists())
+                DungeonLead::SetPackState(botAI, st, absentPack, DungeonLeadKernel::PackState::Skipped);
         }
+        botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " is not here, moving on");
         DungeonLead::AdvanceStep(st, /*confirmed*/ false);
         return true;
     }
