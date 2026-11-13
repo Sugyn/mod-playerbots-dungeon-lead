@@ -13,6 +13,7 @@ while the module is in alpha.
 - A leader walking where the map height lookup finds no ground (some tunnels) is no longer taken for stuck inside the rock and teleported back during a regroup.
 - A route target that died away from its spot in an earlier fight (it ran for help, or joined a fight as an add) no longer keeps the leader waiting at the empty spot.
 - An optional named mob that is not alive in the instance (a rare that did not spawn, or one that already died elsewhere) is skipped at once instead of the leader walking to its spot and waiting there.
+- Such an absent optional mob is no longer recorded as a failed objective: it has its own outcome (`objective_absent`), takes no failure round and is not listed among the route's skipped stops; the run replay shows it as passed.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 - When the navmesh has no path onward, the leader no longer walks back to the route stop it just came from (it looped there, e.g. at Roogug in Razorfen Kraul); it searches forward instead.
 

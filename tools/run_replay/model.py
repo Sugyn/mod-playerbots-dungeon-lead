@@ -117,6 +117,12 @@ class _Builder:
                     o, src = legacy.objective(p.get("detail", "")), "detail"
                 steps.setdefault(e["step"], {"step": e["step"], "name": o["name"], "events": []})["events"].append(
                     {"run_ms": e["run_ms"], "event": t, **o, "source": src})
+            elif t == "objective_absent":
+                # an optional mob that is not in the instance: its own outcome, not a failure
+                p = e["payload"]
+                steps.setdefault(e["step"], {"step": e["step"], "name": p.get("name"), "events": []})["events"].append(
+                    {"run_ms": e["run_ms"], "event": t, "name": p.get("name"), "requirement": "optional", "why": "absent",
+                     "round": 0, "action": "pass", "source": "payload"})
             elif t == "skip_stuck":
                 steps.setdefault(e["step"], {"step": e["step"], "name": legacy.first_word_name(e["payload"].get("detail", "")),
                                              "events": []})["events"].append(
@@ -366,6 +372,8 @@ class _Builder:
                 self.note(e, "boss", f"Boss {p.get('name')} killed during another step's fight (step {p.get('step')})")
             elif t in ("objective_skipped", "objective_failed", "route_complete", "canary_stop", "stop"):
                 self.note(e, "route" if t != "stop" else "run", f"{t}: {p.get('detail', '')}")
+            elif t == "objective_absent":
+                self.note(e, "route", f"objective_absent: {p.get('name')} is not in the instance - passed")
         for f in fights:
             what = f["objective"] or (f"on the way to {f['on_the_way_to']}" if f["on_the_way_to"] else "unplanned fight")
             adds = f" ({f['add_count']} adds)" if f["add_count"] else ""
