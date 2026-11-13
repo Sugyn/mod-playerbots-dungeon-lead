@@ -1925,6 +1925,14 @@ namespace DungeonLeadKernel
         return std::sqrt(cx * cx + cy * cy);
     }
 
+    // A closed door is checked against the walk's path when it is near the leader or near where the
+    // walk goes: a walk issued from farther away (one long path) passes a door by the destination
+    // before the leader ever comes near it again - and bots are not stopped by closed doors.
+    inline bool DoorOnPathCandidate(float distToLeader, float distToDestination, float range)
+    {
+        return distToLeader <= range || distToDestination <= range;
+    }
+
     // Whether the walk segment A-B goes through a door at P facing `orientation` (a door object's
     // orientation is the normal of its plane, e.g. cell doors lining a wall have their orientation
     // perpendicular to it): A and B on opposite sides of the plane, and the

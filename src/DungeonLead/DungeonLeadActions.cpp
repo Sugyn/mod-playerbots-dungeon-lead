@@ -97,7 +97,7 @@ namespace
              botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects no los")->Get())
             if (GameObject* go = botAI->GetGameObject(guid))
                 if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY &&
-                    bot->GetDistance(go) <= kDoorOnPathRange &&
+                    DungeonLeadKernel::DoorOnPathCandidate(bot->GetDistance(go), go->GetExactDist(x, y, z), kDoorOnPathRange) &&
                     go->GetExactDist(x, y, z) > 4.0f &&  // the destination itself (a cage to use)
                     bot->GetExactDist(go) > 3.0f)        // one the leader stands in can't hold it back
                     doors.push_back(go);

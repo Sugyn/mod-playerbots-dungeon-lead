@@ -1204,6 +1204,11 @@ namespace
               "path along the corridor past a cell door does not cross it");
         Check(!SegmentCrossesDoor(0.f, 0.f, 0.f, -5.f, 20.f, 5.f, 20.f, 6.f),
               "crossing the door's plane far from the door doesn't count");
+        // SM Cathedral: the leader 32 yd from the Secret Door issues one path to Fairbanks, 11 yd
+        // behind the door - the door is checked although the leader is not near it yet
+        Check(DoorOnPathCandidate(32.f, 11.f, 25.f), "a door by the destination is checked from afar");
+        Check(DoorOnPathCandidate(10.f, 60.f, 25.f), "a door near the leader is checked");
+        Check(!DoorOnPathCandidate(40.f, 40.f, 25.f), "a door far from both is not");
         // from the walkway above the cells down to the next boss - crosses a cell's plane 8.6 yd
         // from the cell door: not through the door
         Check(!SegmentCrossesDoor(-244.14f, 2134.41f, -0.375f, -237.35f, 2133.24f, -252.09f, 2123.11f, 3.5f),
