@@ -1542,14 +1542,14 @@ namespace
         auto hasSet = [](std::vector<std::string> on) {
             return [on](char const* n) { return std::find(on.begin(), on.end(), n) != on.end(); };
         };
-        std::vector<std::string> const followerOk = {"follow"};
+        std::vector<std::string> const followerOk = {"follow", "dungeon lead run back"};
         Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet(followerOk)).empty(),
               "follower as set -> no non-combat change");
         Check(StrategyDelta(FollowerCombatStrategies(), hasSet({"cc"})).empty(), "follower combat as set -> no change");
         Check(StrategyDelta(FollowerCombatStrategies(), hasSet({})) == "+cc", "lost only cc -> +cc");
-        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "rpg"})) == "-rpg",
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "dungeon lead run back", "rpg"})) == "-rpg",
               "rpg put back -> -rpg only (follow untouched)");
-        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "loot", "new rpg"})) == "-new rpg,-loot",
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "dungeon lead run back", "loot", "new rpg"})) == "-new rpg,-loot",
               "several conflicts -> exactly those");
         Check(StrategyDelta(LeaderCombatStrategies(), hasSet({"dungeon lead", "cc", "mark rti"})).empty(),
               "leader combat as set -> no change");
@@ -1557,8 +1557,11 @@ namespace
               "leader lost mark rti -> +mark rti");
         Check(StrategyDelta(LeaderNonCombatStrategies(), hasSet({"dungeon lead", "grind"})).empty(),
               "leader non-combat as set -> no change");
-        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot",
-              "session start: the same follower set as before");
+        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot,+dungeon lead run back",
+              "session start: the follower set, with the run back");
+        Check(StrategyAll(DeadStrategies()) == "+dungeon lead run back", "session start: the dead state, leader and followers");
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow"})) == "+dungeon lead run back",
+              "lost the run back -> +dungeon lead run back only");
         Check(StrategyAll(LeaderNonCombatStrategies()) == "+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg,-loot",
               "session start: the same leader non-combat set as before");
         Check(StrategyAll(LeaderCombatStrategies()) == "+dungeon lead,+cc,+mark rti", "session start: leader combat set");
@@ -1845,7 +1848,7 @@ namespace
                   .empty(),
               "warrior leader with dungeon lead + mark rti -> stable, no +cc every pass");
         std::vector<OwnedStrategy> const offStays = AvailableStrategies(FollowerNonCombatStrategies(), [](char const*) { return false; });
-        Check(offStays.size() == FollowerNonCombatStrategies().size() - 1, "off entries always apply; only 'on' ones filtered");
+        Check(offStays.size() == FollowerNonCombatStrategies().size() - 2, "off entries always apply; only 'on' ones filtered");
     }
 
     void TestInteraction()

@@ -95,23 +95,26 @@ float DungeonLeadMultiplier::GetValue(Action* action)
     return 1.0f;
 }
 
-void DungeonLeadDeadStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
+void DungeonLeadRunBackStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
 {
-    multipliers.push_back(new DungeonLeadDeadMultiplier(botAI));
+    multipliers.push_back(new DungeonLeadRunBackMultiplier(botAI));
 }
 
-float DungeonLeadDeadMultiplier::GetValue(Action* action)
+float DungeonLeadRunBackMultiplier::GetValue(Action* action)
 {
     if (!action)
         return 1.0f;
     std::string const name = action->getName();
     bool const release = name == "auto release" || name == "repop";
     bool const corpseRun = name == "find corpse" || name == "spirit healer" || name == "revive from corpse";
-    if (!release && !corpseRun)
+    bool const follow = name == "follow";
+    if (!release && !corpseRun && !follow)
         return 1.0f;
     DungeonLead::RunBackGate const gate = DungeonLead::RunBackGateFor(botAI->GetBot());
     if (!gate.inSession)
         return 1.0f;
+    if (follow)  // the walk order to the leader moves it now
+        return gate.phase == DungeonLeadKernel::RunBackPhase::Rejoining ? 0.0f : 1.0f;
     // The session releases the bot itself, once nobody can resurrect it in place.
     if (release)
         return 0.0f;

@@ -177,7 +177,14 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
     // order to the leader - every bot straggler beyond the hard range, not only the one named - and
     // the leader waits. While a bot is on its way back the recovery holds: the walk has its own
     // bound and its teleport fallback, so the recovery's clocks restart instead of escalating.
-    if (observed == RecoveryReason::PartyFragmented && who && IsBotMember(who) && who->IsAlive())
+    // A bot that keeps falling behind is not walked back for ever: past kMaxStragglerBrought fallback
+    // teleports the recovery runs its course and ends the run (below).
+    auto const broughtOften = [&st](Player* p) {
+        auto const it = st.stragglerBrought.find(p->GetGUID().GetRawValue());
+        return it != st.stragglerBrought.end() && it->second >= DungeonLeadKernel::kMaxStragglerBrought;
+    };
+    bool const giveUpStraggler = observed == RecoveryReason::PartyFragmented && who && IsBotMember(who) && broughtOften(who);
+    if (observed == RecoveryReason::PartyFragmented && who && IsBotMember(who) && who->IsAlive() && !giveUpStraggler)
     {
         DungeonLead::OrderStragglerWalk(botAI, st, who);
         if (Group* group = bot->GetGroup())
@@ -189,7 +196,7 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                     DungeonLead::OrderStragglerWalk(botAI, st, m);
             }
     }
-    if ((observed == RecoveryReason::PartyFragmented || observed == RecoveryReason::MemberDead) &&
+    if ((observed == RecoveryReason::PartyFragmented || observed == RecoveryReason::MemberDead) && !giveUpStraggler &&
         DungeonLead::RunBackActive(st, who))
     {
         st.recovery.reasonSince = now;
@@ -320,28 +327,14 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                                  (who ? who->GetName() : "-");
             if (movable)
             {
-                // A living bot outside the leader's map or offline has no walk back: the fallback.
-                DungeonLead::RecordEvent(botAI, "member_teleport",
-                                         who->GetName() + " " + DungeonLeadKernel::ToString(observed),
-                                         DungeonLeadKernel::JsonLine()
-                                             .Str("who", who->GetName())
-                                             .Str("context", "recovery")
-                                             .Str("reason", observed == RecoveryReason::MemberLost ? "other_map" : "stuck")
-                                             .Num("from_map", who->GetMapId())
-                                             .Num("from_x", who->GetPositionX())
-                                             .Num("from_y", who->GetPositionY())
-                                             .Num("from_z", who->GetPositionZ())
-                                             .Num("to_map", bot->GetMapId())
-                                             .Num("to_x", bot->GetPositionX())
-                                             .Num("to_y", bot->GetPositionY())
-                                             .Num("to_z", bot->GetPositionZ())
-                                             .Num("distance", who->GetMap() == bot->GetMap() ? bot->GetDistance(who) : -1.f)
-                                             .Done());
                 detail += " action=brought_to_leader";
                 if (observed == RecoveryReason::PartyFragmented)
                     ++st.stragglerBrought[who->GetGUID().GetRawValue()];
-                who->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
-                                bot->GetOrientation());
+                // A living bot outside the leader's map has no walk back; a straggler gets here only
+                // after its walk orders: the fallback, with its reason.
+                DungeonLead::TeleportMember(botAI, who, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
+                                            bot->GetPositionZ(), bot->GetOrientation(),
+                                            observed == RecoveryReason::MemberLost ? "other_map" : "escalation", "recovery");
                 // Every other bot straggler too: bringing only the farthest leaves the next one
                 // behind to run the same recovery out.
                 if (observed == RecoveryReason::PartyFragmented)
@@ -354,8 +347,9 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
                                 bot->GetDistance(m) > sDungeonLeadConfig.dungeonLeadPartyHardRange)
                             {
                                 detail += " +" + m->GetName();
-                                m->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
-                                              bot->GetPositionZ(), bot->GetOrientation());
+                                DungeonLead::TeleportMember(botAI, m, bot->GetMapId(), bot->GetPositionX(),
+                                                            bot->GetPositionY(), bot->GetPositionZ(),
+                                                            bot->GetOrientation(), "escalation", "recovery");
                             }
                         }
             }

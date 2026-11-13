@@ -216,6 +216,7 @@ struct DungeonRunBackEntry
     uint32 limitMs = 0;
     float bestDist = -1.f;
     bool pathFound = true;
+    uint32 retryTs = 0;       // last release or teleport attempt (retried at most every few seconds)
 };
 
 // Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
@@ -504,8 +505,9 @@ public:
     uint32 RouteRows();
     std::vector<DungeonRoute const*> GetByMap(uint32 mapId, uint32 difficulty);
 
-    // DungeonLeadState is only ever read/written by its own bot's own AI update (one thread at a
-    // time per bot - dungeon-lead never reaches into another bot's state), so the mutex here only
+    // DungeonLeadState is only ever read/written by its own bot's own AI update and the world-thread
+    // guard pass (never both at once; other bots read what they need from copies, e.g. the run
+    // back's gates in DungeonRunBack.cpp), so the mutex here only
     // needs to protect the `states` map's own structure (insertion via operator[], erasure), not
     // the returned DungeonLeadState& itself. The one real hazard is a caller holding a reference
     // across a ResetState()/ResetRouteProgress() call on the SAME guid from the SAME call chain;

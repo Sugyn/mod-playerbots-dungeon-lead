@@ -7,6 +7,7 @@
  */
 
 #include "DungeonLeadBrain.h"
+#include "DungeonRunBack.h"
 
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
@@ -43,7 +44,7 @@ DungeonLeadObjective DungeonLeadBrain::CurrentObjective(DungeonLeadState const& 
 
     if (st.state == LeadState::WipeRecovery)
     {
-        // stranded members are brought back to the entrance (RecoverStrandedMembers)
+        // the party gathers at the entrance (the run back walks the dead there)
         DungeonRouteMgr::Entrance e;
         o.type = DungeonRouteNodeType::Recovery;
         o.name = "entrance";
@@ -252,14 +253,16 @@ bool DungeonLeadBrain::Update(PlayerbotAI* botAI, DungeonPartySnapshot const& pa
     if (st.state != LeadState::WipeRecovery)
         return true;
 
-    // Upstream's BOT_STATE_DEAD engine does the release / corpse run / resurrect; this only has to
-    // give it enough time (WipeRecoverySeconds) and then give up instead of holding the session
-    // forever. Too many wipes means the party cannot do this dungeon and more recovery will not
-    // change that.
+    // The run back brings the dead leader back (a resurrection in place, or the ghost's walk to the
+    // portal); this only has to give it enough time (WipeRecoverySeconds, plus the run back's own
+    // bounds while the leader is on its way) and then give up instead of holding the session forever.
+    // Too many wipes means the party cannot do this dungeon and more recovery will not change that.
     char const* giveUp = nullptr;
+    uint32 const recoveryMs = sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds * IN_MILLISECONDS +
+                              (DungeonLead::RunBackActive(st, bot) ? DungeonLeadKernel::kRezHoldMaxMs + DungeonLeadKernel::kRunBackMaxMs : 0);
     if (sDungeonLeadConfig.dungeonLeadMaxWipesPerRun && st.wipeCount > sDungeonLeadConfig.dungeonLeadMaxWipesPerRun)
         giveUp = "wipe limit reached";
-    else if (GetMSTimeDiffToNow(st.stateSinceTs) >= sDungeonLeadConfig.dungeonLeadWipeRecoverySeconds * IN_MILLISECONDS)
+    else if (GetMSTimeDiffToNow(st.stateSinceTs) >= recoveryMs)
         giveUp = "recovery timed out";
     if (!giveUp)
         return true;

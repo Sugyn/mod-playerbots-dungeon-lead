@@ -561,7 +561,7 @@ namespace
                 memberAI->ChangeStrategy(nonCombat, BOT_STATE_NON_COMBAT);
             if (!combat.empty())
                 memberAI->ChangeStrategy(combat, BOT_STATE_COMBAT);
-            // "dungeon lead dead": the session decides when a dead bot releases and walks its ghost
+            // "dungeon lead run back": the session decides when a dead bot releases and walks its ghost
             // back to the portal (DungeonLead::RunBackMembers); upstream's corpse run stays off then.
             if (!dead.empty())
                 memberAI->ChangeStrategy(dead, BOT_STATE_DEAD);
@@ -2095,7 +2095,10 @@ void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* mast
     DungeonLead::RecordEvent(botAI, "start",
                               "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no") +
                               " origin=" + ToString(origin),
-                              DungeonLeadKernel::JsonLine().Raw("context", DungeonLead::ContextJson()).Done());
+                              DungeonLeadKernel::JsonLine()
+                                  .Raw("context", DungeonLead::ContextJson())
+                                  .Bool("run_back", true)  // dead and straggling bots come back on foot
+                                  .Done());
 
     // A group leadership change (needed above whenever the tank wasn't already leader) makes every
     // bot in the group receive SMSG_GROUP_LIST, which the base module's WorldPacketHandlerStrategy

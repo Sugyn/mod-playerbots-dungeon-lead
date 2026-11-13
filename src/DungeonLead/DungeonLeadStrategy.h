@@ -37,20 +37,21 @@ public:
 // BOT_STATE_DEAD of every session bot (leader and followers): the session decides when a dead bot
 // releases (a resurrecter in the party may bring it back in place) and walks its ghost from the
 // graveyard to the dungeon's portal. Upstream's own release and corpse run are held off meanwhile;
-// accepting a resurrection and self-resurrection stay untouched.
-class DungeonLeadDeadStrategy : public Strategy
+// accepting a resurrection and self-resurrection stay untouched. Also in the followers'
+// non-combat engine: their own follow waits while the run back walks them to the leader.
+class DungeonLeadRunBackStrategy : public Strategy
 {
 public:
-    DungeonLeadDeadStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
+    DungeonLeadRunBackStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
 
-    std::string const getName() override { return "dungeon lead dead"; }
+    std::string const getName() override { return "dungeon lead run back"; }
     void InitMultipliers(std::vector<Multiplier*>& multipliers) override;
 };
 
-class DungeonLeadDeadMultiplier : public Multiplier
+class DungeonLeadRunBackMultiplier : public Multiplier
 {
 public:
-    DungeonLeadDeadMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "dungeon lead dead") {}
+    DungeonLeadRunBackMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "dungeon lead run back") {}
     float GetValue(Action* action) override;
 };
 

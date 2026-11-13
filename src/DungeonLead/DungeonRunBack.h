@@ -11,6 +11,9 @@
 
 #include "DungeonLeadKernels.h"
 
+#include <cstdint>
+#include <string>
+
 class Player;
 class PlayerbotAI;
 struct DungeonLeadState;
@@ -33,6 +36,11 @@ namespace DungeonLead
     // A walk order for a living bot straggler (recovery, party_fragmented): it walks to the leader,
     // who waits; RunBackMembers drives the walk and its fallback.
     void OrderStragglerWalk(PlayerbotAI* leaderAI, DungeonLeadState& st, Player* who);
+
+    // A party bot moved to (mapId, x, y, z) with a member_teleport event and its reason - the only
+    // way the module moves a party bot. False for a real player (never moved) or a failed teleport.
+    bool TeleportMember(PlayerbotAI* leaderAI, Player* m, uint32_t mapId, float x, float y, float z, float o,
+                        std::string const& reason, char const* context);
 
     // `who` is on its way back (dead, walking to the portal or to the party).
     bool RunBackActive(DungeonLeadState const& st, Player* who);

@@ -530,7 +530,7 @@ namespace DungeonLeadKernel
         Combat,        // someone in the party is fighting
         BossCombat,    // fighting the current boss (its own anchor and leash)
         PostCombat,    // fight over, party not ready yet
-        WipeRecovery,  // leader dead - waiting for upstream's release/corpse-run/res chain
+        WipeRecovery,  // leader dead - waiting for the run back (resurrection in place or the walk back)
         Recovery,      // a bounded recovery is running (DungeonRecoveryController)
         Completing,    // route finished, session held until stopped
         Stopping,      // strategies restored, leader handback not yet observed
@@ -1901,14 +1901,16 @@ namespace DungeonLeadKernel
         return out;
     }
 
-    // What a session sets: followers on "+follow" with RPG, looting, grinding and staying off, and
+    // What a session sets: followers on "+follow" (and the run back's walk orders) with RPG, looting,
+    // grinding and staying off, and
     // "+cc" in combat; the leader on "+dungeon lead,+grind" with the same off-list, and
     // "+dungeon lead,+cc,+mark rti" in combat.
     inline std::vector<OwnedStrategy> const& FollowerNonCombatStrategies()
     {
         static std::vector<OwnedStrategy> const v = {{"follow", true},  {"passive", false}, {"stay", false},
                                                      {"grind", false},  {"dungeon lead", false},
-                                                     {"new rpg", false}, {"rpg", false},     {"loot", false}};
+                                                     {"new rpg", false}, {"rpg", false},     {"loot", false},
+                                                     {"dungeon lead run back", true}};
         return v;
     }
     inline std::vector<OwnedStrategy> const& FollowerCombatStrategies()
@@ -1917,10 +1919,11 @@ namespace DungeonLeadKernel
         return v;
     }
     // Dead state, leader and followers alike: the session's run back decides release and the ghost's
-    // way back (upstream's corpse run stays off while it walks a ghost outside the dungeon).
+    // way back (upstream's corpse run stays off while it walks a ghost outside the dungeon). The
+    // followers' non-combat engine has it too: their own follow waits while a walk order runs.
     inline std::vector<OwnedStrategy> const& DeadStrategies()
     {
-        static std::vector<OwnedStrategy> const v = {{"dungeon lead dead", true}};
+        static std::vector<OwnedStrategy> const v = {{"dungeon lead run back", true}};
         return v;
     }
     inline std::vector<OwnedStrategy> const& LeaderNonCombatStrategies()
@@ -2073,6 +2076,8 @@ namespace DungeonLeadKernel
     constexpr uint32_t kRunBackMinMs = 60000;
     constexpr uint32_t kRunBackMaxMs = 240000;   // a ghost run back to the portal
     constexpr uint32_t kRejoinMaxMs = 300000;    // a walk inside the dungeon to the party
+    // A bot on its way back for longer than all of its bounds together is no longer held for.
+    constexpr uint32_t kRunBackEntryMaxMs = kRezHoldMaxMs + kRunBackMaxMs + kRejoinMaxMs + 60000;
     // Close enough to the portal to step in.
     constexpr float kPortalReachYd = 5.0f;
 

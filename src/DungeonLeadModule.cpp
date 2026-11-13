@@ -72,13 +72,13 @@ namespace
         {
             creators["dungeon lead"] = &dungeon_lead;
             creators["dungeon lead commands"] = &dungeon_lead_commands;
-            creators["dungeon lead dead"] = &dungeon_lead_dead;
+            creators["dungeon lead run back"] = &dungeon_lead_run_back;
         }
 
     private:
         static Strategy* dungeon_lead(PlayerbotAI* botAI) { return new DungeonLeadStrategy(botAI); }
         static Strategy* dungeon_lead_commands(PlayerbotAI* botAI) { return new DungeonLeadCommandsStrategy(botAI); }
-        static Strategy* dungeon_lead_dead(PlayerbotAI* botAI) { return new DungeonLeadDeadStrategy(botAI); }
+        static Strategy* dungeon_lead_run_back(PlayerbotAI* botAI) { return new DungeonLeadRunBackStrategy(botAI); }
     };
 
     class DungeonLeadTriggerContext : public NamedObjectContext<Trigger>
