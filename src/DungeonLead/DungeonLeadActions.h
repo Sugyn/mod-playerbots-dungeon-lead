@@ -88,10 +88,8 @@ namespace DungeonLead
     // wiped).
     void GuardActiveSessions();
 
-    // Teleports party members whom death has stranded on another map back to the instance
-    // entrance, so upstream's own corpse-run/resurrect chain can finish - it handles everything
-    // except pathing to a corpse across a map boundary, which is what releasing inside a
-    // graveyard-less dungeon forces it to attempt. Called from GuardActiveSessions() on every tick
+    // Logs where the dead bots of the party are (dead_member_state, every 15 s per bot) and runs
+    // the run back (DungeonLead::RunBackMembers). Called from GuardActiveSessions() on every pass
     // of an active session.
     void RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& st);
 

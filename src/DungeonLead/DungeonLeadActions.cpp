@@ -23,6 +23,7 @@
 #include "DungeonRecoveryController.h"
 #include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
+#include "DungeonRunBack.h"
 
 #include "Corpse.h"
 #include "Creature.h"
@@ -121,11 +122,6 @@ namespace
             }
         return nullptr;
     }
-    // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
-    // member dying repeatedly isn't yanked every tick, short enough that a real wipe is back on
-    // its feet well inside WipeRecoverySeconds.
-    constexpr uint32 kRecoveryRetrySeconds = 15;
-
     bool RouteHasEntry(PlayerbotAI* botAI, uint32 entry)
     {
         DungeonLeadState& st = sDungeonRouteMgr.State(botAI->GetBot()->GetGUID());
@@ -421,6 +417,7 @@ namespace
                 snap.formation = fv->Save();
         snap.nonCombatStrategies = memberAI->GetStrategies(BOT_STATE_NON_COMBAT);
         snap.combatStrategies = memberAI->GetStrategies(BOT_STATE_COMBAT);
+        snap.deadStrategies = memberAI->GetStrategies(BOT_STATE_DEAD);
         return snap;
     }
 
@@ -449,6 +446,10 @@ namespace
         delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_COMBAT), snap.combatStrategies);
         if (!delta.empty())
             memberAI->ChangeStrategy(delta, BOT_STATE_COMBAT);
+
+        delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_DEAD), snap.deadStrategies);
+        if (!delta.empty())
+            memberAI->ChangeStrategy(delta, BOT_STATE_DEAD);
 
         if (!snap.formation.empty() && memberAI->GetAiObjectContext())
             if (FormationValue* fv = dynamic_cast<FormationValue*>(
@@ -528,6 +529,7 @@ namespace
             auto canCreate = [memberAI](char const* n) { return memberAI->GetAiObjectContext()->GetStrategy(n) != nullptr; };
             std::vector<OwnedStrategy> const followerNonCombat = AvailableStrategies(FollowerNonCombatStrategies(), canCreate);
             std::vector<OwnedStrategy> const followerCombat = AvailableStrategies(FollowerCombatStrategies(), canCreate);
+            std::vector<OwnedStrategy> const followerDead = AvailableStrategies(DeadStrategies(), canCreate);
             bool const formationWiped = fv && fv->Save() != "leader";
             std::string const nonCombat = logWipeDetection
                 ? StrategyDelta(followerNonCombat, has(BOT_STATE_NON_COMBAT))
@@ -535,7 +537,10 @@ namespace
             std::string const combat = logWipeDetection
                 ? StrategyDelta(followerCombat, has(BOT_STATE_COMBAT))
                 : StrategyAll(followerCombat);
-            if (logWipeDetection && (formationWiped || !nonCombat.empty() || !combat.empty()))
+            std::string const dead = logWipeDetection
+                ? StrategyDelta(followerDead, has(BOT_STATE_DEAD))
+                : StrategyAll(followerDead);
+            if (logWipeDetection && (formationWiped || !nonCombat.empty() || !combat.empty() || !dead.empty()))
             {
                 LOG_INFO("playerbots.dungeonlead",
                          "[DungeonLead] follower {} drifted from the session's strategies (external AI "
@@ -556,6 +561,10 @@ namespace
                 memberAI->ChangeStrategy(nonCombat, BOT_STATE_NON_COMBAT);
             if (!combat.empty())
                 memberAI->ChangeStrategy(combat, BOT_STATE_COMBAT);
+            // "dungeon lead dead": the session decides when a dead bot releases and walks its ghost
+            // back to the portal (DungeonLead::RunBackMembers); upstream's corpse run stays off then.
+            if (!dead.empty())
+                memberAI->ChangeStrategy(dead, BOT_STATE_DEAD);
         }
         // The leader's two engines, same per-component check. HasStrategy("dungeon lead", ...) on
         // the non-combat engine mirrors DungeonLead::IsOn exactly (see its declaration).
@@ -566,12 +575,16 @@ namespace
         auto leaderCanCreate = [botAI](char const* n) { return botAI->GetAiObjectContext()->GetStrategy(n) != nullptr; };
         std::vector<OwnedStrategy> const ownNonCombat = AvailableStrategies(LeaderNonCombatStrategies(), leaderCanCreate);
         std::vector<OwnedStrategy> const ownCombat = AvailableStrategies(LeaderCombatStrategies(), leaderCanCreate);
+        std::vector<OwnedStrategy> const ownDead = AvailableStrategies(DeadStrategies(), leaderCanCreate);
         std::string const leaderNonCombat = logWipeDetection
             ? StrategyDelta(ownNonCombat, leaderHas(BOT_STATE_NON_COMBAT))
             : StrategyAll(ownNonCombat);
         std::string const leaderCombat = logWipeDetection
             ? StrategyDelta(ownCombat, leaderHas(BOT_STATE_COMBAT))
             : StrategyAll(ownCombat);
+        std::string const leaderDead = logWipeDetection
+            ? StrategyDelta(ownDead, leaderHas(BOT_STATE_DEAD))
+            : StrategyAll(ownDead);
         if (logWipeDetection && (!leaderNonCombat.empty() || !leaderCombat.empty()))
         {
             LOG_INFO("playerbots.dungeonlead",
@@ -588,6 +601,8 @@ namespace
             botAI->ChangeStrategy(leaderNonCombat, BOT_STATE_NON_COMBAT);
         if (!leaderCombat.empty())
             botAI->ChangeStrategy(leaderCombat, BOT_STATE_COMBAT);
+        if (!leaderDead.empty())
+            botAI->ChangeStrategy(leaderDead, BOT_STATE_DEAD);
     }
 
     // Equivalent to PositionsResetAction::ResetReturnPosition()/ResetStayPosition() (see
@@ -707,9 +722,10 @@ bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st,
     // Liveness first: no progress event and no movement for kSessionStallMs ends the run with a
     // snapshot. Waits that are bounded on their own (a door, a step's event) are exempt, and time
     // spent exempt does not count: both clocks restart while liveness does not apply.
+    // A party bot on its way back is bounded too: its walk has a limit and a fallback.
     bool const boundedWait = DungeonLeadKernel::LivenessBoundedWait(
         DungeonLeadKernel::InteractionActive(st.interactionState), st.interactionIssued, st.eventWaitLastTs != 0,
-        st.eventWaitLastTs ? getMSTimeDiff(st.eventWaitLastTs, now) : 0);
+        st.eventWaitLastTs ? getMSTimeDiff(st.eventWaitLastTs, now) : 0) || DungeonLead::RunBackAny(st);
     // A session waiting for its real player is never ended here (AutoBot Canary sessions have none).
     bool const waitsForPlayer = DungeonLeadKernel::LivenessWaitsForPlayer(
         DungeonLeadKernel::SessionRequestedByPlayer(true, st.origin == DungeonLeadSessionOrigin::AutoCanary), party.facts,
@@ -1475,22 +1491,6 @@ std::string DungeonLead::DiagnosePath(Player* bot, float dx, float dy, float dz)
     return out.str();
 }
 
-// Puts any party member that death has stranded on a different map back onto the instance map, at
-// the route's entrance.
-//
-// Upstream mod-playerbots already implements death recovery in full, on its own engine
-// (BOT_STATE_DEAD, installed unconditionally by AiFactory::AddDefaultDeadStrategies, triggering
-// auto release -> find corpse -> revive from corpse). Nothing in Dungeon Lead blocks it. It has
-// exactly one step it cannot perform: a dungeon with no graveyard of its own releases the ghost to
-// the nearest outdoor graveyard, which is on another map, and FindCorpseAction's MoveTo() towards
-// the corpse cannot path across maps. Teleporting that ghost back onto the instance map lets the
-// bot resurrect by itself. So this does the one impossible step and lets upstream do the rest; it
-// deliberately does not reimplement release, corpse-running or resurrection.
-//
-// The entrance is the aim point rather than the place of death: it is a known-walkable step
-// (the same one RunTestParty teleports parties to), it has no mobs standing on it, and a corpse
-// run from there is an ordinary same-map run that works. recoveryTs throttles this so a member
-// dying over and over cannot be teleported every single tick.
 void DungeonLead::KeepInstanceValid(PlayerbotAI* botAI)
 {
     // AzerothCore marks a player's instance invalid when a group is left or disbanded while inside
@@ -1624,42 +1624,9 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
         }
     }
 
-    if (st.recoveryTs && GetMSTimeDiffToNow(st.recoveryTs) < kRecoveryRetrySeconds * IN_MILLISECONDS)
-        return;
-
-    DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(st.lfgId);
-    if (!route)
-        return;
-    DungeonRouteMgr::Entrance entrance;
-    if (!sDungeonRouteMgr.GetEntrance(*route, entrance))
-        return;
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || !member->IsInWorld())
-            continue;
-        // Bot-only, same restriction DungeonRecoveryController's living-regroup escalation
-        // already applies (its own IsBotMember()) - a real player's corpse release/re-entry is
-        // their own business, never this module's to clear motion on or teleport.
-        if (IsRealPlayer(member) || IsSelfBot(member))
-            continue;
-        // Only the stranded dead. A living member outside the instance is a different problem
-        // (never entered, or walked out) and is not this function's business; a dead member still
-        // inside can reach its own corpse unaided, which is exactly what we want it to do.
-        if (member->IsAlive() || member->GetMapId() == st.mapId)
-            continue;
-
-        LOG_INFO("playerbots.dungeonlead",
-                 "[DungeonLead] {} died and was released to map {} - returning it to the map {} entrance "
-                 "so it can reach its corpse (run={})",
-                 member->GetName(), member->GetMapId(), st.mapId, st.runId);
-        DungeonLead::RecordEvent(botAI, "wipe_recovery_teleport", member->GetName());
-
-        member->GetMotionMaster()->Clear();
-        member->TeleportTo(st.mapId, entrance.x, entrance.y, entrance.z, entrance.o);
-        st.recoveryTs = getMSTime();
-    }
+    // Bringing them back is the run back's (DungeonLead::RunBackMembers): resurrection in place,
+    // release, the ghost's walk to the portal and the walk to the party.
+    DungeonLead::RunBackMembers(botAI, st);
 }
 
 void DungeonLead::GuardActiveSessions()
@@ -1802,11 +1769,8 @@ void DungeonLead::GuardActiveSessions()
         DungeonLead::SamplePosition(botAI, st);
         DungeonLead::ObserveCombatEvidence(botAI, st, group);
 
-        // Pull every party member - leader included - back onto the instance map if death has
-        // stranded them outside it (see RecoverStrandedMembers): upstream's own recovery chain is
-        // fine except for one step it cannot perform (pathing to a corpse on another map). We aim
-        // at the route's entrance rather than where the member died: the entrance is a
-        // known-walkable, mob-free spot, and a corpse run from there is an ordinary same-map run.
+        // Dead party bots - leader included - come back the way players do (DungeonRunBack.cpp):
+        // a resurrection in place, or release, a ghost's walk to the portal and the walk to the party.
         DungeonLead::RecoverStrandedMembers(botAI, st);
         DungeonLead::KeepInstanceValid(botAI);
         DungeonLead::FireAreaTriggers(botAI, st);

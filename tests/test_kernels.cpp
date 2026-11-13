@@ -1744,6 +1744,53 @@ namespace
         Check(!LivenessWaitsForPlayer(true, none, p), "no real master assigned: stays watched");
     }
 
+    void TestRunBack()
+    {
+        RezFacts rez;
+        rez.resurrecterAlive = true;
+        rez.partyInCombat = true;
+        rez.msDead = 10000;
+        Check(HoldRelease(rez), "release held during the fight while a resurrecter lives");
+        rez.msDead = kRezHoldMaxMs;
+        Check(!HoldRelease(rez), "but not past the hold limit");
+        rez.msDead = 10000;
+        rez.partyInCombat = false;
+        rez.msOutOfCombat = 5000;
+        Check(HoldRelease(rez), "after the fight the resurrecter gets its cast window");
+        rez.msOutOfCombat = kRezCastWindowMs;
+        Check(!HoldRelease(rez), "then the bot releases and runs back");
+        rez.msOutOfCombat = 0;
+        rez.resurrecterAlive = false;
+        rez.partyInCombat = true;
+        Check(!HoldRelease(rez), "nobody to resurrect: release at once");
+
+        Check(WalkLimitMs(10.0f, 7.0f, kRunBackMaxMs) == kRunBackMinMs, "a short walk gets the minimum limit");
+        Check(WalkLimitMs(5000.0f, 7.0f, kRunBackMaxMs) == kRunBackMaxMs, "a long walk is capped");
+        uint32_t const mid = WalkLimitMs(700.0f, 7.0f, kRunBackMaxMs);
+        Check(mid > kRunBackMinMs && mid < kRunBackMaxMs, "a middle walk: distance at speed with detour and slack");
+        Check(WalkLimitMs(100.0f, 0.0f, kRejoinMaxMs) == kRejoinMaxMs, "no speed known: the cap");
+
+        WalkFacts w;
+        w.limitMs = 100000;
+        w.msWalking = 30000;
+        w.msSinceProgress = 5000;
+        Check(DecideWalk(w) == WalkFallback::None, "a walk making progress goes on");
+        w.pathFound = false;
+        Check(DecideWalk(w) == WalkFallback::NoPath, "no path: fallback with reason no_path");
+        w.pathFound = true;
+        w.msSinceProgress = kWalkProgressMs;
+        Check(DecideWalk(w) == WalkFallback::Stuck, "no progress: fallback with reason stuck");
+        w.msSinceProgress = 0;
+        w.msWalking = 100000;
+        Check(DecideWalk(w) == WalkFallback::TimeLimit, "past the limit: fallback with reason time_limit");
+        Check(std::string(ToString(WalkFallback::NoPortal)) == "no_portal", "fallback reasons have names");
+
+        Check(RunBackOwnsGhost(RunBackPhase::Released, false), "the run back walks a ghost outside the dungeon");
+        Check(!RunBackOwnsGhost(RunBackPhase::Released, true), "inside, the ghost reclaims its corpse on its own");
+        Check(!RunBackOwnsGhost(RunBackPhase::Held, false), "a held corpse is not walked");
+        Check(Rejoined(30.0f, 40.0f) && !Rejoined(50.0f, 40.0f), "rejoined within the soft range of the leader");
+    }
+
     void TestLeaderOffGround()
     {
         Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
@@ -1918,6 +1965,7 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestRunBack();
     TestLivenessWaitsForPlayer();
     TestSpawnSpots();
     TestRouteWaypointFallback();

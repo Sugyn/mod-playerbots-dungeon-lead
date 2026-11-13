@@ -15,6 +15,7 @@
 #include "MotionMaster.h"
 #include "Creature.h"
 #include "DungeonPartyState.h"
+#include "DungeonRunBack.h"
 #include "Playerbots.h"
 
 void DungeonLeadStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
@@ -92,4 +93,27 @@ float DungeonLeadMultiplier::GetValue(Action* action)
         DungeonLeadKernel::ReadyStatus::Ready)
         return 0.0f;
     return 1.0f;
+}
+
+void DungeonLeadDeadStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
+{
+    multipliers.push_back(new DungeonLeadDeadMultiplier(botAI));
+}
+
+float DungeonLeadDeadMultiplier::GetValue(Action* action)
+{
+    if (!action)
+        return 1.0f;
+    std::string const name = action->getName();
+    bool const release = name == "auto release" || name == "repop";
+    bool const corpseRun = name == "find corpse" || name == "spirit healer" || name == "revive from corpse";
+    if (!release && !corpseRun)
+        return 1.0f;
+    DungeonLead::RunBackGate const gate = DungeonLead::RunBackGateFor(botAI->GetBot());
+    if (!gate.inSession)
+        return 1.0f;
+    // The session releases the bot itself, once nobody can resurrect it in place.
+    if (release)
+        return 0.0f;
+    return DungeonLeadKernel::RunBackOwnsGhost(gate.phase, gate.onInstanceMap) ? 0.0f : 1.0f;
 }
