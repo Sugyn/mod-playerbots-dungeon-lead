@@ -30,15 +30,32 @@ def _dump(obj, out):
         sys.stdout.write(text)
 
 
+def _utc_seconds(stamp):
+    """Seconds since the epoch of an ISO UTC stamp ('...Z', with or without milliseconds), or None."""
+    from datetime import datetime, timezone
+    if not stamp:
+        return None
+    try:
+        return datetime.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return None
+
+
 def campaign_result(m, records):
-    """The campaign's run_result record for this run: same campaign, dungeon and tank."""
+    """The campaign's run_result record for this run: same campaign, dungeon and tank. A campaign that
+    repeats its list can run a dungeon again with the same tank; then the result whose party was sent
+    in closest to the run's start (`run_started_at`) is the one."""
     md = m["metadata"]
     lfg = (md.get("dungeon") or {}).get("lfg_id")
-    for r in records:
-        if (r.get("record") == "run_result" and r.get("campaign_id") == md.get("campaign_id")
-                and r.get("lfg_id") == lfg and r.get("tank") == md.get("leader")):
-            return r
-    return None
+    matches = [r for r in records
+               if r.get("record") == "run_result" and r.get("campaign_id") == md.get("campaign_id")
+               and r.get("lfg_id") == lfg and r.get("tank") == md.get("leader")]
+    if len(matches) < 2:
+        return matches[0] if matches else None
+    start = _utc_seconds(md.get("started_at"))
+    timed = [(abs(_utc_seconds(r.get("run_started_at")) - start), i, r) for i, r in enumerate(matches)
+             if start is not None and _utc_seconds(r.get("run_started_at")) is not None]
+    return min(timed)[2] if timed else matches[0]
 
 
 def main(argv=None):
