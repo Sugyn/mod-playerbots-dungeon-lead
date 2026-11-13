@@ -63,6 +63,7 @@ def _row(m, v, campaign_id, profile, source):
         "dead_target_waits": mt.get("dead_target_waits"), "teleports": mt.get("teleports"), "cc": mt.get("cc"),
         "wipe_to_resume_s": mt.get("wipe_to_resume_s"), "time_split": mt.get("time_split"),
         "backtrack_ratio": mt.get("backtrack_ratio"),
+        "run_back": mt.get("run_back"),
         "evidence": source,
     }
 
@@ -189,10 +190,26 @@ def aggregate(rows):
             vals = [x[k] for x in tp if x[k] is not None]
             by_kind[k] = {"total": sum(vals), "runs_with": sum(1 for v in vals if v)} if vals else None
         totals = [x["total"] for x in tp if x["total"] is not None]
+        members = [x["member"] for x in tp if x.get("member") is not None]
+        reasons = {}
+        for x in tp:
+            for r, n in (x.get("fallback_reasons") or {}).items():
+                reasons[r] = reasons.get(r, 0) + n
         out["teleports"] = {"runs_with_evidence": len(tp), "per_run": _mean(totals),
-                            "leader_per_run": _mean([x["leader"] for x in tp]), "by_kind": by_kind}
+                            "leader_per_run": _mean([x["leader"] for x in tp]), "by_kind": by_kind,
+                            "member_per_run": _mean(members),
+                            "member_median": statistics.median(members) if members else None,
+                            "fallback_reasons": reasons}
     else:
         out["teleports"] = None
+
+    rb = [r["run_back"] for r in done if r.get("run_back") is not None]
+    if rb:
+        out["run_back"] = {"runs_with_evidence": len(rb)}
+        for k in ("held", "resurrected", "released", "walked_to_portal", "walk_orders", "rejoined_walking", "fallbacks"):
+            out["run_back"][k] = sum(x[k] for x in rb)
+    else:
+        out["run_back"] = None
 
     cc = [r["cc"] for r in done if r["cc"] is not None]
     if cc:
@@ -281,19 +298,20 @@ def _line(g):
             f"{_f(g['wipes_per_run'])} | {_f(g['deaths_per_run'])} | "
             f"{'-' if not dw else _f(dw['per_run']) + ' (' + _f(dw['seconds_per_run']) + ' s)'} | "
             f"{'-' if not tp else _f(tp['per_run'])} | "
+            f"{'-' if not tp or tp.get('member_per_run') is None else _f(tp['member_per_run']) + ' (median ' + _f(tp['member_median']) + ')'} | "
             f"{'-' if not cc else _f(cc['landed_ratio']) + ' of ' + str(cc['moons'])} | "
             f"{'-' if not wr else _f(wr['median'])} | {time} | {'-' if not bt else _pct(bt['ratio'])} |")
 
 
 HEADER = ("| Runs | Full route | Minutes median / p90 | Wipes / run | Deaths / run | Dead-target waits / run "
-          "| Teleports / run | CC landed | Wipe to resume (s) | Time | Backtrack |")
+          "| Teleports / run | Member teleports / run | CC landed | Wipe to resume (s) | Time | Backtrack |")
 
 
 def summary_md(s):
     out = ["# Campaign summary", "",
            "Inputs: " + ", ".join(c["campaign_id"] for c in s["campaigns"]) if s["campaigns"] else "Inputs: run directories",
            "", "Per run = per finished run (UNKNOWN runs left out). Minutes over finished runs.", "",
-           "| Dungeon | Context | " + HEADER[2:], "|---|---|" + "---|" * 11]
+           "| Dungeon | Context | " + HEADER[2:], "|---|---|" + "---|" * 12]
     for g in s["groups"]:
         ctx = (g["context_id"] or "unknown") + (" (incomplete)" if (g["context"] or {}).get("incomplete") else "")
         out.append(f"| {g['dungeon']} | {ctx} " + _line(g))
@@ -305,4 +323,15 @@ def summary_md(s):
         ws = g["waiting_share"]
         cells = " | ".join(_pct(ws[w]) if ws else "-" for w in run_metrics.WAIT_REASONS)
         out.append(f"| {g['dungeon']} | {g['context_id'] or ''} | {cells} |")
+    groups = [g for g in s["groups"] + [dict(s["overall"], dungeon="**All**", context_id="")] if g.get("run_back")]
+    if groups:
+        out += ["", "## Run back (dead and straggling party bots)", "",
+                "| Dungeon | Context | Held for a resurrection | Resurrected in place | Released | Walked to the portal "
+                "| Walk orders | Rejoined walking | Fallbacks (teleport) | Fallback reasons |",
+                "|---|---|---|---|---|---|---|---|---|---|"]
+        for g in groups:
+            rb, tp = g["run_back"], g.get("teleports") or {}
+            reasons = ", ".join(f"{k} {v}" for k, v in sorted((tp.get("fallback_reasons") or {}).items())) or "-"
+            out.append(f"| {g['dungeon']} | {g['context_id'] or ''} | {rb['held']} | {rb['resurrected']} | {rb['released']} | "
+                       f"{rb['walked_to_portal']} | {rb['walk_orders']} | {rb['rejoined_walking']} | {rb['fallbacks']} | {reasons} |")
     return "\n".join(out) + "\n"

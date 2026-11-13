@@ -566,6 +566,34 @@ class TeleportTest(unittest.TestCase):
         self.assertIn("leader_teleports=2", v["warnings"])
         self.assertEqual(v["health"], "unhealthy", "the unexpected teleport keeps its existing level")
 
+    def test_member_teleports_and_run_back(self):
+        r = Run()
+        r.ev(0, "start")
+        r.ev(1000, "run_back", {"phase": "held", "who": "Ogan", "ms": 0})
+        r.ev(9000, "run_back", {"phase": "revived", "who": "Ogan", "how": "resurrected", "ms": 8000})
+        r.ev(10000, "run_back", {"phase": "released", "who": "Izl", "ms": 0})
+        r.ev(70000, "run_back", {"phase": "at_entrance", "who": "Izl", "how": "portal", "ms": 60000})
+        r.ev(71000, "run_back", {"phase": "revived", "who": "Izl", "how": "portal", "ms": 61000})
+        r.ev(99000, "run_back", {"phase": "rejoined", "who": "Izl", "how": "walk", "ms": 89000})
+        r.ev(100000, "run_back", {"phase": "walk_order", "who": "Nob", "straggler": True, "ms": 0})
+        r.ev(130000, "run_back", {"phase": "fallback", "who": "Nob", "straggler": True, "reason": "stuck", "ms": 30000})
+        r.ev(130000, "member_teleport", {"who": "Nob", "context": "straggler", "reason": "stuck"})
+        # the same teleport, also recorded by the recovery: not counted twice
+        r.ev(131000, "member_teleport", {"who": "Heal", "context": "recovery", "reason": "other_map"})
+        r.ev(131000, "recovery_escalate", {"detail": "member_lost member=Heal action=brought_to_leader"})
+        m = model.reconstruct(r.events)
+        tp = m["metrics"]["teleports"]
+        self.assertEqual((tp["member_fallback"], tp["member_to_leader"], tp["member"], tp["total"]), (2, 0, 2, 2))
+        self.assertEqual(tp["fallback_reasons"], {"stuck": 1, "other_map": 1})
+        rb = m["metrics"]["run_back"]
+        self.assertEqual({k: rb[k] for k in ("held", "resurrected", "released", "walked_to_portal", "walk_orders",
+                                             "rejoined_walking", "fallbacks", "back_ms_max")},
+                         {"held": 1, "resurrected": 1, "released": 1, "walked_to_portal": 1, "walk_orders": 1,
+                          "rejoined_walking": 1, "fallbacks": 1, "back_ms_max": 89000})
+
+    def test_run_back_unknown_before_it_existed(self):
+        self.assertIsNone(metrics_of_synthetic()["run_back"])
+
     def test_none_is_a_measured_zero(self):
         tp = metrics_of_synthetic()["teleports"]
         self.assertEqual((tp["total"], tp["leader"]), (0, 0))
