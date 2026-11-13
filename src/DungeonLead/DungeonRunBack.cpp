@@ -59,8 +59,9 @@ namespace
     constexpr uint32 kRetryMs = 5000;
     // A leg toward a target the search could not reach: this far along the straight line.
     constexpr float kLegAheadYd = 50.0f;
-    // Marks a short leg in the `path_type` diagnostics.
+    // Marks a short leg / a leg over the ground in the `path_type` diagnostics.
     constexpr uint32 kAheadLegFlag = 0x10000;
+    constexpr uint32 kGroundLegFlag = 0x20000;
 
     // Whether a path search can start where `u` stands: a one-yard probe from it (diagnostics).
     uint32 ProbeType(Unit* u)
@@ -174,7 +175,7 @@ namespace
         // No polygon at a far target (a tile not loaded, or a target just off the mesh): walk toward
         // it in a shorter leg - a point on the ground kLegAheadYd along the straight line.
         float const dist = walker->GetExactDist(x, y, z);
-        if ((path.GetPathType() & PATHFIND_NOT_USING_PATH) && dist > kLegAheadYd && map)
+        if ((path.GetPathType() & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH)) && dist > kLegAheadYd && map)
         {
             float const t = kLegAheadYd / dist;
             float const ax = walker->GetPositionX() + (x - walker->GetPositionX()) * t;
@@ -189,7 +190,7 @@ namespace
             {
                 PathGenerator ahead(walker);
                 ahead.CalculatePath(ax, ay, az);
-                if (!(ahead.GetPathType() & PATHFIND_NOT_USING_PATH))
+                if (!(ahead.GetPathType() & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH)))
                 {
                     e.lastPathType = uint32(ahead.GetPathType()) | kAheadLegFlag;
                     ++e.legs;
@@ -215,6 +216,41 @@ namespace
         Movement::PointsArray points = path.GetPath();
         walker->GetMotionMaster()->Clear();
         walker->GetMotionMaster()->MoveSplinePath(&points);
+        return true;
+    }
+
+    // A ghost outside a dungeon whose navmesh search finds no way (bots may not path over steep
+    // ground or lava): a leg over the ground itself - points every kGroundStepYd along the straight
+    // line, each on the floor found below the last one, as far as the ground goes on without a drop.
+    // A ghost is not seen or attacked, so it may cross what a bot's navmesh filter leaves out.
+    constexpr float kGroundStepYd = 5.0f;
+    constexpr float kGroundLegYd = 60.0f;
+    constexpr float kGroundMaxStepZ = 6.0f;
+    bool GroundLeg(Player* ghost, float x, float y)
+    {
+        Map* map = ghost->GetMap();
+        if (!map || map->Instanceable())
+            return false;
+        float const dx = x - ghost->GetPositionX(), dy = y - ghost->GetPositionY();
+        float const len = std::sqrt(dx * dx + dy * dy);
+        if (len < 1.0f)
+            return false;
+        Movement::PointsArray points;
+        points.push_back(G3D::Vector3(ghost->GetPositionX(), ghost->GetPositionY(), ghost->GetPositionZ()));
+        float lastZ = ghost->GetPositionZ();
+        for (float d = kGroundStepYd; d <= std::min(len, kGroundLegYd); d += kGroundStepYd)
+        {
+            float const px = ghost->GetPositionX() + dx / len * d, py = ghost->GetPositionY() + dy / len * d;
+            float const pz = map->GetHeight(ghost->GetPhaseMask(), px, py, lastZ + kGroundMaxStepZ);
+            if (pz <= INVALID_HEIGHT + 1.f || std::fabs(pz - lastZ) > kGroundMaxStepZ)
+                break;
+            points.push_back(G3D::Vector3(px, py, pz));
+            lastZ = pz;
+        }
+        if (points.size() < 2)
+            return false;
+        ghost->GetMotionMaster()->Clear();
+        ghost->GetMotionMaster()->MoveSplinePath(&points);
         return true;
     }
 
@@ -513,7 +549,16 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                         continue;
                     }
                     if (!OnWalkLeg(m))
+                    {
                         e.pathFound = WalkLeg(m, portal->x, portal->y, portal->z, e);
+                        // no navmesh way, or a partial path that brings it no closer: over the ground
+                        bool const stalled = getMSTimeDiff(e.progressTs, now) >= DungeonLeadKernel::kWalkProgressMs / 2;
+                        if ((!e.pathFound || stalled) && GroundLeg(m, portal->x, portal->y))
+                        {
+                            e.pathFound = true;
+                            e.lastPathType |= kGroundLegFlag;
+                        }
+                    }
                     verdict = Advance(e, dist, now);
                 }
                 if (verdict != WalkFallback::None && RetryDue(e.retryTs, now))
