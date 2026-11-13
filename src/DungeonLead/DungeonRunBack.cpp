@@ -57,6 +57,18 @@ namespace
     };
     // Retries of a release or of a teleport that did not happen, at most this often.
     constexpr uint32 kRetryMs = 5000;
+    // A leg toward a target the search could not reach: this far along the straight line.
+    constexpr float kLegAheadYd = 50.0f;
+    // Marks a short leg in the `path_type` diagnostics.
+    constexpr uint32 kAheadLegFlag = 0x10000;
+
+    // Whether a path search can start where `u` stands: a one-yard probe from it (diagnostics).
+    uint32 ProbeType(Unit* u)
+    {
+        PathGenerator probe(u);
+        probe.CalculatePath(u->GetPositionX() + 1.0f, u->GetPositionY(), u->GetPositionZ());
+        return uint32(probe.GetPathType());
+    }
 
     bool CanResurrect(Player* p)
     {
@@ -159,6 +171,38 @@ namespace
         }
         PathGenerator path(walker);
         path.CalculatePath(x, y, z);
+        // No polygon at a far target (a tile not loaded, or a target just off the mesh): walk toward
+        // it in a shorter leg - a point on the ground kLegAheadYd along the straight line.
+        float const dist = walker->GetExactDist(x, y, z);
+        if ((path.GetPathType() & PATHFIND_NOT_USING_PATH) && dist > kLegAheadYd && map)
+        {
+            float const t = kLegAheadYd / dist;
+            float const ax = walker->GetPositionX() + (x - walker->GetPositionX()) * t;
+            float const ay = walker->GetPositionY() + (y - walker->GetPositionY()) * t;
+            float const az = map->GetHeight(walker->GetPhaseMask(), ax, ay, std::max(walker->GetPositionZ(), z) + 30.f);
+            if (!map->Instanceable())
+            {
+                GridCoord const agc = Acore::ComputeGridCoord(ax, ay);
+                map->GetMapCollisionData().LoadMMapTile(agc.x_coord, agc.y_coord);
+            }
+            if (az > INVALID_HEIGHT + 1.f)
+            {
+                PathGenerator ahead(walker);
+                ahead.CalculatePath(ax, ay, az);
+                if (!(ahead.GetPathType() & PATHFIND_NOT_USING_PATH))
+                {
+                    e.lastPathType = uint32(ahead.GetPathType()) | kAheadLegFlag;
+                    ++e.legs;
+                    if (ahead.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END) ||
+                        ahead.GetPath().size() < 2)
+                        return false;
+                    Movement::PointsArray points = ahead.GetPath();
+                    walker->GetMotionMaster()->Clear();
+                    walker->GetMotionMaster()->MoveSplinePath(&points);
+                    return true;
+                }
+            }
+        }
         e.lastPathType = uint32(path.GetPathType());
         ++e.legs;
         if (path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END))
@@ -480,6 +524,7 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                                      .Num("portal_dist", dist)
                                      .Num("best_dist", e.bestDist)
                                      .Num("path_type", e.lastPathType)
+                                     .Num("walker_probe", ProbeType(m))
                                      .Num("legs", e.legs));
                     if (TeleportMember(leaderAI, m, st.mapId, entrance.x, entrance.y, entrance.z, entrance.o,
                                        DungeonLeadKernel::ToString(verdict), "run_back"))
@@ -575,6 +620,8 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                              .Num("leader_dist", dist)
                              .Num("best_dist", e.bestDist)
                              .Num("path_type", e.lastPathType)
+                             .Num("walker_probe", ProbeType(m))
+                             .Num("leader_probe", ProbeType(leader))
                              .Num("legs", e.legs));
             if (TeleportMember(leaderAI, m, leader->GetMapId(), leader->GetPositionX(), leader->GetPositionY(),
                                leader->GetPositionZ(), leader->GetOrientation(), DungeonLeadKernel::ToString(verdict),
