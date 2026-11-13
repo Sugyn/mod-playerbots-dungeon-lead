@@ -9,7 +9,7 @@ import bisect
 import statistics
 
 METRICS_VERSION = 3  # 2: dead_target_waits, teleports, cc, wipe_to_resume_s, time_split, backtrack_ratio
-# 3: member teleports (member_fallback, member), run_back
+# 3: member teleports (member, fallback_reasons), run_back
 
 # Classes that can cast one of the spells the module plans crowd control with (kCcSpells in
 # DungeonTargetManager.cpp: Polymorph, Banish / Fear, Hibernate / Entangling Roots / Cyclone,
