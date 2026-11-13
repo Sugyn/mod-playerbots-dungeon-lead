@@ -1598,7 +1598,6 @@ namespace
                                      DungeonLeadKernel::JsonLine()
                                          .Str("how", how)
                                          .Str("last_state", DungeonLeadKernel::ToString(st.state))
-                                         .Num("last_step", uint32_t(st.stepIndex))
                                          .Num("ms_gone", msGone)
                                          .Bool("position_known", st.sampleHave)
                                          .Done()));
@@ -1645,7 +1644,7 @@ void DungeonLead::GuardActiveSessions()
         // it.
         if (!bot)
         {
-            DungeonLeadState const& goneSt = sDungeonRouteMgr.State(guid);
+            DungeonLeadState& goneSt = sDungeonRouteMgr.State(guid);
             if (goneSt.state == DungeonLeadKernel::LeadState::Stopping)
             {
                 // run summary was already written when Stop() ran - only the handback was pending
@@ -1661,7 +1660,7 @@ void DungeonLead::GuardActiveSessions()
             // but its followers are not - restore whichever of them are still resolvable before
             // the snapshots disappear with ResetState() below.
             RestoreSessionFollowers(goneSt.memberSnapshots, guid);
-            RecordLeaderDisconnected(guid, sDungeonRouteMgr.State(guid), "hard_disconnect", 0);
+            RecordLeaderDisconnected(guid, goneSt, "hard_disconnect", 0);
             DungeonLead::RecordRunSummary(guid, goneSt.tankName, "hard_disconnect");
             sDungeonRouteMgr.ResetState(guid);
             continue;

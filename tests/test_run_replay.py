@@ -167,7 +167,9 @@ class AnalyzeTest(unittest.TestCase):
              state="combat", step=2, outcome="failed")
         m = model.reconstruct(r.events)
         self.assertEqual(m["result"]["terminal_event"], "leader_disconnected")
-        self.assertNotEqual(analyze_run.verdict(m)["result"], "UNKNOWN")
+        v = analyze_run.verdict(m)
+        self.assertNotEqual(v["result"], "UNKNOWN")
+        self.assertIn("leader_disconnected", v["unhealthy"])
 
     def test_report_renders(self):
         m = model.reconstruct(synthetic())

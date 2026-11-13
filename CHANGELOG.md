@@ -15,7 +15,7 @@ while the module is in alpha.
 - An optional named mob that is not alive in the instance (a rare that did not spawn, or one that already died elsewhere) is skipped at once instead of the leader walking to its spot and waiting there.
 - A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
 - When the navmesh has no path onward, the leader no longer walks back to the route stop it just came from (it looped there, e.g. at Roogug in Razorfen Kraul); it searches forward instead.
-- A run whose leader bot leaves the world (logs out, or stays out of the world) now ends with a `leader_disconnected` terminal event and the failure reason `leader_disconnected`, so its replay shows a failed run instead of a cut record.
+- A run whose leader bot leaves the world (logs out, or stays out of the world) now ends with a `leader_disconnected` terminal event and the failure reason `leader_disconnected`, so its replay shows a run ended by the disconnect (unhealthy: `leader_disconnected`) instead of a cut record.
 
 ### Changed
 

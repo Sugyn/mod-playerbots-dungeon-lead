@@ -367,6 +367,8 @@ class _Builder:
                 self.note(e, "boss", f"Boss {p.get('name')} killed during another step's fight (step {p.get('step')})")
             elif t in ("objective_skipped", "objective_failed", "route_complete", "canary_stop", "stop"):
                 self.note(e, "route" if t != "stop" else "run", f"{t}: {p.get('detail', '')}")
+            elif t == "leader_disconnected":
+                self.note(e, "run", f"Leader left the world ({p.get('how')}) in {p.get('last_state')} - run ended")
         for f in fights:
             what = f["objective"] or (f"on the way to {f['on_the_way_to']}" if f["on_the_way_to"] else "unplanned fight")
             adds = f" ({f['add_count']} adds)" if f["add_count"] else ""

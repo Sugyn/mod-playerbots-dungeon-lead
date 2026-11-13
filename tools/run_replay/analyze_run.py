@@ -175,6 +175,8 @@ def verdict(m, campaign_result=None):
             unhealthy.append(k)
     if mandatory_failed:
         unhealthy.append("mandatory_objective_failed")
+    if res["terminal_event"] == "leader_disconnected":
+        unhealthy.append("leader_disconnected")
     if campaign_result and campaign_result.get("started") and not campaign_result.get("ended"):
         unhealthy.append("campaign_stopped_live_run")
     for k in ("skip_stuck", "leader_unstuck", "strategy_restored"):
