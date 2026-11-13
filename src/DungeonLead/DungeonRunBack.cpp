@@ -31,6 +31,9 @@
 #include "Timer.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#include "GridDefines.h"
+#include "Map.h"
+#include "MapCollisionData.h"
 
 #include <algorithm>
 #include <cmath>
@@ -144,10 +147,20 @@ namespace
 
     // One leg of a walk along the navmesh: the computed points, not a straight line. A long way
     // comes back as a partial path; the next leg starts when this one ends. False = no path at all.
-    bool WalkLeg(Player* walker, float x, float y, float z)
+    // Outside a dungeon only the navmesh tiles of loaded grids exist: the target's tile is loaded
+    // first, or the search finds no polygon there and answers with a straight shortcut.
+    bool WalkLeg(Player* walker, float x, float y, float z, DungeonRunBackEntry& e)
     {
+        Map* map = walker->GetMap();
+        if (map && !map->Instanceable())
+        {
+            GridCoord const gc = Acore::ComputeGridCoord(x, y);
+            map->GetMapCollisionData().LoadMMapTile(gc.x_coord, gc.y_coord);
+        }
         PathGenerator path(walker);
         path.CalculatePath(x, y, z);
+        e.lastPathType = uint32(path.GetPathType());
+        ++e.legs;
         if (path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END))
             return false;
         if (path.GetPath().size() < 2)
@@ -213,6 +226,8 @@ namespace
         e.progressTs = now;
         e.bestDist = -1.f;
         e.pathFound = true;
+        e.legs = 0;
+        e.lastPathType = 0;
         e.limitMs = DungeonLeadKernel::WalkLimitMs(dist, walker->GetSpeed(MOVE_RUN), maxMs);
     }
 
@@ -454,13 +469,18 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                         continue;
                     }
                     if (!OnWalkLeg(m))
-                        e.pathFound = WalkLeg(m, portal->x, portal->y, portal->z);
+                        e.pathFound = WalkLeg(m, portal->x, portal->y, portal->z, e);
                     verdict = Advance(e, dist, now);
                 }
                 if (verdict != WalkFallback::None && RetryDue(e.retryTs, now))
                 {
                     RunBackEvent(leaderAI, m, e, "fallback",
-                                 DungeonLeadKernel::JsonLine().Str("reason", DungeonLeadKernel::ToString(verdict)).Num("portal_dist", dist));
+                                 DungeonLeadKernel::JsonLine()
+                                     .Str("reason", DungeonLeadKernel::ToString(verdict))
+                                     .Num("portal_dist", dist)
+                                     .Num("best_dist", e.bestDist)
+                                     .Num("path_type", e.lastPathType)
+                                     .Num("legs", e.legs));
                     if (TeleportMember(leaderAI, m, st.mapId, entrance.x, entrance.y, entrance.z, entrance.o,
                                        DungeonLeadKernel::ToString(verdict), "run_back"))
                     {
@@ -523,6 +543,7 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
             StartWalk(e, m, leader->GetMap() == m->GetMap() ? m->GetDistance(leader) : 0.f, DungeonLeadKernel::kRejoinMaxMs, now);
         }
         gate.phase = e.phase;
+        gate.walkHasPath = e.pathFound;
         PublishGate(key, gate, now);
 
         // Rejoining: walk to the leader, who waits for the party. A fight pauses it.
@@ -544,12 +565,17 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
             continue;
         }
         if (!OnWalkLeg(m))
-            e.pathFound = WalkLeg(m, leader->GetPositionX(), leader->GetPositionY(), leader->GetPositionZ());
+            e.pathFound = WalkLeg(m, leader->GetPositionX(), leader->GetPositionY(), leader->GetPositionZ(), e);
         WalkFallback const verdict = Advance(e, dist, now);
         if (verdict != WalkFallback::None && RetryDue(e.retryTs, now))
         {
             RunBackEvent(leaderAI, m, e, "fallback",
-                         DungeonLeadKernel::JsonLine().Str("reason", DungeonLeadKernel::ToString(verdict)).Num("leader_dist", dist));
+                         DungeonLeadKernel::JsonLine()
+                             .Str("reason", DungeonLeadKernel::ToString(verdict))
+                             .Num("leader_dist", dist)
+                             .Num("best_dist", e.bestDist)
+                             .Num("path_type", e.lastPathType)
+                             .Num("legs", e.legs));
             if (TeleportMember(leaderAI, m, leader->GetMapId(), leader->GetPositionX(), leader->GetPositionY(),
                                leader->GetPositionZ(), leader->GetOrientation(), DungeonLeadKernel::ToString(verdict),
                                e.straggler ? "straggler" : "rejoin"))

@@ -113,8 +113,11 @@ float DungeonLeadRunBackMultiplier::GetValue(Action* action)
     DungeonLead::RunBackGate const gate = DungeonLead::RunBackGateFor(botAI->GetBot());
     if (!gate.inSession)
         return 1.0f;
-    if (follow)  // the walk order to the leader moves it now
-        return gate.phase == DungeonLeadKernel::RunBackPhase::Rejoining ? 0.0f : 1.0f;
+    if (follow)  // the walk order moves it now - unless it found no navmesh path (follow may still)
+        return (gate.phase == DungeonLeadKernel::RunBackPhase::Rejoining && gate.walkHasPath) ||
+                       DungeonLeadKernel::RunBackOwnsGhost(gate.phase, gate.onInstanceMap)
+                   ? 0.0f
+                   : 1.0f;
     // The session releases the bot itself, once nobody can resurrect it in place.
     if (release)
         return 0.0f;

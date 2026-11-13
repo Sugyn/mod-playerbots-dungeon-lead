@@ -2047,7 +2047,7 @@ namespace DungeonLeadKernel
     // Release is held this long at most for a resurrection in place, and after the party's fight
     // has ended a resurrecter gets this long to cast it.
     constexpr uint32_t kRezHoldMaxMs = 120000;
-    constexpr uint32_t kRezCastWindowMs = 30000;
+    constexpr uint32_t kRezCastWindowMs = 60000;
 
     struct RezFacts
     {
@@ -2123,13 +2123,13 @@ namespace DungeonLeadKernel
         uint32_t msSinceProgress = 0;
     };
 
-    // Whether a walk order has failed and the fallback (teleport) takes over, and why.
+    // Whether a walk order has failed and the fallback (teleport) takes over, and why. A walk without
+    // a navmesh path is not given up at once: the bot's own follow movement may still bring it
+    // closer; only no progress ends it (reason no_path when the last search found no way).
     inline WalkFallback DecideWalk(WalkFacts const& f)
     {
-        if (!f.pathFound)
-            return WalkFallback::NoPath;
         if (f.msSinceProgress >= kWalkProgressMs)
-            return WalkFallback::Stuck;
+            return f.pathFound ? WalkFallback::Stuck : WalkFallback::NoPath;
         if (f.limitMs && f.msWalking >= f.limitMs)
             return WalkFallback::TimeLimit;
         return WalkFallback::None;
@@ -2161,8 +2161,9 @@ namespace DungeonLeadKernel
     // A rejoining member counts as back with the party within this distance of the leader.
     inline bool Rejoined(float distanceToLeader, float softRange) { return distanceToLeader <= softRange; }
 
-    // Upstream's own corpse run (find corpse, spirit healer, revive from corpse) stays off while the
-    // run back walks a ghost outside the dungeon; inside it is free to reclaim its corpse.
+    // Upstream's own corpse run (find corpse, spirit healer, revive from corpse) - and any follow
+    // movement - stays off while the run back walks a ghost outside the dungeon; inside it is free to
+    // reclaim its corpse.
     inline bool RunBackOwnsGhost(RunBackPhase p, bool onInstanceMap)
     {
         return p == RunBackPhase::Released && !onInstanceMap;

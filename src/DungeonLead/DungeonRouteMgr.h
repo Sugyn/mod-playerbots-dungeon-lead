@@ -217,6 +217,8 @@ struct DungeonRunBackEntry
     float bestDist = -1.f;
     bool pathFound = true;
     uint32 retryTs = 0;       // last release or teleport attempt (retried at most every few seconds)
+    uint32 lastPathType = 0;  // PathGenerator type of the last leg searched (diagnostics)
+    uint32 legs = 0;          // legs walked
 };
 
 // Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).

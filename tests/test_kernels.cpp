@@ -1779,7 +1779,9 @@ namespace
         w.msSinceProgress = 5000;
         Check(DecideWalk(w) == WalkFallback::None, "a walk making progress goes on");
         w.pathFound = false;
-        Check(DecideWalk(w) == WalkFallback::NoPath, "no path: fallback with reason no_path");
+        Check(DecideWalk(w) == WalkFallback::None, "no path but progress (its own follow): the walk goes on");
+        w.msSinceProgress = kWalkProgressMs;
+        Check(DecideWalk(w) == WalkFallback::NoPath, "no path and no progress: fallback with reason no_path");
         w.pathFound = true;
         w.msSinceProgress = kWalkProgressMs;
         Check(DecideWalk(w) == WalkFallback::Stuck, "no progress: fallback with reason stuck");

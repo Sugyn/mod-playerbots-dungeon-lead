@@ -26,6 +26,7 @@ namespace DungeonLead
         bool inSession = false;     // a bot of an active session's party
         bool onInstanceMap = false;  // on the session's dungeon map
         DungeonLeadKernel::RunBackPhase phase = DungeonLeadKernel::RunBackPhase::None;
+        bool walkHasPath = true;  // the walk order found a navmesh path (else the bot's own follow may move it)
     };
     RunBackGate RunBackGateFor(Player* bot);
 
