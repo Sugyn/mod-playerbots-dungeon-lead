@@ -296,8 +296,9 @@ namespace DungeonLeadKernel
     }
 
     // Liveness never ends a session that waits for its real player, however long the player is
-    // gone: a session a player started (not an AutoBot Canary one) whose master holds the party
-    // (dead, offline, out of the group or too far - readiness waits for them) or is marked away.
+    // gone: a session a player started (not an AutoBot Canary one) whose master is dead, offline,
+    // out of the group, too far (beyond the leash or on another map) or marked away. While the
+    // exemption lasts the liveness clocks restart, so a stall shows only once the player is back.
     // A session without a real master stays watched.
     inline bool LivenessWaitsForPlayer(bool sessionRequestedByPlayer, PartyFacts const& f, ReadinessPolicy const& p)
     {
