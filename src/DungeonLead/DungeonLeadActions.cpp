@@ -3012,7 +3012,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         {
             DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
             if (pack.Exists())
-                SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
+                DungeonLead::SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
         }
         DungeonLead::AdvanceStep(st, /*confirmed*/ false);
         return true;
