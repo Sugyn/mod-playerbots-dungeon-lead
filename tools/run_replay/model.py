@@ -342,7 +342,8 @@ class _Builder:
         last = self.events[-1]
         oc = last.get("outcome") or {}
         terminal = next((e for e in reversed(self.events)
-                         if e["event_type"] in ("stop", "canary_stop", "test_result", "route_complete")), None)
+                         if e["event_type"] in ("stop", "canary_stop", "test_result", "route_complete",
+                                                "leader_disconnected")), None)
         return {
             "outcome": oc.get("outcome"),
             "failure_domain": oc.get("failure_domain"),

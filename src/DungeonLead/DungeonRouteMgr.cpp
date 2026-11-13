@@ -395,6 +395,7 @@ char const* ToString(DungeonFailureReason v)
         case DungeonFailureReason::UnsupportedEvent:  return "unsupported_event";
         case DungeonFailureReason::InternalInvariant: return "internal_invariant";
         case DungeonFailureReason::RouteDataInvalid:  return "route_data_invalid";
+        case DungeonFailureReason::LeaderDisconnected: return "leader_disconnected";
     }
     return "unknown";
 }

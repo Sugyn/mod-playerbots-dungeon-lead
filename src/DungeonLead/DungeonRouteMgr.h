@@ -123,7 +123,10 @@ enum class DungeonFailureReason : uint8
     // A mandatory-by-kind row (boss/required/door/use/talk) has no resolved position -
     // invalid/unresolved route data, not a live-run failure. See FailObjective's call site in the
     // step-advance skip loop (DungeonLeadNextAction::Execute).
-    RouteDataInvalid
+    RouteDataInvalid,
+    // The leader bot left the world mid-run (logged out, or out of the world past the limit):
+    // the session is closed out from the guard pass, with no AI left to stop it.
+    LeaderDisconnected
 };
 
 char const* ToString(DungeonRunOutcome v);

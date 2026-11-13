@@ -159,6 +159,16 @@ class AnalyzeTest(unittest.TestCase):
         (c,) = [f for f in analyze_run.failures(m, cres)["findings"] if f["classification"] == "CAMPAIGN"]
         self.assertEqual(c["confidence"], "HIGH")
 
+    def test_leader_disconnected_is_a_terminal_event(self):
+        r = Run()
+        r.ev(0, "start", {"detail": "tank=yes origin=auto_canary"})
+        r.ev(5000, "position_sample", {"moving": True, "in_combat": False}, x=10, y=0, step=2)
+        r.ev(9000, "leader_disconnected", {"how": "hard_disconnect", "last_state": "combat", "last_step": 2},
+             state="combat", step=2, outcome="failed")
+        m = model.reconstruct(r.events)
+        self.assertEqual(m["result"]["terminal_event"], "leader_disconnected")
+        self.assertNotEqual(analyze_run.verdict(m)["result"], "UNKNOWN")
+
     def test_report_renders(self):
         m = model.reconstruct(synthetic())
         md = report.timeline_md(m)
