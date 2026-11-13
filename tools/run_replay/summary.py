@@ -208,6 +208,8 @@ def aggregate(rows):
         out["run_back"] = {"runs_with_evidence": len(rb)}
         for k in ("held", "resurrected", "released", "walked_to_portal", "walk_orders", "rejoined_walking", "fallbacks"):
             out["run_back"][k] = sum(x[k] for x in rb)
+        backs = [x["back_ms_max"] for x in rb if x.get("back_ms_max") is not None]
+        out["run_back"]["back_s_max"] = round(max(backs) / 1000.0, 1) if backs else None
     else:
         out["run_back"] = None
 
@@ -327,11 +329,12 @@ def summary_md(s):
     if groups:
         out += ["", "## Run back (dead and straggling party bots)", "",
                 "| Dungeon | Context | Held for a resurrection | Resurrected in place | Released | Walked to the portal "
-                "| Walk orders | Rejoined walking | Fallbacks (teleport) | Fallback reasons |",
-                "|---|---|---|---|---|---|---|---|---|---|"]
+                "| Walk orders | Rejoined walking | Run back fallbacks | Member teleport reasons (all) | Longest death to rejoin (s) |",
+                "|---|---|---|---|---|---|---|---|---|---|---|"]
         for g in groups:
             rb, tp = g["run_back"], g.get("teleports") or {}
             reasons = ", ".join(f"{k} {v}" for k, v in sorted((tp.get("fallback_reasons") or {}).items())) or "-"
             out.append(f"| {g['dungeon']} | {g['context_id'] or ''} | {rb['held']} | {rb['resurrected']} | {rb['released']} | "
-                       f"{rb['walked_to_portal']} | {rb['walk_orders']} | {rb['rejoined_walking']} | {rb['fallbacks']} | {reasons} |")
+                       f"{rb['walked_to_portal']} | {rb['walk_orders']} | {rb['rejoined_walking']} | {rb['fallbacks']} | {reasons} | "
+                       f"{'-' if rb.get('back_s_max') is None else rb['back_s_max']} |")
     return "\n".join(out) + "\n"

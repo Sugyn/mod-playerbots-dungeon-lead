@@ -578,13 +578,15 @@ class TeleportTest(unittest.TestCase):
         r.ev(100000, "run_back", {"phase": "walk_order", "who": "Nob", "straggler": True, "ms": 0})
         r.ev(130000, "run_back", {"phase": "fallback", "who": "Nob", "straggler": True, "reason": "stuck", "ms": 30000})
         r.ev(130000, "member_teleport", {"who": "Nob", "context": "straggler", "reason": "stuck"})
-        # the same teleport, also recorded by the recovery: not counted twice
-        r.ev(131000, "member_teleport", {"who": "Heal", "context": "recovery", "reason": "other_map"})
-        r.ev(131000, "recovery_escalate", {"detail": "member_lost member=Heal action=brought_to_leader"})
+        r.ev(130500, "member_teleport", {"who": "Izl", "context": "run_back", "reason": "no_path"})
+        # the same teleports, also recorded by the recovery escalation: not counted twice
+        r.ev(131000, "member_teleport", {"who": "Heal", "context": "recovery", "reason": "escalation"})
+        r.ev(131000, "member_teleport", {"who": "Ogan", "context": "recovery", "reason": "escalation"})
+        r.ev(131000, "recovery_escalate", {"detail": "party_fragmented member=Heal action=brought_to_leader +Ogan"})
         m = model.reconstruct(r.events)
         tp = m["metrics"]["teleports"]
-        self.assertEqual((tp["member_fallback"], tp["member_to_leader"], tp["member"], tp["total"]), (2, 0, 2, 2))
-        self.assertEqual(tp["fallback_reasons"], {"stuck": 1, "other_map": 1})
+        self.assertEqual((tp["member_to_leader"], tp["wipe_recovery"], tp["member"], tp["total"]), (3, 1, 4, 4))
+        self.assertEqual(tp["fallback_reasons"], {"stuck": 1, "no_path": 1, "escalation": 2})
         rb = m["metrics"]["run_back"]
         self.assertEqual({k: rb[k] for k in ("held", "resurrected", "released", "walked_to_portal", "walk_orders",
                                              "rejoined_walking", "fallbacks", "back_ms_max")},
@@ -593,6 +595,13 @@ class TeleportTest(unittest.TestCase):
 
     def test_run_back_unknown_before_it_existed(self):
         self.assertIsNone(metrics_of_synthetic()["run_back"])
+
+    def test_run_back_measured_zero_when_the_run_has_it(self):
+        r = Run()
+        r.ev(0, "start", {"detail": "tank=yes origin=auto_canary", "run_back": True})
+        r.ev(5000, "route_complete", {"detail": "0 skipped"}, outcome="complete")
+        rb = model.reconstruct(r.events)["metrics"]["run_back"]
+        self.assertEqual((rb["released"], rb["fallbacks"], rb["back_ms_max"]), (0, 0, None))
 
     def test_none_is_a_measured_zero(self):
         tp = metrics_of_synthetic()["teleports"]

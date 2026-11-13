@@ -21,12 +21,11 @@ CC_CLASSES = {3: "hunter", 8: "mage", 9: "warlock", 11: "druid"}
 # pass), not a wait: it adds to the seconds, not to the count.
 DEAD_TARGET_MIN_MS = 1000
 
-TELEPORT_KINDS = ("leader_unstuck", "leader_to_floor", "member_to_leader", "wipe_recovery", "member_fallback",
-                  "unexpected")
+TELEPORT_KINDS = ("leader_unstuck", "leader_to_floor", "member_to_leader", "wipe_recovery", "unexpected")
 LEADER_TELEPORT_KINDS = ("leader_unstuck", "leader_to_floor")
-# Party bots moved: brought to the leader, put back at the entrance after a death, or the fallback
-# of a failed walk (member_teleport).
-MEMBER_TELEPORT_KINDS = ("member_to_leader", "wipe_recovery", "member_fallback")
+# Party bots moved: brought to the leader, or put back at the entrance after a death (from
+# member_teleport, with its reason, where the run records it).
+MEMBER_TELEPORT_KINDS = ("member_to_leader", "wipe_recovery")
 
 TIME_CATEGORIES = ("walking", "pulling", "combat", "boss_prep", "waiting", "recovery", "other")
 WAIT_REASONS = ("healer_mana", "party_range", "eating_drinking", "dead_member", "patrol", "low_health",
@@ -75,7 +74,7 @@ def teleports(m):
     out["member"] = None if any(out[k] is None for k in MEMBER_TELEPORT_KINDS) else sum(out[k] for k in MEMBER_TELEPORT_KINDS)
     out["fallback_reasons"] = {}
     for t in tps:
-        if t["kind"] == "member_fallback":
+        if t.get("source") == "payload" and t["kind"] in MEMBER_TELEPORT_KINDS:
             r = t.get("reason") or "unknown"
             out["fallback_reasons"][r] = out["fallback_reasons"].get(r, 0) + 1
     out["total"] = None if any(out[k] is None for k in TELEPORT_KINDS) else sum(out[k] for k in TELEPORT_KINDS)
@@ -98,7 +97,7 @@ def run_back(m):
             "walk_orders": sum(1 for x in rb if x["phase"] == "walk_order"),
             "rejoined_walking": sum(1 for x in rejoined if x.get("how") == "walk"),
             "fallbacks": sum(1 for x in rb if x["phase"] == "fallback"),
-            "back_ms_max": max((x["ms"] or 0 for x in rejoined), default=None)}
+            "back_ms_max": max((x["ms"] or 0 for x in rejoined if not x["straggler"]), default=None)}
 
 
 def party_cc_classes(m):

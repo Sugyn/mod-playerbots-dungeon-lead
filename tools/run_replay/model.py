@@ -411,8 +411,11 @@ class _Builder:
             if t in ("leader_unstuck", "leader_to_floor"):
                 kind, who = t, [(e.get("leader") or {}).get("name")]
             elif t == "member_teleport":
+                # one party bot moved, with its reason: back to the entrance after a death
+                # (wipe_recovery) or to the leader (member_to_leader) - the same kinds as before
                 p = e["payload"]
-                out.append({"run_ms": e["run_ms"], "kind": "member_fallback", "who": [p.get("who")],
+                kind = "wipe_recovery" if p.get("context") == "run_back" else "member_to_leader"
+                out.append({"run_ms": e["run_ms"], "kind": kind, "who": [p.get("who")],
                             "reason": p.get("reason"), "context": p.get("context"), "detail": d,
                             "position": _pos(e), "source": "payload"})
                 continue
@@ -438,7 +441,8 @@ class _Builder:
         """The run back of dead and straggling party bots (`run_back` events), or None for a run
         recorded before them."""
         evs = [e for e in self.events if e["event_type"] == "run_back"]
-        if not evs and not any(e["event_type"] == "member_teleport" for e in self.events):
+        start = next((e for e in self.events if e["event_type"] == "start"), None)
+        if not evs and not (start and start["payload"].get("run_back")):
             return None
         out = []
         for e in evs:
