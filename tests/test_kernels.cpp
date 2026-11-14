@@ -1805,6 +1805,12 @@ namespace
         Check(FollowWaits(RunBackPhase::Released, false, false), "a ghost walked outside: no follow");
         Check(!FollowWaits(RunBackPhase::Entered, true, true), "inside after the portal: free");
         Check(!FollowWaits(RunBackPhase::None, true, true), "not on its way back: free");
+
+        Check(!TeleportReturnDue(true, true, false, 0), "run back on foot: no teleport return");
+        Check(TeleportReturnDue(false, true, false, 0), "switched off: a dead bot outside is put back at the entrance");
+        Check(!TeleportReturnDue(false, false, false, 0), "switched off: nothing to do for a bot inside");
+        Check(!TeleportReturnDue(false, true, true, kTeleportReturnGapMs - 1), "switched off: not again within the gap");
+        Check(TeleportReturnDue(false, true, true, kTeleportReturnGapMs), "switched off: again after the gap");
     }
 
     void TestValidationRefill()

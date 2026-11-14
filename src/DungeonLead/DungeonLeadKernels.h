@@ -2367,6 +2367,16 @@ namespace DungeonLeadKernel
         return "?";
     }
 
+    // AiPlayerbot.DungeonLead.RunBackOnFoot = 0 turns the run back off: a dead bot released outside
+    // the dungeon is put back at the entrance as before (upstream's own corpse run does the rest),
+    // stragglers are brought by the recovery. The return happens at most every kTeleportReturnGapMs
+    // per session, so a bot dying again and again is not moved every pass.
+    constexpr uint32_t kTeleportReturnGapMs = 15000;
+    inline bool TeleportReturnDue(bool runBackOnFoot, bool deadOutside, bool returnedBefore, uint32_t msSinceLastReturn)
+    {
+        return !runBackOnFoot && deadOutside && (!returnedBefore || msSinceLastReturn >= kTeleportReturnGapMs);
+    }
+
     // A bot's own follow movement waits while the run back walks it: a ghost outside the dungeon, or
     // a walk order to the leader that found a navmesh path (without one, its follow may still bring
     // it closer).

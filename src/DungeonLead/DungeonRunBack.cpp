@@ -584,6 +584,30 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
     uint32 const now = getMSTime();
     g_tileBudget = kTilesPerPass;
 
+    if (!sDungeonLeadConfig.dungeonLeadRunBackOnFoot)
+    {
+        // The run back is switched off: no gates (upstream's release and corpse run work as they
+        // do outside a session), and a dead bot released outside the dungeon is put back at the
+        // entrance, from where its corpse run is a walk inside the dungeon.
+        st.runBack.clear();
+        if (!haveEntrance)
+            return;
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || !m->IsInWorld() || !IsSessionBot(m))
+                continue;
+            bool const deadOutside = !m->IsAlive() && m->GetMapId() != st.mapId;
+            if (!DungeonLeadKernel::TeleportReturnDue(false, deadOutside, st.teleportReturnTs != 0,
+                                                      st.teleportReturnTs ? getMSTimeDiff(st.teleportReturnTs, now) : 0))
+                continue;
+            if (TeleportMember(leaderAI, m, st.mapId, entrance.x, entrance.y, entrance.z, entrance.o, "teleport_return",
+                               "run_back"))
+                st.teleportReturnTs = now;
+        }
+        return;
+    }
+
     // The party's fight: a resurrecter casts only after it, and walks inside wait for it.
     bool partyInCombat = false;
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
