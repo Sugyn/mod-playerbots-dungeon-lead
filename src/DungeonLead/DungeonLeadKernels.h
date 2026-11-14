@@ -2279,10 +2279,9 @@ namespace DungeonLeadKernel
     // (instead of waiting for the healer's own idle logic, which often drinks first): at most every
     // kRezOrderGapMs, never into a fight or over a cast already running.
     constexpr uint32_t kRezOrderGapMs = 6000;
-    inline bool RezOrderDue(bool partyInCombat, bool resurrecterAlive, bool resurrecterCasting, bool orderedBefore,
-                            uint32_t msSinceLastOrder)
+    inline bool RezOrderDue(bool partyInCombat, bool resurrecterCasting, bool orderedBefore, uint32_t msSinceLastOrder)
     {
-        if (partyInCombat || !resurrecterAlive || resurrecterCasting)
+        if (partyInCombat || resurrecterCasting)
             return false;
         return !orderedBefore || msSinceLastOrder >= kRezOrderGapMs;
     }

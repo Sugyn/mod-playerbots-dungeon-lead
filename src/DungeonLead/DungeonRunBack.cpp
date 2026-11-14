@@ -673,15 +673,27 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                     }
                     // the fight is over: the leader tells the resurrecter to bring it back now
                     bool const casting = rezzer && rezzer->IsNonMeleeSpellCast(false);
-                    if (rezzer && DungeonLeadKernel::RezOrderDue(partyInCombat, true, casting, e.rezOrderTs != 0,
-                                                                 e.rezOrderTs ? getMSTimeDiff(e.rezOrderTs, now) : 0))
-                        if (PlayerbotAI* rezAI = GET_PLAYERBOT_AI(rezzer))
+                    PlayerbotAI* rezAI = rezzer ? GET_PLAYERBOT_AI(rezzer) : nullptr;
+                    // only when the resurrecter's own target is this bot (two dead: one at a time;
+                    // a dead real player is never chosen by this order)
+                    Unit* const aimed = rezAI ? rezAI->GetAiObjectContext()->GetValue<Unit*>("party member to resurrect")->Get() : nullptr;
+                    if (rezAI && aimed == m &&
+                        DungeonLeadKernel::RezOrderDue(partyInCombat, casting, e.rezOrderTs != 0,
+                                                       e.rezOrderTs ? getMSTimeDiff(e.rezOrderTs, now) : 0))
+                    {
+                        e.rezOrderTs = now;
+                        bool const accepted = rezAI->DoSpecificAction(ResurrectionAction(rezzer), Event(), /*silent*/ true);
+                        if (!e.rezOrdered)
                         {
-                            if (!e.rezOrderTs)
-                                RunBackEvent(leaderAI, m, e, "rez_order", DungeonLeadKernel::JsonLine().Str("resurrecter", resurrecter));
-                            e.rezOrderTs = now;
-                            rezAI->DoSpecificAction(ResurrectionAction(rezzer), Event(), /*silent*/ true);
+                            e.rezOrdered = true;
+                            RunBackEvent(leaderAI, m, e, "rez_order",
+                                         DungeonLeadKernel::JsonLine()
+                                             .Str("resurrecter", resurrecter)
+                                             .Bool("accepted", accepted)
+                                             .Num("dist", rezzer->GetDistance(m))
+                                             .Bool("los", rezzer->IsWithinLOSInMap(m)));
                         }
+                    }
                 }
                 else
                 {
