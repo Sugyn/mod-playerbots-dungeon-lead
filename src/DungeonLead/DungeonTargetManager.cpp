@@ -14,6 +14,7 @@
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonPack.h"
+#include "DungeonPartyState.h"
 #include "DungeonRouteMgr.h"
 #include "Group.h"
 #include "Log.h"
@@ -116,7 +117,7 @@ bool DungeonTargetManager::Update(PlayerbotAI* botAI)
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
 
     // Where the fight is (or is about to be).
-    bool const inCombat = bot->IsInCombat();
+    bool const inCombat = DungeonPartyState::LeaderFightsEnemy(bot);
     bool haveAnchor = false;
     float ax = 0.f, ay = 0.f, az = 0.f;
     if (inCombat)

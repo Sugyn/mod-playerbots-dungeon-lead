@@ -184,6 +184,13 @@ namespace
         Check(CombatCounts(true, false, 5000), "combat flag, no enemy for a moment: still counts");
         Check(!CombatCounts(true, false, kStaleCombatMs), "combat flag with no enemy for 20 s: stale, the walk resumes");
         Check(!CombatCounts(false, false, 0), "not in combat");
+        Check(EnemyCounts(true, 35.0f), "attacker at range: an enemy");
+        Check(EnemyCounts(true, kStaleCombatFarYd), "attacker at the far bound: still an enemy");
+        Check(!EnemyCounts(true, 285.0f), "boss holding a revived member from across the instance: no enemy");
+        Check(!EnemyCounts(false, 0.0f), "unit on another map: no enemy");
+        Check(!CombatCounts(true, EnemyCounts(true, 285.0f), kStaleCombatMs), "held from 285 yd for 20 s: stale, the party walks on");
+        Check(CombatCounts(true, EnemyCounts(true, 285.0f), 5000), "held from 285 yd for a moment: still counts");
+        Check(CombatCounts(true, EnemyCounts(true, 40.0f), kStaleCombatMs), "attacker back within 40 yd: a fight again");
 
         Check(Walk(Party()) == ReadyStatus::Ready, "healthy party -> Ready");
 
@@ -1655,8 +1662,86 @@ namespace
         Check(!MasterGatesParty(true, true), "a bot that mod-playerbots made master is not");
         Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
         Check(SessionRequestedByPlayer(false, false), "readiness outside a session waits for the player");
+        Check(!ReportWalkBlocked(29000, false, 0), "a short block is not reported");
+        Check(ReportWalkBlocked(30000, false, 0), "a block of 30 s is reported");
+        Check(!ReportWalkBlocked(120000, true, 60000), "not again within the repeat interval");
+        Check(ReportWalkBlocked(400000, true, 300000), "again after the repeat interval");
+        Check(!SessionStalled(299999, 400000), "an event within 5 min keeps the session alive");
+        Check(!SessionStalled(400000, 299999), "movement within 5 min keeps the session alive");
+        Check(SessionStalled(300000, 300000), "5 min without event and movement is a stall");
+        Check(LivenessApplies(LeadState::Travelling, false, false), "liveness watches a travelling session");
+        Check(LivenessApplies(LeadState::WaitingReady, false, false), "and a waiting one");
+        Check(!LivenessApplies(LeadState::Travelling, true, false), "not a paused one");
+        Check(LivenessApplies(LeadState::PrePull, false, false) && LivenessApplies(LeadState::Pulling, false, false),
+              "it watches pull preparation and the pull itself");
+        Check(LivenessApplies(LeadState::PostCombat, false, false) && LivenessApplies(LeadState::BossPrep, false, false),
+              "and the post-combat gate and boss preparation");
+        Check(!LivenessApplies(LeadState::Starting, false, false) && !LivenessApplies(LeadState::Stopping, false, false),
+              "leadership start and hand-back have their own limits");
+        Check(!LivenessApplies(LeadState::Travelling, false, true), "a bounded wait is exempt");
+        Check(LivenessBoundedWait(true, false, false, 0), "an interaction in progress is a bounded wait");
+        Check(LivenessBoundedWait(false, true, false, 0), "so is an issued interaction");
+        Check(LivenessBoundedWait(false, false, true, 14999), "so is an event wait that ticked just now");
+        Check(!LivenessBoundedWait(false, false, true, 15000), "an event wait that stopped ticking is not");
+        Check(!LivenessBoundedWait(false, false, false, 0), "a finished interaction is no wait at all");
+        Check(LivenessCountsEvent("state_transition") && LivenessCountsEvent("mob_died"), "progress events count");
+        Check(!LivenessCountsEvent("position_sample") && !LivenessCountsEvent("walk_blocked") &&
+                  !LivenessCountsEvent("path_decision"),
+              "samples, diagnostics and re-pathing in place do not");
+        Check(!LivenessApplies(LeadState::Travelling, false, true), "not a wait at a door or for an event");
+        Check(!LivenessApplies(LeadState::Combat, false, false) && !LivenessApplies(LeadState::BossCombat, false, false),
+              "not a fight");
+        Check(!LivenessApplies(LeadState::WipeRecovery, false, false), "not a wipe recovery (bounded on its own)");
+        Check(!LivenessApplies(LeadState::Recovery, false, false), "not a recovery (bounded on its own)");
+        Check(!LivenessApplies(LeadState::Completing, false, false), "not a finished route held for its player");
+        Check(!LivenessApplies(LeadState::WaitingReady, false, false, true), "not a session waiting for its real player");
+        Check(!LivenessApplies(LeadState::Travelling, false, false, true), "also while travelling");
         Check(SessionRequestedByPlayer(true, false), "a session a player started keeps its master");
         Check(!SessionRequestedByPlayer(true, true), "an AutoBot Canary session has no master");
+    }
+
+    void TestLivenessWaitsForPlayer()
+    {
+        ReadinessPolicy const p;
+        PartyFacts here;
+        here.hasGroup = true;
+        here.master.assigned = true;
+        here.master.online = true;
+        here.master.alive = true;
+        here.master.sameMap = true;
+        here.master.distance = 10.0f;
+        Check(!LivenessWaitsForPlayer(true, here, p), "a player-started session whose player is with the party stays watched");
+
+        PartyFacts offline = here;
+        offline.master.online = false;
+        Check(LivenessWaitsForPlayer(true, offline, p), "player-started: an offline player is waited for, liveness exempt");
+        Check(!LivenessWaitsForPlayer(false, offline, p), "AutoBot Canary: no real player, stays watched");
+
+        PartyFacts far = here;
+        far.master.distance = p.leash + 1.0f;
+        Check(LivenessWaitsForPlayer(true, far, p), "player-started: a player beyond the leash is waited for");
+        Check(!LivenessWaitsForPlayer(false, far, p), "AutoBot Canary: stays watched");
+
+        PartyFacts otherMap = here;
+        otherMap.master.sameMap = false;
+        Check(LivenessWaitsForPlayer(true, otherMap, p), "player-started: a player on another map is waited for");
+
+        PartyFacts away = here;
+        away.master.away = true;
+        Check(LivenessWaitsForPlayer(true, away, p), "player-started: a player marked away is waited for");
+        Check(!LivenessWaitsForPlayer(false, away, p), "AutoBot Canary: stays watched");
+
+        PartyFacts dead = here;
+        dead.master.alive = false;
+        Check(LivenessWaitsForPlayer(true, dead, p), "player-started: a dead player is waited for");
+
+        PartyFacts left = here;
+        left.master.inGroup = false;
+        Check(LivenessWaitsForPlayer(true, left, p), "player-started: a player who left the group holds the party");
+
+        PartyFacts none;
+        none.hasGroup = true;
+        Check(!LivenessWaitsForPlayer(true, none, p), "no real master assigned: stays watched");
     }
 
     void TestLeaderOffGround()
@@ -1833,6 +1918,7 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestLivenessWaitsForPlayer();
     TestSpawnSpots();
     TestRouteWaypointFallback();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);

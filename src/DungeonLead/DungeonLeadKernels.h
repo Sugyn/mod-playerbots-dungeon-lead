@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace DungeonLeadKernel
@@ -191,6 +192,7 @@ namespace DungeonLeadKernel
         bool inGroup = true;    // still a member (true when the leader has no group at all)
         bool sameMap = false;
         float distance = 0.0f;
+        bool away = false;  // marked away (AFK)
     };
 
     struct PartyFacts
@@ -293,6 +295,18 @@ namespace DungeonLeadKernel
         return !m.sameMap || m.distance > p.leash;
     }
 
+    // Liveness never ends a session that waits for its real player, however long the player is
+    // gone: a session a player started (not an AutoBot Canary one) whose master is dead, offline,
+    // out of the group, too far (beyond the leash or on another map) or marked away. While the
+    // exemption lasts the liveness clocks restart, so a stall shows only once the player is back.
+    // A session without a real master stays watched.
+    inline bool LivenessWaitsForPlayer(bool sessionRequestedByPlayer, PartyFacts const& f, ReadinessPolicy const& p)
+    {
+        if (!sessionRequestedByPlayer || !f.master.assigned)
+            return false;
+        return MasterUnavailable(f) || MasterTooFar(f, p) || f.master.away;
+    }
+
     // ---------------------------------------------------------------------------------------
     // Party cohesion: how far apart the party is, as one semantic level
     // ---------------------------------------------------------------------------------------
@@ -375,6 +389,29 @@ namespace DungeonLeadKernel
     // (e.g. after a wipe) would otherwise keep the whole party "in combat" and the route walk would
     // never resume. Whatever is still out there is met on the way.
     constexpr uint32_t kStaleCombatMs = 20000;
+
+    // An attacker or the member's own victim counts as an enemy behind the combat flag only on the
+    // member's map and within kStaleCombatFarYd of it. Dungeon mobs do not leash by distance: a
+    // boss that keeps a revived member on its threat list from the far end of the instance, and
+    // never comes, is no fight to wait for. One that does come is an enemy again once it is this
+    // close, and the stale clock starts over.
+    constexpr float kStaleCombatFarYd = 60.0f;
+    inline bool EnemyCounts(bool sameMap, float distance)
+    {
+        return sameMap && distance <= kStaleCombatFarYd;
+    }
+
+    // Diagnostics: the brain says Travelling, the leader stands outside any bounded wait, and its
+    // combat flag has no enemy behind it. Reported once it lasts kWalkBlockedReportMs, then again
+    // every kWalkBlockedRepeatMs while it lasts.
+    constexpr uint32_t kWalkBlockedReportMs = 30 * 1000;
+    constexpr uint32_t kWalkBlockedRepeatMs = 5 * 60 * 1000;
+    inline bool ReportWalkBlocked(uint32_t msBlocked, bool reportedBefore, uint32_t msSinceReport)
+    {
+        if (msBlocked < kWalkBlockedReportMs)
+            return false;
+        return !reportedBefore || msSinceReport >= kWalkBlockedRepeatMs;
+    }
 
     inline bool CombatCounts(bool inCombat, bool hasEnemy, uint32_t msWithoutEnemy)
     {
@@ -523,6 +560,51 @@ namespace DungeonLeadKernel
     // Starting and Stopping are driven by the leadership reconciliation, everything else by
     // DecideActive below.
     inline bool IsActive(LeadState s) { return s != LeadState::Starting && s != LeadState::Stopping; }
+
+    // Liveness: a session whose leader neither moved nor produced a progress event for this long is
+    // stuck where no other rule sees it; it ends as session_stalled instead of running into an
+    // outside timeout. Exempt: what is bounded on its own - fights, wipe recovery, a recovery, a
+    // wait at a door or for a step's event (`boundedWait`) - a pause, a finished route held for its
+    // player, and a session waiting for its real player (`waitsForPlayer`, LivenessWaitsForPlayer).
+    constexpr uint32_t kSessionStallMs = 5 * 60 * 1000;
+    constexpr float kLivenessMoveYd = 2.0f;
+    // Walk ticks of a step's event wait closer than this belong to one wait (a talk step asks every
+    // 5 s); a longer gap was a fight or a recovery.
+    constexpr uint32_t kEventWaitGapMs = 15000;
+    // Events that say nothing has moved on do not count as progress: diagnostics, position samples
+    // and path decisions of a leader that stands (or re-paths) in place. Movement counts on its own.
+    inline bool LivenessCountsEvent(std::string_view event)
+    {
+        return event != "walk_blocked" && event != "position_sample" && event != "path_decision";
+    }
+    // A wait that is bounded on its own: an interaction in progress or issued, or a step's event
+    // wait that ticked within kEventWaitGapMs.
+    inline bool LivenessBoundedWait(bool interactionActive, bool interactionIssued, bool eventWaitTicked,
+                                    uint32_t msSinceEventWaitTick)
+    {
+        return interactionActive || interactionIssued || (eventWaitTicked && msSinceEventWaitTick < kEventWaitGapMs);
+    }
+    inline bool LivenessApplies(LeadState s, bool paused, bool boundedWait, bool waitsForPlayer = false)
+    {
+        if (paused || boundedWait || waitsForPlayer)
+            return false;
+        switch (s)
+        {
+            case LeadState::WaitingReady:
+            case LeadState::Travelling:
+            case LeadState::PrePull:
+            case LeadState::Pulling:
+            case LeadState::PostCombat:
+            case LeadState::BossPrep:
+                return true;
+            default:
+                return false;
+        }
+    }
+    inline bool SessionStalled(uint32_t msSinceEvent, uint32_t msSinceMove, uint32_t limitMs = kSessionStallMs)
+    {
+        return msSinceEvent >= limitMs && msSinceMove >= limitMs;
+    }
 
     // Whether the brain's current state allows a fight to be opened (grind's opportunistic pulls
     // and the pull controller's own): only while working the route or already fighting - never

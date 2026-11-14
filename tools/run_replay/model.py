@@ -652,7 +652,7 @@ class _Builder:
                                 "text": f"{e['payload'].get('lines')} lines dropped at {e.get('wall_time')}",
                                 "position": None})
         kinds = {"unexpected_teleport", "recovery_failed", "skip_stuck", "leader_unstuck", "strategy_restored",
-                 "objective_failed", "wipe_giveup", "leadership_failed"}
+                 "objective_failed", "wipe_giveup", "leadership_failed", "session_stalled", "walk_blocked"}
         for e in self.events:
             if e["event_type"] in kinds:
                 self.alert(e, e["event_type"], e["payload"].get("detail", ""))

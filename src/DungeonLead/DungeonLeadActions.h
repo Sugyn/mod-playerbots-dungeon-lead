@@ -18,6 +18,7 @@ class Creature;
 class Unit;
 struct DungeonPack;
 struct DungeonPackSighting;
+struct DungeonPartySnapshot;
 class PlayerbotAI;
 class Player;
 
@@ -141,6 +142,13 @@ namespace DungeonLead
                      std::string const& payload = "");
     // A schema v2 event with no CSV row (position_sample: too frequent for the v1 file).
     void RecordEventV2(PlayerbotAI* botAI, std::string const& event, std::string const& payload);
+    // From GuardActiveSessions(), after the brain: reports a route walk the leader's combat flag
+    // keeps idle while the brain says Travelling ("walk_blocked"), and ends a session that produced
+    // no event and no leader movement for DungeonLeadKernel::kSessionStallMs ("session_stalled",
+    // with a snapshot of its state). Returns false if it ended the session - the caller must not
+    // touch it any more.
+    bool WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPartySnapshot const& party);
+
     // From GuardActiveSessions(): a position_sample for the leader when the sampling policy says so.
     void SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st);
     // From GuardActiveSessions() (world thread, ~2 s): schema v2 combat evidence - fight_started /

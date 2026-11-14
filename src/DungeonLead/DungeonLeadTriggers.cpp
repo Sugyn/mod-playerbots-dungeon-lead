@@ -10,13 +10,14 @@
 
 #include "Creature.h"
 #include "DungeonLeadActions.h"
+#include "DungeonPartyState.h"
 #include "Group.h"
 #include "Playerbots.h"
 #include "RtiTargetValue.h"
 
 bool DungeonLeadIdleTrigger::IsActive()
 {
-    return DungeonLead::IsOn(botAI) && DungeonLead::InFiveMan(bot) && !bot->IsInCombat();
+    return DungeonLead::IsOn(botAI) && DungeonLead::InFiveMan(bot) && !DungeonPartyState::LeaderFightsEnemy(bot);
 }
 
 bool DungeonLeadBossNearTrigger::IsActive()

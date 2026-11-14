@@ -10,6 +10,7 @@
 
 #include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
+#include "DungeonPartyState.h"
 #include "DungeonRouteMgr.h"
 #include "DungeonTelemetryV2.h"
 #include "DBCStores.h"
@@ -246,7 +247,7 @@ bool DungeonInteractionController::Update(PlayerbotAI* botAI)
     uint32 playerKey = 0;
     // The world is still watched while paused or fighting (the door may open on its own), but
     // nothing is used then.
-    f.canAct = go && DungeonLeadKernel::InteractionMayAct(st.interactionActed, st.paused, bot->IsInCombat()) &&
+    f.canAct = go && DungeonLeadKernel::InteractionMayAct(st.interactionActed, st.paused, DungeonPartyState::LeaderFightsEnemy(bot)) &&
                FindOpener(botAI, go, actor, opener, how, playerKey);
     if (!f.canAct && playerKey && !st.interactionAskedPlayer)
     {
