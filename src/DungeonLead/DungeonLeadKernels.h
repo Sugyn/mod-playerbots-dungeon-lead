@@ -1336,14 +1336,17 @@ namespace DungeonLeadKernel
     };
 
     // A session a player started waits for its player - dead (after a wipe the run back from the
-    // graveyard takes minutes), offline (a reconnect), out of the group or too far - instead of
+    // graveyard takes minutes), offline (a reconnect) or too far - instead of
     // ending after the recovery windows. Bounded by kPlayerWaitMaxMs of the same problem, not by
     // the recovery windows or the episode cap, and not shortened by the module's own wipe recovery
     // running meanwhile.
     constexpr uint32_t kPlayerWaitMaxMs = 15u * 60u * 1000u;
 
-    inline bool RecoveryWaitsForPlayer(RecoveryReason observed, bool sessionRequestedByPlayer)
+    // A player who is online and has left the group is not coming back: the recovery windows apply.
+    inline bool RecoveryWaitsForPlayer(RecoveryReason observed, bool sessionRequestedByPlayer, MasterFacts const& m)
     {
+        if (m.assigned && m.online && !m.inGroup)
+            return false;
         return sessionRequestedByPlayer &&
                (observed == RecoveryReason::MasterUnavailable || observed == RecoveryReason::MasterTooFar);
     }
