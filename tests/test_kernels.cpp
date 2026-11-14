@@ -900,6 +900,26 @@ namespace
         left.online = true;
         left.inGroup = false;
         Check(!RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, true, left), "a player who left the group: the windows apply");
+        // one clock across dead -> too far; the episode starts afresh during and after the wait
+        {
+            RecoveryTimers w;
+            ObserveRecovery(w, RecoveryReason::MasterUnavailable, 1000);
+            Check(PlayerWaitClock(w, true, 1000) == 0, "player wait starts");
+            ObserveRecovery(w, RecoveryReason::MasterTooFar, 301000);
+            Check(PlayerWaitClock(w, true, 301000) == 300000, "dead, then alive far away: the same wait goes on");
+            Check(DecidePlayerWait(PlayerWaitClock(w, true, 1000 + kPlayerWaitMaxMs)) == RecoveryStep::Abort,
+                  "switching reasons does not restart the wait");
+            RecoveryTimers v;
+            ObserveRecovery(v, RecoveryReason::MasterUnavailable, 1000);
+            PlayerWaitClock(v, true, 1000);
+            PlayerWaitClock(v, true, 301000);
+            ObserveRecovery(v, RecoveryReason::PersistentWait, 302000);
+            PlayerWaitClock(v, false, 302000);
+            Check(DecideRecovery(v.reason, 302000 - v.reasonSince, 302000 - v.episodeSince, p) == RecoveryStep::Act,
+                  "after a 5 min player wait a drink wait gets its own windows, not an exhausted episode");
+            ObserveRecovery(v, RecoveryReason::None, 303000);
+            Check(v.playerWaitSince == 0, "the player back: the wait clock ends");
+        }
         Check(DecidePlayerWait(240000) == RecoveryStep::Act, "a player back from the graveyard after 4 min: still waited for");
         Check(DecidePlayerWait(kPlayerWaitMaxMs - 1) == RecoveryStep::Act, "inside the player wait: wait");
         Check(DecidePlayerWait(kPlayerWaitMaxMs) == RecoveryStep::Abort, "the player wait is bounded");
