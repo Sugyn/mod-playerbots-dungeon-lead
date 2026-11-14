@@ -1,5 +1,5 @@
 {
- "analysis_version": 2,
+ "analysis_version": 3,
  "campaign_id": "campaign-0002",
  "commit_sha": "d1f1ddf",
  "dungeon_support": null,
@@ -12,5 +12,7 @@
   "mandatory_objective_failed"
  ],
  "unmodeled": null,
- "warnings": []
+ "warnings": [
+  "cc_landed_ratio=0.167"
+ ]
 }

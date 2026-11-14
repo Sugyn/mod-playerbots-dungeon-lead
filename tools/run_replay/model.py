@@ -7,11 +7,76 @@ model, never the raw events.
 Where a v1 event has no structured payload yet, its free-text `detail` is read by legacy.py - the
 only place that parses text; each such field is marked in the model as `"source": "detail"`.
 """
-from . import legacy
+from . import legacy, run_metrics
 
-MODEL_VERSION = 1
+# 2: teleports, cc_marks, dead_target_waits, time_spans, wipes[].resumed_ms and the metrics built on
+#    them (additive - every version 1 field keeps its meaning)
+MODEL_VERSION = 2
 
 _TIMELINE_STATES = {"combat", "boss_combat", "wipe_recovery", "recovery", "boss_prep", "stopped", "aborted"}
+
+
+# Where the run's time goes, by leader state. Unlisted states (starting, completing, stopping) are
+# "other".
+_STATE_CATEGORY = {
+    "travelling": "walking",
+    "pre_pull": "pulling", "pulling": "pulling",
+    "combat": "combat", "boss_combat": "combat",
+    "boss_prep": "boss_prep",
+    "waiting_ready": "waiting", "post_combat": "waiting",
+    "recovery": "recovery", "wipe_recovery": "recovery",
+}
+
+# Readiness texts (DungeonLeadKernel ReadyStatus) -> waiting reasons. A text not listed is "other";
+# no evidence at all is "unattributed".
+_READY_REASON = {
+    "healer low on mana": "healer_mana",
+    "group too spread": "party_range",
+    "group spread out, holding the pull": "party_range",
+    "waiting for you, master too far": "party_range",
+    "party member lost (other map or offline)": "party_range",
+    "healer out of sight or range of the tank, holding the pull": "party_range",
+    "someone is eating/drinking": "eating_drinking",
+    "party member dead": "dead_member",
+    "healer dead or not in the instance": "dead_member",
+    "someone is low on health": "low_health",
+}
+
+
+# A recovery_start this close before the switch to the recovery state names its reason even if
+# that episode is already recorded as over.
+_RECOVERY_PRIOR_MS = 5000
+
+
+def _wait_reason(text):
+    if not text:
+        return "unattributed"
+    return _READY_REASON.get(text, "other")
+
+
+def _split(a, b, evidence, prior):
+    """[a, b) labelled by evidence [(ms, label)]: each label holds from its time to the next one.
+    Before the first, `prior` - or, without one, the first label (the waiting line is throttled and
+    comes up to 10 s after the wait began)."""
+    evidence = sorted(evidence)
+    if not evidence:
+        return [(a, b, prior or "unattributed")]
+    out = [(a, max(a, evidence[0][0]), prior or evidence[0][1])]
+    for i, (ms, label) in enumerate(evidence):
+        nxt = evidence[i + 1][0] if i + 1 < len(evidence) else b
+        out.append((max(a, ms), min(b, nxt), label))
+    return [s for s in out if s[1] > s[0]]
+
+
+def _carve(a, b, overrides):
+    """[a, b) with the parts covered by override intervals (start, end, reason, rank) labelled by
+    the lowest-ranked one covering them; the rest keeps reason None."""
+    cuts = sorted({a, b} | {x for s, e, _, _ in overrides for x in (s, e) if a < x < b})
+    out = []
+    for lo, hi in zip(cuts, cuts[1:]):
+        cover = [o for o in overrides if o[0] <= lo and o[1] >= hi]
+        out.append((lo, hi, min(cover, key=lambda o: o[3])[2] if cover else None))
+    return out
 
 
 def _pos(ev):
@@ -276,6 +341,13 @@ class _Builder:
                                          else dict(legacy.checkpoint(p.get("detail", "")), source="detail"))
             elif t == "wipe_giveup" and out:
                 out[-1]["gave_up_ms"] = e["run_ms"]
+        # the party moving on again: the first switch to travelling after the wipe and before the
+        # next one (None: the record ends, or the next wipe comes, before it travels again)
+        travel = [e["run_ms"] for e in self.events
+                  if e["event_type"] == "state_transition" and e["payload"].get("to") == "travelling"]
+        for i, w in enumerate(out):
+            nxt = out[i + 1]["run_ms"] if i + 1 < len(out) else float("inf")
+            w["resumed_ms"] = next((t for t in travel if w["run_ms"] < t < nxt), None)
         return out
 
     def recoveries(self):
@@ -325,6 +397,224 @@ class _Builder:
                 out.append({"type": t, "target": legacy.first_word_name(d), "detail": d, "start_ms": e["run_ms"],
                             "end_ms": e["run_ms"], "position": _pos(e),
                             "result": "failed" if t in ("use_failed", "door_not_found") else "done", "source": "detail"})
+        return out
+
+    def teleports(self):
+        """Every teleport the module made, plus the ones it cancelled (`unexpected`): one entry per
+        event, `who` = the players moved (None where the record does not say)."""
+        out = []
+        for e in self.events:
+            t, d = e["event_type"], e["payload"].get("detail", "")
+            if t in ("leader_unstuck", "leader_to_floor"):
+                kind, who = t, [(e.get("leader") or {}).get("name")]
+            elif t == "recovery_escalate":
+                x = legacy.escalation(d)
+                if x["action"] == "none":
+                    continue
+                # the leader brings the straggler and every other far bot in one escalation
+                kind, who = "member_to_leader", ([x["member"]] + x["others"]) if x["action"] else None
+            elif t == "wipe_recovery_teleport":
+                kind, who = "wipe_recovery", [d or None]
+            elif t == "unexpected_teleport":
+                kind, who = "unexpected", [legacy.teleport_player(d)]
+            else:
+                continue
+            out.append({"run_ms": e["run_ms"], "kind": kind, "who": who, "detail": d, "position": _pos(e),
+                        "source": "detail"})
+        return out
+
+    def cc_marks(self):
+        """Each moon (crowd-control mark) and how it ended: landed (CC seen on the target before the
+        mark ended), released (taken off without CC), target_gone (died or despawned without CC),
+        replaced (a new moon while this one had no outcome) or unresolved (record ended).
+        `cc_outcome` (newer runs) adds its own outcome and, for a landed one, `by`: the caster and
+        spell of the control aura; `by` stays None where it is not recorded."""
+        out, cur = [], None
+        for e in self.events:
+            t, d = e["event_type"], e["payload"].get("detail", "")
+            if t == "mark_moon":
+                if cur is not None:
+                    cur.update(end_ms=e["run_ms"], end_event=t,
+                               outcome="landed" if cur["landed_ms"] is not None else "replaced")
+                cur = {"placed_ms": e["run_ms"], "target": d or None, "step": e.get("step"),
+                       "pack_id": e.get("pack_id"), "landed_ms": None, "end_ms": None, "end_event": None,
+                       "release_reason": None, "outcome": "unresolved", "cc_outcome": None,
+                       "by": None, "source": "detail"}
+                out.append(cur)
+            elif t == "cc_outcome":
+                # written right after cc_landed (moon still open) or cc_released (just closed)
+                mark = cur if cur is not None else (out[-1] if out and out[-1]["cc_outcome"] is None else None)
+                if mark is None:
+                    continue
+                p = e["payload"]
+                mark["cc_outcome"] = p.get("outcome")
+                if p.get("outcome") == "landed":
+                    if mark["landed_ms"] is None:
+                        mark["landed_ms"] = e["run_ms"]
+                        if mark is not cur:
+                            mark["outcome"] = "landed"
+                    if p.get("spell_id") or p.get("caster"):
+                        mark["by"] = {"caster": p.get("caster") if p.get("caster") not in (None, "", "-") else None,
+                                      "spell": p.get("spell") or None, "spell_id": p.get("spell_id")}
+            elif cur is None:
+                continue
+            elif t == "cc_landed":
+                if cur["landed_ms"] is None:
+                    cur["landed_ms"] = e["run_ms"]
+            elif t in ("cc_released", "cc_target_gone"):
+                landed = cur["landed_ms"] is not None
+                cur.update(end_ms=e["run_ms"], end_event=t,
+                           release_reason=legacy.cc_release_reason(d) if t == "cc_released" else None,
+                           outcome="landed" if landed else ("released" if t == "cc_released" else "target_gone"))
+                cur = None
+        return out
+
+    def dead_target_waits(self):
+        """Time on a route step whose target was already dead or not there, until the step was left
+        (advanced, skipped or given up). Two kinds of evidence:
+          found_dead - the step's pack went to `cleared` without this party engaging it on this
+                       visit of the step (pack_state); from then until the step is left.
+          not_found  - nothing at the destination (not_found); from the arrival (reached) on.
+        One episode per step visit: a found-dead wait that ends in not_found stays one episode.
+        `duration_ms` counts only the time the leader was walking or pulling (the states in which it
+        works on the step itself) - a fight, a readiness wait or a recovery meanwhile holds it for
+        its own reason; `elapsed_ms` is the whole episode. Without state transitions both are the
+        same. None when the record has no step tracking at all."""
+        tracked = {"pack_state", "reached", "travel_reached", "already_dead", "not_found"}
+        if not any(e["event_type"] in tracked for e in self.events):
+            return None
+        states = self.state_spans()
+        active = [(a, b) for s, a, b in states or [] if _STATE_CATEGORY.get(s) in ("walking", "pulling")]
+
+        def on_step_ms(a, b):
+            if states is None:
+                return b - a
+            return sum(max(0, min(b, y) - max(a, x)) for x, y in active)
+
+        ends = {"already_dead", "objective_skipped", "objective_failed", "skip_stuck", "step_walk_limit",
+                "travel_reached", "stuck_alive", "not_found"}
+        out, ep = [], None
+        cur_step, visit_start, engaged, reached = object(), 0, set(), None
+
+        def close(ms, how):
+            nonlocal ep
+            if ep is not None:
+                ep.update(end_ms=ms, elapsed_ms=ms - ep["start_ms"], duration_ms=on_step_ms(ep["start_ms"], ms),
+                          ended_by=how)
+                out.append(ep)
+                ep = None
+
+        for e in self.events:
+            t, p = e["event_type"], e["payload"]
+            if e.get("step") != cur_step:
+                close(e["run_ms"], "step_changed")
+                cur_step, visit_start, engaged, reached = e.get("step"), e["run_ms"], set(), None
+            if t == "pack_state" and "to" in p:
+                if p["to"] == "engaged":
+                    engaged.add(p.get("pack_id"))
+                elif (p["to"] == "cleared" and p.get("from") != "engaged" and p.get("pack_id") not in engaged
+                      and p.get("pack_id") == e.get("pack_id") and ep is None):
+                    ep = {"step": e.get("step"), "name": p.get("name"), "pack_id": p.get("pack_id"),
+                          "kind": "found_dead", "start_ms": e["run_ms"]}
+            elif t == "reached" and reached is None:
+                reached = e["run_ms"]
+            if t == "not_found" and ep is None:
+                ep = {"step": e.get("step"), "name": p.get("detail") or None, "pack_id": e.get("pack_id"),
+                      "kind": "not_found", "start_ms": reached if reached is not None else visit_start}
+            if t in ends:
+                close(e["run_ms"], t)
+        close(self.events[-1]["run_ms"], "record_end")
+        return out
+
+    def state_spans(self):
+        """[(state, start_ms, end_ms)] from 0 to the last event, from state_transition; None without
+        any transition."""
+        transitions = [e for e in self.events if e["event_type"] == "state_transition"]
+        if not transitions:
+            return None
+        end_ms = self.events[-1]["run_ms"]
+        states, cur, start = [], self.events[0].get("state"), 0
+        for e in transitions:
+            to = e["payload"].get("to") or e.get("state")
+            if to == cur:
+                continue
+            if e["run_ms"] > start:
+                states.append((cur, start, e["run_ms"]))
+            cur, start = to, e["run_ms"]
+        if end_ms > start:
+            states.append((cur, start, end_ms))
+        return states
+
+    def time_spans(self, recoveries, dead_waits):
+        """The run cut into consecutive spans that cover it exactly once: state, category (walking,
+        pulling, combat, boss_prep, waiting, recovery, other) and, for waiting and recovery, why.
+        Waiting is read from the waiting / post-combat states and, inside walking, from a pull
+        held for the party or a patrol and from a dead-target wait. None without state transitions."""
+        states = self.state_spans()
+        if states is None:
+            return None
+        end_ms = self.events[-1]["run_ms"]
+        waiting_ev = [(e["run_ms"], _wait_reason(legacy.readiness(e["payload"].get("detail", ""))))
+                      for e in self.events if e["event_type"] == "waiting"]
+        decisions = [(e["run_ms"], legacy.post_combat_decision(e["payload"].get("detail", ""))["readiness"])
+                     for e in self.events if e["event_type"] == "post_combat_decision"]
+        holds, hold = [], None  # pull held for the party or a patrol: (start, end, reason)
+        for e in self.events:
+            if e["event_type"] != "pull_state":
+                continue
+            p = e["payload"]
+            s = {"to": p["to"], "reason": p.get("reason")} if "to" in p else legacy.pull_state(p.get("detail", ""))
+            if hold is not None:
+                holds.append((hold[0], e["run_ms"], hold[1]))
+                hold = None
+            if s["to"] == "waiting_patrol":
+                hold = (e["run_ms"], "patrol")
+            elif s["to"] == "waiting_party":
+                hold = (e["run_ms"], _wait_reason(s["reason"]))
+        if hold is not None:
+            holds.append((hold[0], end_ms, hold[1]))
+        # a dead-target wait outranks a pull hold where both cover the same time
+        overrides = [(d["start_ms"], d["end_ms"], "dead_target", 0) for d in (dead_waits or [])] + \
+                    [(a, b, r, 1) for a, b, r in holds]
+        rec_ev = [(r["start_ms"], r["reason"] or "unattributed") for r in recoveries]
+
+        out = []
+        for state, a, b in states:
+            cat = _STATE_CATEGORY.get(state, "other")
+            if cat == "waiting":
+                ev = [(ms, r) for ms, r in waiting_ev if a <= ms <= b]
+                if not ev and state == "post_combat":
+                    ev = [(ms, "post_combat_check" if r == "ready" else _wait_reason(r))
+                          for ms, r in decisions if a <= ms <= b][:1]
+                segs = _split(a, b, ev, None)
+            elif cat == "recovery":
+                if state == "wipe_recovery":
+                    segs = [(a, b, "wipe")]
+                else:
+                    # the reason of the episode still open when the state began, or of one that
+                    # started just before it - an older, finished episode says nothing about this one
+                    last = next((r for r in reversed(recoveries) if r["start_ms"] <= a), None)
+                    prior = None
+                    if last and (last.get("end_ms") is None or last["end_ms"] > a
+                                 or a - last["start_ms"] <= _RECOVERY_PRIOR_MS):
+                        prior = last["reason"] or "unattributed"
+                    segs = _split(a, b, [(ms, r) for ms, r in rec_ev if a < ms < b], prior)
+            elif cat in ("walking", "pulling"):
+                segs = _carve(a, b, overrides)
+            else:
+                segs = [(a, b, None)]
+            for sa, sb, reason in segs:
+                c = cat
+                if cat in ("walking", "pulling") and reason is not None:
+                    c = "waiting"
+                if sb <= sa:
+                    continue
+                last = out[-1] if out else None
+                if last and last["state"] == state and last["category"] == c and last["reason"] == reason \
+                        and last["end_ms"] == sa:
+                    last["end_ms"] = sb
+                else:
+                    out.append({"start_ms": sa, "end_ms": sb, "state": state, "category": c, "reason": reason})
         return out
 
     def collect_alerts(self):
@@ -412,6 +702,7 @@ def reconstruct(events, dropped=()):
     wipes = b.wipes(deaths)
     recoveries = b.recoveries()
     interactions = b.interactions()
+    dead_waits = b.dead_target_waits()
     b.collect_alerts()
     timeline = b.build_timeline(fights, bosses, wipes, deaths, recoveries, interactions)
     model = {
@@ -431,6 +722,10 @@ def reconstruct(events, dropped=()):
         "interactions": interactions,
         "alerts": b.alerts,
         "result": b.result(),
+        "teleports": b.teleports(),
+        "cc_marks": b.cc_marks(),
+        "dead_target_waits": dead_waits,
+        "time_spans": b.time_spans(recoveries, dead_waits),
     }
     model["metrics"] = metrics(model)
     return model
@@ -439,7 +734,7 @@ def reconstruct(events, dropped=()):
 def metrics(model):
     pulls = model["pulls"]
     known_adds = [p["add_count"] for p in pulls if p["add_count"] is not None]
-    return {
+    out = {
         "duration_ms": model["metadata"]["duration_ms"],
         "fights": len(pulls),
         "fights_planned": sum(1 for p in pulls if p["kind"] == "planned"),
@@ -459,14 +754,10 @@ def metrics(model):
         "path_length_yd": round(_path_length(model["path"]), 1),
         "alerts": len(model["alerts"]),
     }
+    out.update(run_metrics.compute(model))
+    return out
 
 
 def _path_length(path):
-    total = 0.0
-    for a, b in zip(path, path[1:]):
-        if None in (a["x"], a["y"], b["x"], b["y"]):
-            continue
-        d = ((a["x"] - b["x"]) ** 2 + (a["y"] - b["y"]) ** 2 + ((a["z"] or 0) - (b["z"] or 0)) ** 2) ** 0.5
-        if d < 100:  # a jump (teleport, corpse run) is not walked distance
-            total += d
-    return total
+    steps = (run_metrics.step_length(a, b) for a, b in zip(path, path[1:]))
+    return sum((d for d in steps if d is not None), 0.0)

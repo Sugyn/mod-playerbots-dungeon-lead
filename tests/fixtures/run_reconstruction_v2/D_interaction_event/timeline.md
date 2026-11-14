@@ -35,6 +35,17 @@
 | units_engaged | 281 |
 | wipes | 0 |
 
+## Run metrics
+
+| | |
+|---|---|
+| Time | walking 12:18 (20%); pulling 00:10 (0%); combat 37:02 (61%); boss prep 00:04 (0%); waiting 10:57 (18%): eating drinking 05:25, post combat check 04:22, dead target 00:45, unattributed 00:22, party range 00:02 |
+| Waits on dead / absent targets | 1 (0 found dead, 1 not found), 00:45 in all, longest 00:45 |
+| Teleports | none |
+| Crowd control | 40 moons: 10 landed, 28 released without CC (17 as the last enemy), 1 target gone, 1 replaced by a new moon before an outcome; landed ratio 0.25; landed by: not recorded; CC classes in the party: mage |
+| Wipe to moving on | no wipe |
+| Backtracking | unknown (not in this record) |
+
 ## Timeline
 
 - `00:00` Run started

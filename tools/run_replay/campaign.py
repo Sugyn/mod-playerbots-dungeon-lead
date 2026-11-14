@@ -15,7 +15,7 @@ import os
 
 from . import analyze_run, model, report, schema
 
-INDEX_VERSION = 3  # 2: context_id / context_incomplete / complete_record; 3: dungeon_support
+INDEX_VERSION = 4  # 2: context_id / context_incomplete / complete_record; 3: dungeon_support; 4: metrics v2
 
 
 def _write(path, text):

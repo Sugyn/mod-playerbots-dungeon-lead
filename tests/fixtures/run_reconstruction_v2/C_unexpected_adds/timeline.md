@@ -35,6 +35,17 @@
 | units_engaged | 105 |
 | wipes | 1 |
 
+## Run metrics
+
+| | |
+|---|---|
+| Time | walking 04:36 (27%); combat 08:37 (50%); waiting 03:04 (18%): post combat check 01:24, eating drinking 01:08, unattributed 00:28, dead member 00:04; recovery 00:54 (5%): member dead 00:36, wipe 00:18 |
+| Waits on dead / absent targets | none |
+| Teleports | leader to floor 4, wipe recovery 5 |
+| Crowd control | 5 moons: 1 landed, 4 released without CC (1 as the last enemy), 0 target gone; landed ratio 0.2; landed by: not recorded; CC classes in the party: mage |
+| Wipe to moving on | #1 01:14 |
+| Backtracking | unknown (not in this record) |
+
 ## Timeline
 
 - `00:00` Run started

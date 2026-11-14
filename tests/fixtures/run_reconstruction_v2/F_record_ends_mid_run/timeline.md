@@ -35,6 +35,17 @@
 | units_engaged | 0 |
 | wipes | 0 |
 
+## Run metrics
+
+| | |
+|---|---|
+| Time | walking 06:06 (45%); pulling 00:02 (0%); combat 06:03 (45%); boss prep 00:02 (0%); waiting 01:11 (9%): post combat check 00:30, eating drinking 00:27, unattributed 00:06, party range 00:04, other 00:03; recovery 00:08 (1%): party fragmented 00:08 |
+| Waits on dead / absent targets | none |
+| Teleports | none |
+| Crowd control | 7 moons: 1 landed, 6 released without CC (2 as the last enemy), 0 target gone; landed ratio 0.143; landed by: not recorded; CC classes in the party: unknown |
+| Wipe to moving on | no wipe |
+| Backtracking | unknown (not in this record) |
+
 ## Timeline
 
 - `00:00` Run started

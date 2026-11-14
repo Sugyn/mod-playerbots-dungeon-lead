@@ -12,6 +12,12 @@
       every run of a validation campaign: raw copy, derived artifacts, reports, index.json
   python3 -m tools.run_replay.cli compare OLD_run_model.json NEW_run_model.json [-d DIR]
       comparison.json and comparison.md
+  python3 -m tools.run_replay.cli summary INPUT... [-d DIR]
+      summary.json and summary.md per dungeon and run context (INPUT: campaign, run or
+      validation_runs directory)
+  python3 -m tools.run_replay.cli compare-campaigns A B [-d DIR] [--accept PART]...
+      campaign_comparison.json and .md: B better / worse / same as A (A, B: summary inputs or
+      summary.json)
 """
 import argparse
 import json
@@ -66,6 +72,16 @@ def main(argv=None):
     q.add_argument("old")
     q.add_argument("new")
     q.add_argument("-d", "--dir", default=".")
+    s = sub.add_parser("summary")
+    s.add_argument("inputs", nargs="+")
+    s.add_argument("-d", "--dir", default=".")
+    cc = sub.add_parser("compare-campaigns")
+    cc.add_argument("a")
+    cc.add_argument("b")
+    cc.add_argument("-d", "--dir", default=".")
+    cc.add_argument("--accept", action="append", default=[],
+                    choices=("core_sha", "playerbots_sha", "route_digest", "config_digest", "mmap_digest"),
+                    help="a run-context part whose difference is intended (repeatable)")
     a = ap.parse_args(argv)
 
     try:
@@ -118,6 +134,32 @@ def main(argv=None):
             _dump(c, os.path.join(a.dir, "comparison.json"))
             with open(os.path.join(a.dir, "comparison.md"), "w", encoding="utf-8") as f:
                 f.write(compare_runs.comparison_md(c))
+        elif a.cmd == "summary":
+            from . import summary
+            sm = summary.build(a.inputs)
+            os.makedirs(a.dir, exist_ok=True)
+            _dump(sm, os.path.join(a.dir, "summary.json"))
+            with open(os.path.join(a.dir, "summary.md"), "w", encoding="utf-8") as f:
+                f.write(summary.summary_md(sm))
+            for g in sm["groups"]:
+                print(f"{g['dungeon'] or '?':32} {g['context_id'] or '-':16} runs={g['runs']} "
+                      f"full_route={g['full_route']} median_min={g['duration_min']['median']}")
+        elif a.cmd == "compare-campaigns":
+            from . import compare_campaigns
+            c = compare_campaigns.compare(compare_campaigns.load_side(a.a), compare_campaigns.load_side(a.b),
+                                          a.accept)
+            os.makedirs(a.dir, exist_ok=True)
+            _dump(c, os.path.join(a.dir, "campaign_comparison.json"))
+            with open(os.path.join(a.dir, "campaign_comparison.md"), "w", encoding="utf-8") as f:
+                f.write(compare_campaigns.comparison_md(c))
+            for d in c["dungeons"]:
+                notes = d["why"] + [f"{k}: {', '.join(d[k])}" for k in ("worse", "better") if d.get(k)]
+                if d.get("low_sample"):
+                    notes.append("low sample")
+                print(f"{d['dungeon'] or '?':32} {d['verdict']:15} {'; '.join(notes)}")
+            notes = (["low sample"] if c["low_sample"] else []) + \
+                ([f"not comparable: {', '.join(c['not_comparable'])}"] if c["not_comparable"] else [])
+            print(f"{'overall':32} {c['verdict']:15} {'; '.join(notes)}")
     except schema.SchemaError as e:
         sys.exit(f"error: {e}")
 

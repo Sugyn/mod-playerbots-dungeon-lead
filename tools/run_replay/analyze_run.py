@@ -6,7 +6,12 @@ wipe, alert ids and times). When the model can't support a cause, the class is O
 guessing.
 """
 
-ANALYSIS_VERSION = 2  # 2: dungeon_support next to result
+ANALYSIS_VERSION = 3  # 2: dungeon_support next to result; 3: teleport / dead-target / CC warnings
+
+# Health warnings from the run metrics (thresholds documented in tools/run_replay/README.md).
+DEAD_TARGET_WAIT_WARN_S = 10.0  # one wait on a dead or absent target longer than this
+CC_RATIO_WARN = 0.5             # landed / ended moons below this ...
+CC_RATIO_MIN_MOONS = 3          # ... once at least this many moons were placed
 
 CLASSES = ("ROUTE", "PACK_IDENTITY", "TARGETING", "PULL", "LEASH", "READINESS", "RECOVERY", "WIPE",
            "INTERACTION", "BOSS", "LEADERSHIP", "TELEPORT", "UPSTREAM_PLAYERBOT", "DATA_ERROR", "CAMPAIGN",
@@ -150,6 +155,21 @@ def _campaign_findings(m, campaign_result):
     return []
 
 
+def _metric_warnings(mt):
+    out = []
+    tp = mt.get("teleports")
+    if tp and tp["leader"]:
+        out.append(f"leader_teleports={tp['leader']}")
+    dw = mt.get("dead_target_waits")
+    if dw and dw["max_s"] > DEAD_TARGET_WAIT_WARN_S:
+        out.append(f"dead_target_wait_s={dw['max_s']}")
+    cc = mt.get("cc")
+    if cc and cc["moons"] >= CC_RATIO_MIN_MOONS and cc["landed_ratio"] is not None \
+            and cc["landed_ratio"] < CC_RATIO_WARN:
+        out.append(f"cc_landed_ratio={cc['landed_ratio']}")
+    return out
+
+
 def verdict(m, campaign_result=None):
     res, route, mt, md = m["result"], m["route"], m["metrics"], m["metadata"]
     mandatory_failed = any(ev["event"] == "objective_failed" and ev.get("requirement") in ("boss", "required")
@@ -182,6 +202,7 @@ def verdict(m, campaign_result=None):
             warnings.append(k)
     if mt["wipes"]:
         warnings.append(f"wipes={mt['wipes']}")
+    warnings += _metric_warnings(mt)
     health = "unhealthy" if unhealthy else "warning" if warnings else "clean"
     # FULL_ROUTE keeps its meaning (the modeled route); whether that is the whole dungeon
     # is said separately. "unknown" for runs recorded before the route scope existed.
