@@ -374,6 +374,13 @@ void DungeonLead::SimPlayerTick(PlayerbotAI* leaderAI, DungeonLeadState& st)
     if (next == SimAction::Follow)
         return;
     std::string const name = sim->GetName();
+    if (next == SimAction::Logout && sim->GetGroup() && sim->GetGroup()->isLFGGroup())
+    {
+        // A bot's masterless login leaves its group, and leaving a dungeon-finder group takes it out
+        // of the dungeon: a player's logout keeps both. Not played in a finder group.
+        SimEvent(leaderAI, name, SimAction::Logout, "skipped", 0, s.seed);
+        return;
+    }
     s.action = next;
     s.actionSince = now;
     s.actionMs = DungeonLeadKernel::SimActionMs(next, s.rng() % 1000);
@@ -393,14 +400,6 @@ void DungeonLead::SimPlayerTick(PlayerbotAI* leaderAI, DungeonLeadState& st)
             s.action = SimAction::Follow;  // SimPlayersTick() brings it back
             break;
         case SimAction::Logout:
-            if (sim->GetGroup() && sim->GetGroup()->isLFGGroup())
-            {
-                // A bot's masterless login leaves its group, and leaving a dungeon-finder group takes
-                // it out of the dungeon: a player's logout keeps both. Not played in a finder group.
-                SimEvent(leaderAI, name, SimAction::Logout, "skipped", 0, s.seed);
-                s.action = SimAction::Follow;
-                break;
-            }
             // The leader's master would point at a deleted player: the session waits for its
             // player by st.masterGuid meanwhile, and gets it back when it logs in (Remark).
             s.loggedOut = true;
