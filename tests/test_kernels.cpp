@@ -888,6 +888,16 @@ namespace
         Check(DecideRecovery(RecoveryReason::MemberDead, 120000, 120000, p) == RecoveryStep::Abort, "escalation over -> abort (bounded)");
         Check(DecideRecovery(RecoveryReason::LeadershipLost, 500000, 500000, p) == RecoveryStep::Abort, "never an endless loop");
 
+        // a session a player started waits for its player, bounded by kPlayerWaitMaxMs
+        Check(RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, true), "player's session: waits for a dead/offline player");
+        Check(RecoveryWaitsForPlayer(RecoveryReason::MasterTooFar, true), "player's session: waits for a player far away");
+        Check(!RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, false), "canary session: no player to wait for");
+        Check(!RecoveryWaitsForPlayer(RecoveryReason::MemberDead, true), "a dead bot is not the player");
+        Check(!RecoveryWaitsForPlayer(RecoveryReason::PersistentWait, true), "a resource wait keeps its windows");
+        Check(DecidePlayerWait(240000) == RecoveryStep::Act, "a player back from the graveyard after 4 min: still waited for");
+        Check(DecidePlayerWait(kPlayerWaitMaxMs - 1) == RecoveryStep::Act, "inside the player wait: wait");
+        Check(DecidePlayerWait(kPlayerWaitMaxMs) == RecoveryStep::Abort, "the player wait is bounded");
+
         // a reason change restarts that reason's clock; the episode stays bounded
         RecoveryTimers t;
         uint32_t now = 1000;

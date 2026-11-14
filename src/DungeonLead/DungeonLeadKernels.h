@@ -1335,6 +1335,24 @@ namespace DungeonLeadKernel
         uint32_t EpisodeCapMs() const { return 2u * (actMs + escalateMs); }
     };
 
+    // A session a player started waits for its player - dead (after a wipe the run back from the
+    // graveyard takes minutes), offline (a reconnect), out of the group or too far - instead of
+    // ending after the recovery windows. Bounded by kPlayerWaitMaxMs of the same problem, not by
+    // the recovery windows or the episode cap, and not shortened by the module's own wipe recovery
+    // running meanwhile.
+    constexpr uint32_t kPlayerWaitMaxMs = 15u * 60u * 1000u;
+
+    inline bool RecoveryWaitsForPlayer(RecoveryReason observed, bool sessionRequestedByPlayer)
+    {
+        return sessionRequestedByPlayer &&
+               (observed == RecoveryReason::MasterUnavailable || observed == RecoveryReason::MasterTooFar);
+    }
+
+    inline RecoveryStep DecidePlayerWait(uint32_t msInReason)
+    {
+        return msInReason < kPlayerWaitMaxMs ? RecoveryStep::Act : RecoveryStep::Abort;
+    }
+
     // The same problem coming back this soon after it cleared is the same episode (a straggler
     // stuck on terrain is "caught up" each time the leader walks back, and behind again as soon as
     // the leader walks on).
