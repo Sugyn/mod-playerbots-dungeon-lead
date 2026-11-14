@@ -155,7 +155,6 @@ increments, each with its own entry here.
 | state | `state_transition` | `from`, `to`, `reason`, `after_ms`, `objective` (+ `detail`) |
 | pack | `pack_state` | `pack_id`, `name`, `type`, `boss`, `optional`, `from`, `to` (+ `detail`) |
 | run_started / run_ended | `start`, `stop`, `canary_stop`, `test_result` | `detail`; `start` also `context` and `run_back` (true: dead and straggling bots of this run come back on foot - `run_back` / `member_teleport` events) |
-| run_started / run_ended | `start`, `stop`, `canary_stop`, `test_result` | `detail` |
 | leader disconnected | `leader_disconnected` (v2 only) | `how` (`hard_disconnect` - the leader bot logged out; `leader_not_in_world` - out of the world past the limit), `last_state`, `ms_gone` (how long it was out of the world; 0 = not measured, a logout), `position_known` (+ `detail`) - the run's terminal event when its leader left the world: no AI is left to stop the session, so the guard pass writes it with what the session last knew of the leader (map, instance, last sampled position; `alive` false) and outcome `failed` / `infrastructure` / `leader_disconnected` (a run already `partial` keeps that outcome) |
 | route_step_* | `route_selected`, `reached`, `objective_*`, `skip_stuck`, `route_complete` | `detail` |
 | pull lifecycle | `pull_state`, `pull_start`, `pull_established`, `pull_failed`, `pack_resolution`, `pack_reset` | `detail` |

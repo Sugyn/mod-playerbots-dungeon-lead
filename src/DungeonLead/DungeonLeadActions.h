@@ -146,6 +146,7 @@ namespace DungeonLead
     // with a snapshot of its state). Returns false if it ended the session - the caller must not
     // touch it any more.
     bool WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPartySnapshot const& party);
+
     // From GuardActiveSessions(): bot members still on the ledge the leader jumped down from follow
     // it down (DungeonLeadKernel::MemberFollowsDrop), once each per drop.
     void FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st);

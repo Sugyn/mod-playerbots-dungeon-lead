@@ -27,6 +27,6 @@
 #define DUNGEONLEAD_PLAYERBOTS_SHA "unknown"
 #endif
 
-#define DUNGEONLEAD_MODULE_VERSION "0.15.0-alpha"
+#define DUNGEONLEAD_MODULE_VERSION "0.16.0-alpha"
 
 #endif
