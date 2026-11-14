@@ -26,6 +26,7 @@
 #include "DungeonLead/DungeonLeadCanary.h"
 #include "DungeonLead/DungeonLeadStrategy.h"
 #include "DungeonLead/DungeonQueueStart.h"
+#include "DungeonLead/DungeonSimPlayer.h"
 #include "DungeonLead/DungeonValidationCampaign.h"
 #include "DungeonLead/DungeonLeadTriggers.h"
 #include "DungeonLead/DungeonTestBotPool.h"
@@ -309,6 +310,7 @@ namespace
             DungeonLead::GuardActiveSessions();
             DungeonLead::CanaryTick();
             DungeonLead::QueueStartTick();
+            DungeonLead::SimPlayersTick();
             DungeonLead::TestBotPoolTick();
             DungeonLead::ValidationTick();
             DungeonLead::FlushTelemetry();

@@ -18,8 +18,8 @@ struct DungeonLeadState;
 
 // Simulated player (test tool, AiPlayerbot.DungeonLead.ValidationSimPlayer, off by default): one bot
 // of a validation party that the module treats exactly like a real player - the session is started
-// for it (origin manual, it is the master), it is never released, walked, moved or teleported by the
-// module - while a small seeded script plays it: it follows the party, lags behind, stands still,
+// for it (it is the master), it is never released, walked, moved or teleported by the module - while
+// a small seeded script plays it: it follows the party, lags behind, stands still,
 // goes away (AFK), dies, logs out and back in, or leaves the group. Every scripted action and every
 // teleport of it is recorded (`sim_player`), so a campaign shows that the module never moved it.
 namespace DungeonLead
@@ -30,11 +30,13 @@ namespace DungeonLead
     // Safe from any thread.
     bool IsSimulatedPlayer(Player* player);
 
-    // From GuardActiveSessions() for a session whose master is a simulated player: runs its script.
+    // From GuardActiveSessions() for a session whose master is a simulated player: its next action.
     void SimPlayerTick(PlayerbotAI* leaderAI, DungeonLeadState& st);
+    // From the world update: what runs on time, in a session or after it (logging back in, being
+    // resurrected, an action running out).
+    void SimPlayersTick();
 
-    // From the teleport hook: a teleport of a simulated player. Records it; `byScript` when the
-    // script asked for it (the "player" moved itself).
+    // From the teleport hook: a teleport of a simulated player during a session. Records it.
     void SimPlayerTeleported(Player* player, uint32_t mapId, float x, float y, float z);
 
     // The release of a dead simulated player waits for its script (a player decides that).

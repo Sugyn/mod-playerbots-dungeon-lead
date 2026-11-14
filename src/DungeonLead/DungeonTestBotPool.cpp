@@ -539,7 +539,16 @@ void DungeonLead::TestBotPoolTick()
 
 uint32 DungeonLead::PendingTestPartyCount()
 {
-    return uint32(g_pendingStarts.size());
+    // a party still in the dungeon finder holds its slot too, until its session runs
+    uint32 queued = 0;
+    for (QueuedParty const& q : g_queuedParties)
+    {
+        Player* tank = ObjectAccessor::FindPlayer(q.tank);
+        PlayerbotAI* ai = tank ? GET_PLAYERBOT_AI(tank) : nullptr;
+        if (!ai || !DungeonLead::HasSession(ai))
+            ++queued;
+    }
+    return uint32(g_pendingStarts.size()) + queued;
 }
 
 bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName)
@@ -696,11 +705,11 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
         for (uint32 d = 0; d < 3 && dpsCursor < dps.size(); ++d, ++dpsCursor)
             members.push_back(&dps[dpsCursor]);
 
-        if (sDungeonLeadConfig.dungeonLeadValidationQueue && sDungeonLeadConfig.dungeonLeadValidationSimPlayer)
+        if (sDungeonLeadConfig.dungeonLeadValidationQueue && sDungeonLeadConfig.dungeonLeadQueueAutoStart &&
+            sDungeonLeadConfig.dungeonLeadValidationSimPlayer)
         {
-            // Through the dungeon finder, as a player's run starts: every member queues for this one
-            // dungeon in its role; the finder forms the group and brings it in, and the queue start
-            // hands the run to the bot tank.
+            // Through the dungeon finder, as a player's run starts: the party queues for this one
+            // dungeon, the finder brings it in, and the queue start hands the run to the bot tank.
             Candidate* sim = sDungeonLeadConfig.dungeonLeadValidationSimPlayer == 2 ? &heal
                              : members.size() > 2 ? members[2] : nullptr;
             if (sim)
@@ -710,16 +719,33 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
                                         : uint32(time(nullptr));
                 DungeonLead::MarkSimulatedPlayer(sim->bot, base ^ (uint32(sim->bot->GetGUID().GetCounter()) * 2654435761u));
             }
-            for (Candidate* c : members)
+            // The party queues as one group, its simulated player the leader (a player who queues
+            // with friends): the finder cannot mix two validation parties or take a bot-only part of
+            // one. The members' role check is answered here, with the roles of the party.
+            auto roleOf = [&](Candidate const* c) -> uint8
             {
+                return c == &tank ? lfg::PLAYER_ROLE_TANK : c == &heal ? lfg::PLAYER_ROLE_HEALER : lfg::PLAYER_ROLE_DAMAGE;
+            };
+            Player* const leader = sim ? sim->bot : tank.bot;
+            Group* group = new Group();
+            group->Create(leader);
+            sGroupMgr->AddGroup(group);
+            for (Candidate* c : members)
+                if (c->bot != leader)
+                    group->AddMember(c->bot);
+            for (Candidate* c : members)
                 for (uint8 diff = 0; diff < MAX_DIFFICULTY; ++diff)
                     sInstanceSaveMgr->PlayerUnbindInstance(c->bot->GetGUID(), route->mapId, Difficulty(diff),
                                                            /*deleteFromDB*/ true, c->bot);
-                uint32 const role = c == &tank ? lfg::PLAYER_ROLE_TANK
-                                    : c == &heal ? lfg::PLAYER_ROLE_HEALER
-                                                 : lfg::PLAYER_ROLE_DAMAGE;
-                if (PlayerbotAI* ai = GET_PLAYERBOT_AI(c->bot))
-                    DungeonLead::QueueBotForLfg(ai, c->bot, lfgId, role);
+            lfg::LfgDungeonSet dungeons;
+            dungeons.insert(lfgId);
+            Candidate const* leaderCandidate = sim ? sim : &tank;
+            sLFGMgr->JoinLfg(leader, uint8(roleOf(leaderCandidate) | lfg::PLAYER_ROLE_LEADER), dungeons, "");
+            for (Candidate* c : members)
+                if (c->bot != leader)
+                    sLFGMgr->UpdateRoleCheck(group->GetGUID(), c->bot->GetGUID(), roleOf(c));
+            for (Candidate* c : members)
+            {
                 TestBotLease& lease = g_leases[c->leaseIdx];
                 lease.state = TestBotLeaseState::Leased;
                 lease.stateTs = getMSTime();
