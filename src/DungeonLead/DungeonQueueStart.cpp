@@ -24,6 +24,7 @@
 #include "Timer.h"
 
 #include <map>
+#include <mutex>
 #include <vector>
 
 namespace
@@ -36,7 +37,8 @@ namespace
         ObjectGuid player;
         uint32 sinceTs = 0;
     };
-    std::vector<Breakup> g_breakups;
+    std::vector<Breakup> g_breakups;  // under g_breakupMtx: scheduled from bot AI (map threads)
+    std::mutex g_breakupMtx;
     // Groups this tick has decided for already (a start, a player tank, an unsupported dungeon), with
     // the instance it decided in: the same group in another instance - or a new group that got a
     // freed group id - is a new run. Entries of groups that are gone are dropped.
@@ -80,6 +82,7 @@ namespace
 
     void RunBreakups(uint32 now)
     {
+        std::lock_guard<std::mutex> lock(g_breakupMtx);
         for (auto it = g_breakups.begin(); it != g_breakups.end();)
         {
             if (getMSTimeDiff(it->sinceTs, now) < DungeonLeadKernel::kQueueBreakupDelayMs)
@@ -93,15 +96,18 @@ namespace
                 std::vector<ObjectGuid> bots;
                 for (Group::MemberSlot const& slot : group->GetMemberSlots())
                 {
+                    // only server bots leave (random and AddClass), never a player's own characters
                     Player* m = ObjectAccessor::FindConnectedPlayer(slot.guid);
-                    bool const offlineBot = !m && (RandomPlayerbotMgr::instance().IsRandomBot(slot.guid.GetCounter()) ||
-                                                   RandomPlayerbotMgr::instance().IsAddclassBot(slot.guid.GetCounter()));
-                    if (m ? DungeonLead::IsBotActor(m) : offlineBot)
-                        bots.push_back(slot.guid);
+                    bool const serverBot = (RandomPlayerbotMgr::instance().IsRandomBot(slot.guid.GetCounter()) ||
+                                            RandomPlayerbotMgr::instance().IsAddclassBot(slot.guid.GetCounter())) &&
+                                           (!m || DungeonLead::IsBotActor(m));
+                    if (!serverBot)
+                        continue;
+                    bots.push_back(slot.guid);
                     // nobody of the group keeps the player as its master after it leaves
                     if (PlayerbotAI* ai = m ? GET_PLAYERBOT_AI(m) : nullptr)
                         if (Player* master = ai->GetMaster())
-                            if (master->GetGUID() == it->player && DungeonLead::IsBotActor(m))
+                            if (master->GetGUID() == it->player)
                                 ai->SetMaster(nullptr);
                 }
                 LOG_INFO("playerbots.dungeonlead", "[DungeonLead] queue run done - {} bot(s) leave the group", bots.size());
@@ -121,6 +127,7 @@ void DungeonLead::ScheduleQueueBreakup(ObjectGuid group, ObjectGuid player)
     b.group = group;
     b.player = player;
     b.sinceTs = getMSTime();
+    std::lock_guard<std::mutex> lock(g_breakupMtx);
     g_breakups.push_back(b);
 }
 
@@ -198,6 +205,10 @@ void DungeonLead::QueueStartTick()
                 g_handled[group->GetGUID()] = player->GetInstanceId();
                 PlayerbotAI* tankAI = GET_PLAYERBOT_AI(tank);
                 tankAI->SetMaster(player);
+                // a simulated player follows its leader, as in a party sent in directly
+                if (DungeonLead::IsSimulatedPlayer(player))
+                    if (PlayerbotAI* simAI = GET_PLAYERBOT_AI(player))
+                        simAI->SetMaster(tank);
                 // a simulated player's run is a validation run: it reports its result
                 bool const ok = DungeonLead::StartSession(tankAI, group, DungeonLeadSessionOrigin::Queue, player,
                                                           /*testMode*/ DungeonLead::IsSimulatedPlayer(player));

@@ -744,6 +744,11 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
             for (Candidate* c : members)
                 if (c->bot != leader)
                     sLFGMgr->UpdateRoleCheck(group->GetGUID(), c->bot->GetGUID(), roleOf(c));
+            if (sLFGMgr->GetState(group->GetGUID()) != lfg::LFG_STATE_QUEUED)
+                LOG_ERROR("playerbots.dungeonlead",
+                          "[DungeonLead][TestBotPool] party of {} not in the dungeon finder queue for lfg {} (state {}) - "
+                          "the join or its role check was refused",
+                          leader->GetName(), lfgId, uint32(sLFGMgr->GetState(group->GetGUID())));
             for (Candidate* c : members)
             {
                 TestBotLease& lease = g_leases[c->leaseIdx];

@@ -263,8 +263,9 @@ uint32 DungeonLead::ActiveCanaryCount()
         Player* bot = ObjectAccessor::FindPlayer(guid);
         if (bot && bot->IsInWorld())
             if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot); botAI)
-                if (sDungeonRouteMgr.State(guid).origin == DungeonLeadSessionOrigin::AutoCanary)
-                    ++n;
+                if (DungeonLeadState const& st = sDungeonRouteMgr.State(guid);
+                    st.origin == DungeonLeadSessionOrigin::AutoCanary || st.testMode)
+                    ++n;  // a validation run of any origin (a simulated player's, from the queue) too
     }
     return n + DungeonLead::PendingTestPartyCount();  // a party still assembling holds its slot too
 }
