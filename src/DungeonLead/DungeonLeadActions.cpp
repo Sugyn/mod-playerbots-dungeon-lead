@@ -3103,15 +3103,23 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     // their grids, so the spawn store holds every creature the instance has.
     if (DungeonLeadKernel::SkipAbsentOptional(!step.IsMandatory(), !step.spawnSpots.empty(), spawnLive))
     {
-        DungeonLead::RecordEventV2(botAI, "objective_absent",
-                                   DungeonLeadKernel::JsonLine()
-                                       .Str("name", step.boss)
-                                       .Num("step", uint32_t(st.stepIndex))
-                                       .Num("entry", uint32_t(step.entry))
-                                       .Num("spots", uint32_t(step.spawnSpots.size()))
-                                       .Done());
-        DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter, DungeonFailureReason::ObjectiveTimeout,
-                                   "absent");
+        // Not a failure - there is nothing to fight: no failure round, not a skipped stop of the
+        // route, only its own outcome.
+        DungeonLead::RecordEvent(botAI, "objective_absent", step.boss,
+                                 DungeonLeadKernel::JsonLine()
+                                     .Str("name", step.boss)
+                                     .Num("step", uint32_t(st.stepIndex))
+                                     .Num("entry", uint32_t(step.entry))
+                                     .Num("spots", uint32_t(step.spawnSpots.size()))
+                                     .Done());
+        if (DungeonRoute const* absentRoute = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+        {
+            DungeonPack const absentPack = DungeonPacks::ForStep(*absentRoute, st.stepIndex, st.spotIndex);
+            if (absentPack.Exists())
+                DungeonLead::SetPackState(botAI, st, absentPack, DungeonLeadKernel::PackState::Skipped);
+        }
+        botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " is not here, moving on");
+        DungeonLead::AdvanceStep(st, /*confirmed*/ false);
         return true;
     }
 

@@ -171,6 +171,19 @@ class AnalyzeTest(unittest.TestCase):
         self.assertIs(campaign_result(m, [other, first]), first)
         old = {k: v for k, v in first.items() if k != "run_started_at"}
         self.assertIs(campaign_result(m, [old, dict(old, ended=False)]), old)
+    def test_absent_optional_is_not_a_failure(self):
+        evs = synthetic()
+        r = Run()
+        r.seq = len(evs)
+        r.events = evs
+        r.ev(35000, "objective_absent", {"name": "Rare", "step": 3, "entry": 99, "spots": 1, "detail": "Rare"}, step=3)
+        r.events.sort(key=lambda e: e["run_ms"])
+        m = model.reconstruct(r.events)
+        (st,) = [s for s in m["route"]["step_events"] if s["step"] == 3]
+        self.assertEqual([(x["event"], x["why"], x["action"]) for x in st["events"]], [("objective_absent", "absent", "pass")])
+        v = analyze_run.verdict(m)
+        self.assertEqual(v["result"], analyze_run.verdict(model.reconstruct(synthetic()))["result"])
+        self.assertFalse([f for f in analyze_run.failures(m)["findings"] if "Rare" in json.dumps(f)])
 
     def test_report_renders(self):
         m = model.reconstruct(synthetic())
