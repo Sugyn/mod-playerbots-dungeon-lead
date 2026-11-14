@@ -274,6 +274,21 @@ namespace
         return true;
     }
 
+    // A navmesh tile of an outdoor map loaded for a walk, at most once per kTileRetryMs (loading reads
+    // the tile file; a grid that unloads later may take its tile with it).
+    constexpr uint32 kTileRetryMs = 5 * MINUTE * IN_MILLISECONDS;
+    void EnsureTile(Map* map, uint32 gx, uint32 gy)
+    {
+        static std::map<uint64, uint32> loaded;
+        uint64 const key = (uint64(map->GetId()) << 16) | (gx << 8) | gy;
+        uint32 const now = getMSTime();
+        auto it = loaded.find(key);
+        if (it != loaded.end() && getMSTimeDiff(it->second, now) < kTileRetryMs)
+            return;
+        loaded[key] = now;
+        map->GetMapCollisionData().LoadMMapTile(gx, gy);
+    }
+
     // One leg of a walk along the navmesh: the computed points, not a straight line. A long way
     // comes back as a partial path; the next leg starts when this one ends. False = no path at all.
     // Outside a dungeon only the navmesh tiles of loaded grids exist: the target's tile is loaded
@@ -283,8 +298,16 @@ namespace
         Map* map = walker->GetMap();
         if (map && !map->Instanceable())
         {
-            GridCoord const gc = Acore::ComputeGridCoord(x, y);
-            map->GetMapCollisionData().LoadMMapTile(gc.x_coord, gc.y_coord);
+            // Every navmesh tile between the walker and its target (and one around): a search
+            // through tiles that are not loaded ends at the point nearest the target as the crow
+            // flies - on a hill above a cave mouth - instead of finding the way in.
+            GridCoord const a = Acore::ComputeGridCoord(walker->GetPositionX(), walker->GetPositionY());
+            GridCoord const b = Acore::ComputeGridCoord(x, y);
+            uint32 const x0 = std::min(a.x_coord, b.x_coord), x1 = std::max(a.x_coord, b.x_coord);
+            uint32 const y0 = std::min(a.y_coord, b.y_coord), y1 = std::max(a.y_coord, b.y_coord);
+            for (uint32 gx = x0 ? x0 - 1 : 0; gx <= std::min(x1 + 1, uint32(MAX_NUMBER_OF_GRIDS - 1)); ++gx)
+                for (uint32 gy = y0 ? y0 - 1 : 0; gy <= std::min(y1 + 1, uint32(MAX_NUMBER_OF_GRIDS - 1)); ++gy)
+                    EnsureTile(map, gx, gy);
         }
         // The run back's own search first (steep ground included); the core's search below is the
         // fallback when it finds nothing.
@@ -318,7 +341,7 @@ namespace
             if (!map->Instanceable())
             {
                 GridCoord const agc = Acore::ComputeGridCoord(ax, ay);
-                map->GetMapCollisionData().LoadMMapTile(agc.x_coord, agc.y_coord);
+                EnsureTile(map, agc.x_coord, agc.y_coord);
             }
             if (az > INVALID_HEIGHT + 1.f)
             {
@@ -689,22 +712,13 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                     }
                     if (!OnWalkLeg(m))
                     {
-                        // a partial path that brings it no closer: over the ground first; otherwise the
-                        // navmesh, and over the ground where it finds no way
-                        bool const stalled = getMSTimeDiff(e.progressTs, now) >= DungeonLeadKernel::kWalkProgressMs / 2;
-                        if (stalled && GroundLeg(m, portal->x, portal->y))
+                        // the navmesh; over the ground only where it finds no way at all (a straight
+                        // line toward a portal in a cave leads away from its mouth)
+                        e.pathFound = WalkLeg(m, portal->x, portal->y, portal->z, e);
+                        if (!e.pathFound && GroundLeg(m, portal->x, portal->y))
                         {
                             e.pathFound = true;
-                            e.lastPathType = kGroundLegFlag;
-                        }
-                        else
-                        {
-                            e.pathFound = WalkLeg(m, portal->x, portal->y, portal->z, e);
-                            if (!e.pathFound && GroundLeg(m, portal->x, portal->y))
-                            {
-                                e.pathFound = true;
-                                e.lastPathType |= kGroundLegFlag;
-                            }
+                            e.lastPathType |= kGroundLegFlag;
                         }
                     }
                     verdict = Advance(e, dist, now);
