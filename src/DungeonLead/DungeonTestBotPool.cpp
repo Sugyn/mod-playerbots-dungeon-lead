@@ -237,8 +237,11 @@ namespace
             idList << (*accIds)[0].Get<uint32>();
         } while (accIds->NextRow());
 
+        // Characters leased in the same tick are still offline in the database, so the result has
+        // to cover the whole pool: with a small limit, parallel parties run out of candidates
+        // although most of the pool is idle.
         QueryResult chars = CharacterDatabase.Query(
-            "SELECT guid, name, account, race FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 40",
+            "SELECT guid, name, account, race FROM characters WHERE class = {} AND online = 0 AND account IN ({}) LIMIT 1000",
             classId, idList.str());
         if (!chars)
         {
