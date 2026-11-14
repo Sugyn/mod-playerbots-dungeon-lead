@@ -283,17 +283,17 @@ namespace
         // One faction per party: a mixed party isn't a real one, and the other faction's members
         // attack faction NPCs the run needs (e.g. a prisoner who opens a door). With a party faction
         // (`partyTeamArg`, see ChooseTestPartyTeam) only characters of that faction are taken;
-        // TEAM_NEUTRAL takes any, the party's own faction preferred.
+        // TEAM_NEUTRAL takes any faction.
         bool const strictTeam = partyTeamArg != TEAM_NEUTRAL;
         TeamId const partyTeam = TeamId(partyTeamArg);
 
         // Passes: the party's faction and a fresh account first (fresh accounts spread
         // AccountInstancesPerHour load - see the struct comment on accountId), then the party's
-        // faction on any account. Without a party faction to keep, also anything else.
-        for (int pass = 0; pass < (strictTeam ? 2 : 3); ++pass)
+        // faction on any account.
+        for (int pass = 0; pass < 2; ++pass)
         {
             bool const requireFreshAccount = pass == 0;
-            bool const requireTeam = pass < 2;
+            bool const requireTeam = strictTeam && pass < 2;
             for (Candidate const& c : candidates)
             {
                 if (requireTeam && c.team != partyTeam)
@@ -550,6 +550,7 @@ bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::stri
     return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage, outName, partyTeam);
 }
 
+// A few database queries per party (one per class): fine for the test tool's party start.
 int DungeonLead::ChooseTestPartyTeam(std::vector<uint8> const& dpsClasses)
 {
     // the classes the party needs and how many of each: tank, healer, its dps
