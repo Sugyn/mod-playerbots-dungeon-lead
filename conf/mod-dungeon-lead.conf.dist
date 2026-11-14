@@ -269,8 +269,9 @@ AiPlayerbot.DungeonLead.EventWaitSeconds = 600
 #                      bot falling behind walks to the leader; a teleport is only the fallback of a
 #                      walk that fails. The walks search their way on the navmesh themselves and load
 #                      navmesh tiles outside the dungeon. 0 = the earlier way: a dead bot released
-#                      outside the dungeon is put back at the entrance, a straggler is brought to the
-#                      leader by the recovery.
+#                      outside the dungeon is put back at the entrance (all of them together, at
+#                      most every 15 seconds), a straggler is brought to the leader by the recovery.
+#                      Read at server start.
 #        Default:     1
 
 AiPlayerbot.DungeonLead.RunBackOnFoot = 1

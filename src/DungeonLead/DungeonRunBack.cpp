@@ -592,19 +592,24 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
         st.runBack.clear();
         if (!haveEntrance)
             return;
+        // One gap for the session, checked once per pass: every dead bot outside goes back together
+        // (a wipe), and a failed teleport is not retried before the gap is over either.
+        bool const due = DungeonLeadKernel::TeleportReturnDue(false, true, st.teleportReturnTs != 0,
+                                                              st.teleportReturnTs ? getMSTimeDiff(st.teleportReturnTs, now) : 0);
+        if (!due)
+            return;
+        bool attempted = false;
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* m = ref->GetSource();
-            if (!m || !m->IsInWorld() || !IsSessionBot(m))
+            if (!m || !m->IsInWorld() || !IsSessionBot(m) || m->IsAlive() || m->GetMapId() == st.mapId)
                 continue;
-            bool const deadOutside = !m->IsAlive() && m->GetMapId() != st.mapId;
-            if (!DungeonLeadKernel::TeleportReturnDue(false, deadOutside, st.teleportReturnTs != 0,
-                                                      st.teleportReturnTs ? getMSTimeDiff(st.teleportReturnTs, now) : 0))
-                continue;
-            if (TeleportMember(leaderAI, m, st.mapId, entrance.x, entrance.y, entrance.z, entrance.o, "teleport_return",
-                               "run_back"))
-                st.teleportReturnTs = now;
+            attempted = true;
+            TeleportMember(leaderAI, m, st.mapId, entrance.x, entrance.y, entrance.z, entrance.o, "teleport_return",
+                           "run_back");
         }
+        if (attempted)
+            st.teleportReturnTs = now;
         return;
     }
 

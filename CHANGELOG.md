@@ -8,7 +8,7 @@ while the module is in alpha.
 
 ### Added
 
-- `AiPlayerbot.DungeonLead.RunBackOnFoot` (default 1) switches the run back on foot off without a rebuild: with 0, a dead bot released outside the dungeon is put back at the entrance and a straggler is brought to the leader, as before 0.16.0-alpha; every such teleport still writes a `member_teleport` event (reason `teleport_return` or `escalation`).
+- `AiPlayerbot.DungeonLead.RunBackOnFoot` (default 1) switches the run back on foot off without a rebuild (a server restart applies it): with 0, a dead bot released outside the dungeon is put back at the entrance and a straggler is brought to the leader, as before 0.16.0-alpha; every such teleport still writes a `member_teleport` event (reason `teleport_return` or `escalation`).
 
 ## [0.16.0-alpha] - 2026-11-14
 
