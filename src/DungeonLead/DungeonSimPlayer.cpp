@@ -13,6 +13,7 @@
 #include "DungeonRouteMgr.h"
 #include "DungeonTelemetryV2.h"
 #include "Group.h"
+#include "GroupMgr.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -40,6 +41,8 @@ namespace
         std::mt19937 rng;
         ObjectGuid self;
         ObjectGuid leader;  // the leader of the session it last played in
+        ObjectGuid group;   // its group when it logged out: a player's logout keeps the group
+        uint32 backSeenTs = 0;  // first seen in the world after logging back in
         SimAction action = SimAction::Follow;
         uint32 actionSince = 0;
         uint32 actionMs = 0;
@@ -108,13 +111,29 @@ namespace
             ai->ChangeStrategy(stand ? "-follow,+stay" : "-stay,+follow", BOT_STATE_NON_COMBAT);
     }
 
-    // Back in the world after a logout: its release waits for its script again, it follows the
-    // leader again, and the leader's session has its player back.
-    void Remark(SimState& s, Player* sim)
+    // A masterless bot login leaves its group (mod-playerbots' login check); a player who logs back
+    // in is still in theirs. Give it back its group once its login has settled.
+    constexpr uint32 kLoginSettleMs = 5 * IN_MILLISECONDS;
+
+    // Back in the world after a logout: its group again, its release waits for its script again, it
+    // follows the leader again, and the leader's session has its player back.
+    void Remark(SimState& s, Player* sim, uint32 now)
     {
         PlayerbotAI* simAI = GET_PLAYERBOT_AI(sim);
         if (!simAI)
             return;
+        if (!s.backSeenTs)
+            s.backSeenTs = now;
+        if (getMSTimeDiff(s.backSeenTs, now) < kLoginSettleMs)
+            return;
+        if (s.group && (!sim->GetGroup() || sim->GetGroup()->GetGUID() != s.group))
+            if (Group* own = sGroupMgr->GetGroupByGUID(s.group.GetCounter()))
+            {
+                if (Group* other = sim->GetGroup())
+                    other->RemoveMember(sim->GetGUID());
+                if (!own->IsFull())
+                    own->AddMember(sim);
+            }
         simAI->ChangeStrategy("+dungeon lead run back", BOT_STATE_DEAD);
         Player* leader = s.leader ? ObjectAccessor::FindPlayer(s.leader) : nullptr;
         Group* group = sim->GetGroup();
@@ -127,6 +146,7 @@ namespace
                     leaderAI->SetMaster(sim);
         }
         s.remark = false;
+        s.backSeenTs = 0;
     }
 
     // What runs on time whether or not a session still runs: logging back in, being resurrected,
@@ -168,7 +188,7 @@ namespace
             if (!ai->HasStrategy("dungeon lead run back", BOT_STATE_DEAD))
                 ai->ChangeStrategy("+dungeon lead run back", BOT_STATE_DEAD);
         if (s.remark)
-            Remark(s, sim);
+            Remark(s, sim, now);
 
         // dead: it waits, then accepts a resurrection (a party healer may bring it back earlier)
         if (!sim->IsAlive())
@@ -178,7 +198,14 @@ namespace
                 s.deadSince = now;
                 s.rezAfterMs = DungeonLeadKernel::SimActionMs(SimAction::Die, s.rng() % 1000);
             }
-            if (getMSTimeDiff(s.deadSince, now) >= s.rezAfterMs)
+            // Like a player who ran back to the corpse: it revives there only when no fight is on
+            // around it (a party resurrection may come any time).
+            bool fightNear = false;
+            if (Group* group = sim->GetGroup())
+                for (GroupReference* ref = group->GetFirstMember(); ref && !fightNear; ref = ref->next())
+                    if (Player* p = ref->GetSource())
+                        fightNear = p->IsAlive() && p->IsInCombat();
+            if (getMSTimeDiff(s.deadSince, now) >= s.rezAfterMs && !fightNear && !sim->isResurrectRequested())
             {
                 sim->ResurrectPlayer(0.5f);
                 sim->SpawnCorpseBones();
@@ -350,6 +377,7 @@ void DungeonLead::SimPlayerTick(PlayerbotAI* leaderAI, DungeonLeadState& st)
             // The leader's master would point at a deleted player: the session waits for its
             // player by st.masterGuid meanwhile, and gets it back when it logs in (Remark).
             s.loggedOut = true;
+            s.group = sim->GetGroup() ? sim->GetGroup()->GetGUID() : ObjectGuid::Empty;
             leaderAI->SetMaster(nullptr);
             RandomPlayerbotMgr::instance().LogoutPlayerBot(st.masterGuid);
             break;
