@@ -168,7 +168,27 @@ namespace
     // and slime for a ghost only (a ghost takes no damage). Coordinates in Detour order (y, z, x).
     // Fills `out` with the corner points of the way (to the target, or as far as it goes); false =
     // no polygon at either end or no way at all. `reached`: the way ends at the target's polygon.
-    constexpr int kMaxPolys = 512;
+    constexpr int kMaxPolys = 1024;
+    // The map's shared query searches at most 1024 nodes - too few for a long way down a mine or a
+    // cleft, which then ends at the nearest point above. The run back keeps its own query with a
+    // larger node pool for the outdoor maps (world thread only); their navmesh lives as long as the
+    // server. Inside an instance - small, and unloaded with the instance - the map's query is used.
+    constexpr int kOwnQueryNodes = 16384;
+    dtNavMeshQuery const* OwnQuery(dtNavMesh const* mesh)
+    {
+        static std::map<dtNavMesh const*, dtNavMeshQuery*> queries;
+        auto it = queries.find(mesh);
+        if (it != queries.end())
+            return it->second;
+        dtNavMeshQuery* q = dtAllocNavMeshQuery();
+        if (q && dtStatusFailed(q->init(mesh, kOwnQueryNodes)))
+        {
+            dtFreeNavMeshQuery(q);
+            q = nullptr;
+        }
+        queries[mesh] = q;
+        return q;
+    }
     constexpr int kMaxCorners = 256;
     constexpr float kLegStepYd = 4.0f;
     constexpr float kMaxLegYd = 200.0f;
@@ -180,7 +200,7 @@ namespace
             return false;
         MMapData& mmap = map->GetMapCollisionData().GetMMapData();
         dtNavMesh const* mesh = mmap.GetNavMesh();
-        dtNavMeshQuery const* query = mmap.GetNavMeshQuery();
+        dtNavMeshQuery const* query = !mesh ? nullptr : map->Instanceable() ? mmap.GetNavMeshQuery() : OwnQuery(mesh);
         if (!mesh || !query)
             return false;
         dtQueryFilter filter;
