@@ -174,6 +174,9 @@ private:
         dungeonLeadValidationAutostart =
             sConfigMgr->GetOption<std::string>("AiPlayerbot.DungeonLead.ValidationAutostart", "");
         dungeonLeadStepWalkLimitSeconds = Bounded("AiPlayerbot.DungeonLead.StepWalkLimitSeconds", 600, 60, 3600);
+        if (dungeonLeadValidationQueue && (!dungeonLeadQueueAutoStart || !dungeonLeadValidationSimPlayer))
+            LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] ValidationQueue = 1 needs QueueAutoStart = 1 and "
+                      "ValidationSimPlayer 1 or 2 - validation parties are formed directly instead");
         if (dungeonLeadPartyHardRange <= dungeonLeadPartySoftRange)
         {
             LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] PartyHardRange ({}) must be above PartySoftRange ({}), "

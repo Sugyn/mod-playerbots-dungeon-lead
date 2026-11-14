@@ -20,9 +20,10 @@
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "Playerbots.h"
+#include "RandomPlayerbotMgr.h"
 #include "Timer.h"
 
-#include <set>
+#include <map>
 #include <vector>
 
 namespace
@@ -36,8 +37,41 @@ namespace
         uint32 sinceTs = 0;
     };
     std::vector<Breakup> g_breakups;
-    // Groups this tick has decided for already (a start, a player tank, an unsupported dungeon).
-    std::set<ObjectGuid> g_handled;
+    // Groups this tick has decided for already (a start, a player tank, an unsupported dungeon), with
+    // the instance it decided in: the same group in another instance - or a new group that got a
+    // freed group id - is a new run. Entries of groups that are gone are dropped.
+    std::map<ObjectGuid, uint32> g_handled;
+
+    void PruneHandled()
+    {
+        for (auto it = g_handled.begin(); it != g_handled.end();)
+            if (!sGroupMgr->GetGroupByGUID(it->first.GetCounter()))
+                it = g_handled.erase(it);
+            else
+                ++it;
+    }
+
+    bool Handled(Group* group, Player* player)
+    {
+        auto it = g_handled.find(group->GetGUID());
+        return it != g_handled.end() && it->second == player->GetInstanceId();
+    }
+
+    // The party's own message, said by one of its bots (the player sees it in party chat).
+    void SayToParty(Group* group, Player* preferred, std::string const& text)
+    {
+        Player* speaker = preferred;
+        if (!speaker || !GET_PLAYERBOT_AI(speaker))
+        {
+            speaker = nullptr;
+            for (GroupReference* ref = group->GetFirstMember(); ref && !speaker; ref = ref->next())
+                if (Player* m = ref->GetSource())
+                    if (m->IsInWorld() && DungeonLead::IsBotActor(m) && GET_PLAYERBOT_AI(m))
+                        speaker = m;
+        }
+        if (speaker)
+            GET_PLAYERBOT_AI(speaker)->SayToParty(text);
+    }
 
     bool IsPlayerLike(Player* p)
     {
@@ -55,11 +89,21 @@ namespace
             }
             if (Group* group = sGroupMgr->GetGroupByGUID(it->group.GetCounter()))
             {
+                // every bot of the group, offline ones too; the player's own characters stay
                 std::vector<ObjectGuid> bots;
-                for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-                    if (Player* m = ref->GetSource())
-                        if (DungeonLead::IsBotActor(m))
-                            bots.push_back(m->GetGUID());
+                for (Group::MemberSlot const& slot : group->GetMemberSlots())
+                {
+                    Player* m = ObjectAccessor::FindConnectedPlayer(slot.guid);
+                    bool const offlineBot = !m && (RandomPlayerbotMgr::instance().IsRandomBot(slot.guid.GetCounter()) ||
+                                                   RandomPlayerbotMgr::instance().IsAddclassBot(slot.guid.GetCounter()));
+                    if (m ? DungeonLead::IsBotActor(m) : offlineBot)
+                        bots.push_back(slot.guid);
+                    // nobody of the group keeps the player as its master after it leaves
+                    if (PlayerbotAI* ai = m ? GET_PLAYERBOT_AI(m) : nullptr)
+                        if (Player* master = ai->GetMaster())
+                            if (master->GetGUID() == it->player && DungeonLead::IsBotActor(m))
+                                ai->SetMaster(nullptr);
+                }
                 LOG_INFO("playerbots.dungeonlead", "[DungeonLead] queue run done - {} bot(s) leave the group", bots.size());
                 for (ObjectGuid const& g : bots)
                     if (Group* still = sGroupMgr->GetGroupByGUID(it->group.GetCounter()))
@@ -88,6 +132,7 @@ void DungeonLead::QueueStartTick()
         return;
     lastTs = now;
     RunBreakups(now);
+    PruneHandled();
     if (!sDungeonLeadConfig.dungeonLeadQueueAutoStart)
         return;
 
@@ -97,7 +142,7 @@ void DungeonLead::QueueStartTick()
         if (!player || !player->IsInWorld() || !IsPlayerLike(player))
             continue;
         Group* group = player->GetGroup();
-        if (!group || g_handled.count(group->GetGUID()))
+        if (!group || Handled(group, player))
             continue;
 
         DungeonLeadKernel::QueueStartFacts f;
@@ -122,13 +167,16 @@ void DungeonLead::QueueStartTick()
                 f.sessionRunning = true;
             if (m->IsInCombat())
                 f.inCombat = true;
-            bool const isTank = (sLFGMgr->GetRoles(m->GetGUID()) & lfg::PLAYER_ROLE_TANK) ||
-                                PlayerbotAI::IsTank(m);
+            // the role it queued in; its spec only when the finder has none for it
+            uint8 const queued = sLFGMgr->GetRoles(m->GetGUID()) &
+                                 (lfg::PLAYER_ROLE_TANK | lfg::PLAYER_ROLE_HEALER | lfg::PLAYER_ROLE_DAMAGE);
+            bool const isTank = queued ? (queued & lfg::PLAYER_ROLE_TANK) != 0 : PlayerbotAI::IsTank(m);
             if (!isTank)
                 continue;
             if (IsPlayerLike(m))
                 f.tankIsPlayer = true;
-            else if (!tank && ai && m->GetMapId() == player->GetMapId())
+            else if (!tank && ai && m->IsInWorld() && m->IsAlive() && m->GetMapId() == player->GetMapId() &&
+                     m->GetInstanceId() == player->GetInstanceId())
                 tank = m;
         }
         f.tankBotReady = tank != nullptr;
@@ -139,25 +187,27 @@ void DungeonLead::QueueStartTick()
             case DungeonLeadKernel::QueueStart::Wait:
                 break;
             case DungeonLeadKernel::QueueStart::PlayerTanks:
-                g_handled.insert(group->GetGUID());
+                g_handled[group->GetGUID()] = player->GetInstanceId();
                 break;
             case DungeonLeadKernel::QueueStart::NotSupported:
-                g_handled.insert(group->GetGUID());
-                if (Player* any = tank)
-                    if (PlayerbotAI* ai = GET_PLAYERBOT_AI(any))
-                        ai->TellMasterNoFacing("Dungeon lead: no route for this dungeon - the party plays it the usual way");
+                g_handled[group->GetGUID()] = player->GetInstanceId();
+                SayToParty(group, tank, "Dungeon lead: no route for this dungeon - the party plays it the usual way");
                 break;
             case DungeonLeadKernel::QueueStart::Start:
             {
-                g_handled.insert(group->GetGUID());
+                g_handled[group->GetGUID()] = player->GetInstanceId();
                 PlayerbotAI* tankAI = GET_PLAYERBOT_AI(tank);
                 tankAI->SetMaster(player);
+                // a simulated player's run is a validation run: it reports its result
                 bool const ok = DungeonLead::StartSession(tankAI, group, DungeonLeadSessionOrigin::Queue, player,
-                                                          /*testMode*/ false);
+                                                          /*testMode*/ DungeonLead::IsSimulatedPlayer(player));
                 LOG_INFO("playerbots.dungeonlead", "[DungeonLead] queue group of {} in lfg {}: {} leads - StartSession={}",
                          player->GetName(), lfgId, tank->GetName(), ok);
                 if (!ok)
+                {
+                    tankAI->SetMaster(nullptr);
                     g_handled.erase(group->GetGUID());
+                }
                 break;
             }
         }

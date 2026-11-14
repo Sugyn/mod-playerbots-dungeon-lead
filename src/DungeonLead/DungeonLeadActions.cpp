@@ -866,7 +866,7 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
                               .Num("class", uint32_t(member->getClass()))
                               .Num("level", uint32_t(member->GetLevel()))
                               .Bool("leader", member == bot)
-                              .Bool("bot", GET_PLAYERBOT_AI(member) != nullptr)
+                              .Bool("bot", GET_PLAYERBOT_AI(member) != nullptr && !IsSimulatedPlayer(member))
                               .Done();
         RecordEventV2(botAI, "party_roster", JsonLine().Raw("members", "[" + roster + "]").Done());
     }
@@ -1196,7 +1196,7 @@ bool DungeonLead::AllowTeleport(Player* player, uint32 mapId, float x, float y, 
     // The real player has left the dungeon: following them out is right.
     PlayerbotAI* leaderAI = GET_PLAYERBOT_AI(leader);
     if (Player* master = leaderAI ? leaderAI->GetMaster() : nullptr)
-        if (master != leader && IsRealPlayer(master) && master->GetMapId() != player->GetMapId())
+        if (master != leader && !IsBotActor(master) && master->GetMapId() != player->GetMapId())
             return true;
 
     // mod-playerbots' "within area trigger" -> "area trigger" action re-sends the area trigger for a
@@ -1644,7 +1644,7 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* m = ref->GetSource();
-            if (!m || !m->IsInWorld() || m->IsAlive() || IsRealPlayer(m) || IsSelfBot(m))
+            if (!m || !m->IsInWorld() || m->IsAlive() || !IsBotActor(m))
                 continue;
             uint32& last = lastDeadLog[m->GetGUID().GetRawValue()];
             if (last && getMSTimeDiff(last, nowMs) < 15000)
@@ -1993,7 +1993,7 @@ void DungeonLead::Stop(PlayerbotAI* botAI, bool giveLeaderBack)
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
-            if (!member || member == bot)
+            if (!member || member == bot || !IsBotActor(member))
                 continue;
             bool const hasSnapshot = std::any_of(snapshots.begin(), snapshots.end(),
                 [&](DungeonLeadMemberSnapshot const& s) { return s.guid == member->GetGUID(); });
@@ -3017,6 +3017,7 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // RecordRunSummary/RecordEvent needing to run before Stop() elsewhere in this file.
             bool const wasTestMode = st.testMode;
             DungeonLeadSessionOrigin const origin = st.origin;
+            bool const routeDone = st.outcome == DungeonRunOutcome::Complete;
 
             // "startdungeon test": report a structured RunResult at the terminal outcome, then clear
             // test mode so any further play this session isn't mislabeled as a test. One line, not
@@ -3054,12 +3055,17 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             if (origin == DungeonLeadSessionOrigin::Queue)
             {
                 // The dungeon finder's run is done: say so, hand the lead back, and the bots leave
-                // the group a little later, as players do when a dungeon-finder run ends.
+                // the group a little later, as players do when a dungeon-finder run ends. A route that
+                // ended short of its end only hands the lead back: the party stays and plays on.
                 Player* player = botAI->GetMaster();
-                botAI->TellMasterNoFacing("Dungeon lead: that was the last boss - the dungeon is done. Thanks for the run!");
-                Group* group = bot->GetGroup();
-                if (group)
-                    DungeonLead::ScheduleQueueBreakup(group->GetGUID(), player ? player->GetGUID() : ObjectGuid::Empty);
+                if (routeDone)
+                {
+                    botAI->TellMasterNoFacing("Dungeon lead: that was the last boss - the dungeon is done. Thanks for the run!");
+                    if (Group* group = bot->GetGroup())
+                        DungeonLead::ScheduleQueueBreakup(group->GetGUID(), player ? player->GetGUID() : ObjectGuid::Empty);
+                }
+                else
+                    botAI->TellMasterNoFacing("Dungeon lead: the route ends here - the lead is yours, the party stays with you.");
                 DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
             }
             else if (wasTestMode || origin != DungeonLeadSessionOrigin::Manual)
