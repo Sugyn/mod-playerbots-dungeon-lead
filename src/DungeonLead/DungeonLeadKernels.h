@@ -2387,11 +2387,25 @@ namespace DungeonLeadKernel
         return p == RunBackPhase::Released && !onInstanceMap;
     }
 
-    // A validation party is of one faction: its first member takes the faction with more characters
-    // of its class still free (true = Alliance), so both factions' pools are used.
-    inline bool ChoosePartyTeam(uint32_t freeAlliance, uint32_t freeHorde)
+    // How many whole parties a faction's free characters still make: `free[i]` characters of a class
+    // the party needs `need[i]` of. The scarcest class decides (a party needs two warriors: tank, dps).
+    inline uint32_t PartiesLeft(uint32_t const* free, uint32_t const* need, size_t n)
     {
-        return freeAlliance >= freeHorde;
+        uint32_t parties = UINT32_MAX;
+        for (size_t i = 0; i < n; ++i)
+            if (need[i])
+                parties = std::min(parties, free[i] / need[i]);
+        return parties == UINT32_MAX ? 0 : parties;
+    }
+
+    // A validation party is of one faction: the one whose free characters make more whole parties
+    // (PartiesLeft), so both factions' pools are used and no party comes up short of its scarcest
+    // class. Numbered as TeamId: 0 Alliance (also a tie), 1 Horde, 2 neither makes a whole party.
+    inline int ChoosePartyTeam(uint32_t partiesAlliance, uint32_t partiesHorde)
+    {
+        if (!partiesAlliance && !partiesHorde)
+            return 2;
+        return partiesAlliance >= partiesHorde ? 0 : 1;
     }
 }
 

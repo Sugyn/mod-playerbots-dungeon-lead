@@ -12,6 +12,7 @@
 #include "DungeonLeadConfig.h"
 
 #include "DatabaseEnv.h"
+#include "DungeonLeadKernels.h"
 #include "Group.h"
 #include "GroupMgr.h"
 #include "InstanceSaveMgr.h"
@@ -216,10 +217,16 @@ namespace
     };
     std::vector<PendingStart> g_pendingStarts;
 
-    // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
-    // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
-    bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage,
-                    std::string* outName, int partyTeamArg)
+    struct Candidate { ObjectGuid guid; std::string name; uint32 accountId; TeamId team; };
+
+    bool IsLeased(ObjectGuid guid)
+    {
+        return std::any_of(g_leases.begin(), g_leases.end(), [&](TestBotLease const& l) { return l.guid == guid; });
+    }
+
+    // The offline AddClass characters of `classId` (leased ones included: characters leased in this
+    // tick are still offline in the database).
+    bool LoadCandidates(uint8 classId, std::vector<Candidate>& candidates, std::string& outMessage)
     {
         QueryResult accIds = PlayerbotsDatabase.Query("SELECT account_id FROM playerbots_account_type WHERE account_type = 2");
         if (!accIds)
@@ -249,8 +256,6 @@ namespace
             return false;
         }
 
-        struct Candidate { ObjectGuid guid; std::string name; uint32 accountId; TeamId team; };
-        std::vector<Candidate> candidates;
         do
         {
             Field* f = chars->Fetch();
@@ -259,24 +264,28 @@ namespace
                                    Player::TeamIdForRace(f[3].Get<uint8>())});
         } while (chars->NextRow());
 
+        return true;
+    }
+
+    // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
+    // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
+    bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage,
+                    std::string* outName, int partyTeamArg)
+    {
+        std::vector<Candidate> candidates;
+        if (!LoadCandidates(classId, candidates, outMessage))
+            return false;
+
         std::set<uint32> leasedAccounts;
         for (TestBotLease const& l : g_leases)
             leasedAccounts.insert(l.accountId);
 
         // One faction per party: a mixed party isn't a real one, and the other faction's members
-        // attack faction NPCs the run needs (e.g. a prisoner who opens a door). A party's members
-        // take its first member's faction (`partyTeamArg`) and nothing else; its first member takes
-        // the faction with more characters of its class still free (DungeonLeadKernel::ChoosePartyTeam).
+        // attack faction NPCs the run needs (e.g. a prisoner who opens a door). With a party faction
+        // (`partyTeamArg`, see ChooseTestPartyTeam) only characters of that faction are taken;
+        // TEAM_NEUTRAL takes any, the party's own faction preferred.
         bool const strictTeam = partyTeamArg != TEAM_NEUTRAL;
-        TeamId partyTeam = TeamId(partyTeamArg);
-        if (!strictTeam)
-        {
-            uint32 freeAlliance = 0, freeHorde = 0;
-            for (Candidate const& c : candidates)
-                if (std::none_of(g_leases.begin(), g_leases.end(), [&](TestBotLease const& l) { return l.guid == c.guid; }))
-                    (c.team == TEAM_ALLIANCE ? freeAlliance : freeHorde)++;
-            partyTeam = DungeonLeadKernel::ChoosePartyTeam(freeAlliance, freeHorde) ? TEAM_ALLIANCE : TEAM_HORDE;
-        }
+        TeamId const partyTeam = TeamId(partyTeamArg);
 
         // Passes: the party's faction and a fresh account first (fresh accounts spread
         // AccountInstancesPerHour load - see the struct comment on accountId), then the party's
@@ -289,9 +298,7 @@ namespace
             {
                 if (requireTeam && c.team != partyTeam)
                     continue;
-                bool const alreadyLeased = std::any_of(g_leases.begin(), g_leases.end(),
-                    [&](TestBotLease const& l) { return l.guid == c.guid; });
-                if (alreadyLeased)
+                if (IsLeased(c.guid))
                     continue;
                 if (requireFreshAccount && leasedAccounts.count(c.accountId))
                     continue;
@@ -541,6 +548,42 @@ bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::stri
                                     int partyTeam)
 {
     return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage, outName, partyTeam);
+}
+
+int DungeonLead::ChooseTestPartyTeam(std::vector<uint8> const& dpsClasses)
+{
+    // the classes the party needs and how many of each: tank, healer, its dps
+    std::vector<std::pair<uint8, uint32>> need;
+    auto add = [&](uint8 cls)
+    {
+        auto it = std::find_if(need.begin(), need.end(), [&](auto const& n) { return n.first == cls; });
+        if (it == need.end())
+            need.emplace_back(cls, 1);
+        else
+            ++it->second;
+    };
+    add(ClassSpecFor(TestBotRole::Tank).cls);
+    add(ClassSpecFor(TestBotRole::Healer).cls);
+    for (uint8 cls : dpsClasses)
+        add(cls);
+
+    std::vector<uint32> needs, freeAlliance, freeHorde;
+    for (auto const& [cls, count] : need)
+    {
+        std::vector<Candidate> candidates;
+        std::string ignored;
+        LoadCandidates(cls, candidates, ignored);
+        uint32 a = 0, h = 0;
+        for (Candidate const& c : candidates)
+            if (!IsLeased(c.guid))
+                (c.team == TEAM_ALLIANCE ? a : h)++;
+        needs.push_back(count);
+        freeAlliance.push_back(a);
+        freeHorde.push_back(h);
+    }
+    return DungeonLeadKernel::ChoosePartyTeam(
+        DungeonLeadKernel::PartiesLeft(freeAlliance.data(), needs.data(), needs.size()),
+        DungeonLeadKernel::PartiesLeft(freeHorde.data(), needs.data(), needs.size()));
 }
 
 int DungeonLead::TestBotTeam(std::string const& name)

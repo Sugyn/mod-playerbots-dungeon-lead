@@ -1819,9 +1819,20 @@ namespace
 
     void TestPartyTeam()
     {
-        Check(ChoosePartyTeam(10, 3), "more free Alliance characters: Alliance");
-        Check(!ChoosePartyTeam(3, 10), "more free Horde characters: Horde");
-        Check(ChoosePartyTeam(5, 5), "a tie: Alliance");
+        Check(ChoosePartyTeam(10, 3) == 0, "more whole Alliance parties: Alliance");
+        Check(ChoosePartyTeam(3, 10) == 1, "more whole Horde parties: Horde");
+        Check(ChoosePartyTeam(5, 5) == 0, "a tie: Alliance");
+        Check(ChoosePartyTeam(0, 1) == 1, "only Horde makes a whole party: Horde");
+        Check(ChoosePartyTeam(0, 0) == 2, "neither faction makes a whole party: none");
+        // warrior x2 (tank, dps), priest, mage, rogue
+        uint32_t const need[] = {2, 1, 1, 0, 1, 1};
+        uint32_t const plenty[] = {40, 30, 30, 0, 30, 30};
+        Check(PartiesLeft(plenty, need, 6) == 20, "warriors (two per party) decide: 20 parties");
+        uint32_t const fewPriests[] = {40, 3, 30, 0, 30, 30};
+        Check(PartiesLeft(fewPriests, need, 6) == 3, "the scarcest class decides: 3 priests, 3 parties");
+        uint32_t const oneWarrior[] = {1, 30, 30, 0, 30, 30};
+        Check(PartiesLeft(oneWarrior, need, 6) == 0, "one warrior is no whole party");
+        Check(PartiesLeft(plenty, need, 0) == 0, "no classes: no parties");
     }
 
     void TestLeaderOffGround()
