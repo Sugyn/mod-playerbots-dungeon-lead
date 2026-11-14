@@ -917,8 +917,13 @@ namespace
             PlayerWaitClock(v, false, 302000);
             Check(DecideRecovery(v.reason, 302000 - v.reasonSince, 302000 - v.episodeSince, p) == RecoveryStep::Act,
                   "after a 5 min player wait a drink wait gets its own windows, not an exhausted episode");
-            ObserveRecovery(v, RecoveryReason::None, 303000);
+            ObserveRecovery(v, RecoveryReason::MasterTooFar, 400000);
+            Check(PlayerWaitClock(v, true, 400000) == 399000,
+                  "a wait broken by another reason goes on: one bound per absence");
+            ObserveRecovery(v, RecoveryReason::None, 403000);
             Check(v.playerWaitSince == 0, "the player back: the wait clock ends");
+            ObserveRecovery(v, RecoveryReason::MasterUnavailable, 500000);
+            Check(PlayerWaitClock(v, true, 500000) == 0, "a new absence: a new wait");
         }
         Check(DecidePlayerWait(240000) == RecoveryStep::Act, "a player back from the graveyard after 4 min: still waited for");
         Check(DecidePlayerWait(kPlayerWaitMaxMs - 1) == RecoveryStep::Act, "inside the player wait: wait");

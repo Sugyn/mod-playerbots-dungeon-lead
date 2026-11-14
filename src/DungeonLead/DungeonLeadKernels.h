@@ -1372,7 +1372,8 @@ namespace DungeonLeadKernel
         uint32_t episodeSince = 0;
         uint64_t subject = 0;
         bool relapse = false;     // the current reason resumed a recently cleared one
-        uint32_t playerWaitSince = 0;  // the session waits for its player since (0 = it does not)
+        uint32_t playerWaitSince = 0;  // the player has been away since (0 = not away; PlayerWaitClock)
+        bool playerWaitEpisode = false;  // the last pass waited for the player
         // Last cleared recovery, to recognise a relapse.
         RecoveryReason clearedReason = RecoveryReason::None;
         RecoveryStep clearedStep = RecoveryStep::None;
@@ -1417,6 +1418,7 @@ namespace DungeonLeadKernel
             t.subject = 0;
             t.relapse = false;
             t.playerWaitSince = 0;
+            t.playerWaitEpisode = false;
             return false;
         }
         // Same reason: the recovery goes on, even if the farthest member changes while it is still
@@ -1477,26 +1479,27 @@ namespace DungeonLeadKernel
         return step;
     }
 
-    // The player wait's own clock: one wait across MasterUnavailable <-> MasterTooFar (dead, then
-    // alive at the graveyard, then on the way back), ended only when the player is back (no reason)
-    // or another reason follows. While it lasts and when it ends, the episode starts afresh: the
-    // wait must not use up the episode cap of what comes after it. Returns the ms waited so far.
+    // The player wait's own clock: one wait per absence of the player - across MasterUnavailable <->
+    // MasterTooFar (dead, then alive at the graveyard, then on the way back) and across other
+    // reasons in between (a bot drinking meanwhile) - ended only when the player is back (no reason
+    // at all: ObserveRecovery clears it). While it lasts and when it gives way to another reason, the
+    // episode starts afresh: the wait must not use up the episode cap of what comes after it.
+    // Returns the ms waited so far (0 while the current reason is not a wait for the player).
     inline uint32_t PlayerWaitClock(RecoveryTimers& t, bool waitsForPlayer, uint32_t now)
     {
         uint32_t const stamp = now ? now : 1;
         if (!waitsForPlayer)
         {
-            if (t.playerWaitSince)
-            {
-                t.playerWaitSince = 0;
+            if (t.playerWaitEpisode)  // the wait just gave way: a fresh episode for what follows
                 t.episodeSince = stamp;
-            }
+            t.playerWaitEpisode = false;
             return 0;
         }
         if (!t.playerWaitSince)
             t.playerWaitSince = stamp;
+        t.playerWaitEpisode = true;
         t.episodeSince = stamp;
-        return now - t.playerWaitSince;
+        return stamp - t.playerWaitSince;
     }
 
     inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msInReason, uint32_t msInEpisode,
