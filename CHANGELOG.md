@@ -26,6 +26,7 @@ while the module is in alpha.
 - A leader held in combat by a creature far away (for example a boss behind a closed door) no longer stands still on its route: the walk, doors, pulls and event help follow the same combat rule as the session's decisions.
 - A party member that a boss keeps on its threat list from the far end of the instance (after a wipe, the boss neither comes nor leaves combat) no longer keeps the party waiting "in combat": an attacker or target more than 60 yards away does not count as a fight, so after 20 seconds the party walks on and marks the next pack.
 - A run whose leader bot leaves the world (logs out, or stays out of the world) now ends with a `leader_disconnected` terminal event and the failure reason `leader_disconnected`, so its replay shows a run ended by the disconnect (unhealthy: `leader_disconnected`) instead of a cut record.
+- A closed door near the end of the leader's walk is now seen before the leader walks through it, not only a door near the leader (the server does not stop bots at closed doors). After a wipe in Scarlet Monastery Cathedral the party could walk through the closed Secret Door into a room it could not open from inside.
 
 ### Changed
 

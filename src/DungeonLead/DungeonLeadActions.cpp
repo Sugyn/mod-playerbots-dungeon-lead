@@ -86,8 +86,9 @@ namespace
     constexpr float kDoorSightRange = 60.0f;    // a route door's state is read from this far
     constexpr float kDoorWaitDistance = 8.0f;   // wait at a closed route door from this close
     constexpr uint32 kTalkStillMs = 20000;      // a talk step's NPC stands still this long first
-    // A closed door this close to the leader that its path goes through (crosses its plane within
-    // kDoorHalfWidth of it): mmaps don't know doors, so bots would walk straight through it.
+    // A closed door its path goes through (crosses its plane within kDoorHalfWidth of it), when the
+    // door is this close to the leader or to the walk's destination (DoorOnPathCandidate): mmaps
+    // don't know doors, so bots would walk straight through it.
     constexpr float kDoorOnPathRange = 25.0f;
     constexpr float kDoorHalfWidth = 3.5f;
 
@@ -97,15 +98,22 @@ namespace
         for (ObjectGuid const& guid :
              botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects no los")->Get())
             if (GameObject* go = botAI->GetGameObject(guid))
-                if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY &&
-                    bot->GetDistance(go) <= kDoorOnPathRange &&
-                    go->GetExactDist(x, y, z) > 4.0f &&  // the destination itself (a cage to use)
-                    bot->GetExactDist(go) > 3.0f)        // one the leader stands in can't hold it back
-                    doors.push_back(go);
+                if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY)
+                {
+                    float const toDest = go->GetExactDist(x, y, z);
+                    if (DungeonLeadKernel::DoorOnPathCandidate(bot->GetDistance(go), toDest, kDoorOnPathRange) &&
+                        toDest > 4.0f &&                // the destination itself (a cage to use)
+                        bot->GetExactDist(go) > 3.0f)   // one the leader stands in can't hold it back
+                        doors.push_back(go);
+                }
         if (doors.empty())
             return nullptr;
         PathGenerator path(bot);
         path.CalculatePath(x, y, z);
+        // Only a real path says where the walk goes: a no-path answer is a straight line that the
+        // walk would not take (it may cross a door on another level).
+        if (path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END))
+            return nullptr;
         Movement::PointsArray const& pts = path.GetPath();
         for (size_t i = 1; i < pts.size(); ++i)
             for (GameObject* door : doors)
