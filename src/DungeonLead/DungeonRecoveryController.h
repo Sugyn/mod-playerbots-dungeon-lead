@@ -26,7 +26,8 @@
  * by a dead/departed real player, one stuck past the leash, or a resource wait that never
  * resolves - but escalation for them is still a no-op: waiting is the only "action", abort is the
  * actual bound. In a session a player started, master_unavailable/master_too_far wait for the
- * player up to DungeonLeadKernel::kPlayerWaitMaxMs instead of the recovery windows. Ordinary, brief instances of these (a normal drink, a moment of low health) never
+ * player up to DungeonLeadKernel::kPlayerWaitMaxMs of one absence instead of the recovery
+ * windows (DungeonLeadKernel::PlayerWaitClock). Ordinary, brief instances of these (a normal drink, a moment of low health) never
  * reach escalate/abort at all; only a persistent one does.
  * The leader's own death is the brain's WipeRecovery, not this.
  */

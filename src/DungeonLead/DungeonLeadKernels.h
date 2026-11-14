@@ -1372,6 +1372,7 @@ namespace DungeonLeadKernel
         uint32_t episodeSince = 0;
         uint64_t subject = 0;
         bool relapse = false;     // the current reason resumed a recently cleared one
+        uint32_t playerWaitSince = 0;  // the session waits for its player since (0 = it does not)
         // Last cleared recovery, to recognise a relapse.
         RecoveryReason clearedReason = RecoveryReason::None;
         RecoveryStep clearedStep = RecoveryStep::None;
@@ -1415,6 +1416,7 @@ namespace DungeonLeadKernel
             t.reasonSince = t.episodeSince = 0;
             t.subject = 0;
             t.relapse = false;
+            t.playerWaitSince = 0;
             return false;
         }
         // Same reason: the recovery goes on, even if the farthest member changes while it is still
@@ -1473,6 +1475,28 @@ namespace DungeonLeadKernel
         if (step == RecoveryStep::Act && reason == RecoveryReason::PartyFragmented && msStill >= kStuckStragglerMs)
             return RecoveryStep::Escalate;
         return step;
+    }
+
+    // The player wait's own clock: one wait across MasterUnavailable <-> MasterTooFar (dead, then
+    // alive at the graveyard, then on the way back), ended only when the player is back (no reason)
+    // or another reason follows. While it lasts and when it ends, the episode starts afresh: the
+    // wait must not use up the episode cap of what comes after it. Returns the ms waited so far.
+    inline uint32_t PlayerWaitClock(RecoveryTimers& t, bool waitsForPlayer, uint32_t now)
+    {
+        uint32_t const stamp = now ? now : 1;
+        if (!waitsForPlayer)
+        {
+            if (t.playerWaitSince)
+            {
+                t.playerWaitSince = 0;
+                t.episodeSince = stamp;
+            }
+            return 0;
+        }
+        if (!t.playerWaitSince)
+            t.playerWaitSince = stamp;
+        t.episodeSince = stamp;
+        return now - t.playerWaitSince;
     }
 
     inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msInReason, uint32_t msInEpisode,
