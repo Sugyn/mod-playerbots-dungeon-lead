@@ -1542,14 +1542,14 @@ namespace
         auto hasSet = [](std::vector<std::string> on) {
             return [on](char const* n) { return std::find(on.begin(), on.end(), n) != on.end(); };
         };
-        std::vector<std::string> const followerOk = {"follow"};
+        std::vector<std::string> const followerOk = {"follow", "dungeon lead run back"};
         Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet(followerOk)).empty(),
               "follower as set -> no non-combat change");
         Check(StrategyDelta(FollowerCombatStrategies(), hasSet({"cc"})).empty(), "follower combat as set -> no change");
         Check(StrategyDelta(FollowerCombatStrategies(), hasSet({})) == "+cc", "lost only cc -> +cc");
-        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "rpg"})) == "-rpg",
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "dungeon lead run back", "rpg"})) == "-rpg",
               "rpg put back -> -rpg only (follow untouched)");
-        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "loot", "new rpg"})) == "-new rpg,-loot",
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "dungeon lead run back", "loot", "new rpg"})) == "-new rpg,-loot",
               "several conflicts -> exactly those");
         Check(StrategyDelta(LeaderCombatStrategies(), hasSet({"dungeon lead", "cc", "mark rti"})).empty(),
               "leader combat as set -> no change");
@@ -1557,8 +1557,11 @@ namespace
               "leader lost mark rti -> +mark rti");
         Check(StrategyDelta(LeaderNonCombatStrategies(), hasSet({"dungeon lead", "grind"})).empty(),
               "leader non-combat as set -> no change");
-        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot",
-              "session start: the same follower set as before");
+        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot,+dungeon lead run back",
+              "session start: the follower set, with the run back");
+        Check(StrategyAll(DeadStrategies()) == "+dungeon lead run back", "session start: the dead state, leader and followers");
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow"})) == "+dungeon lead run back",
+              "lost the run back -> +dungeon lead run back only");
         Check(StrategyAll(LeaderNonCombatStrategies()) == "+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg,-loot",
               "session start: the same leader non-combat set as before");
         Check(StrategyAll(LeaderCombatStrategies()) == "+dungeon lead,+cc,+mark rti", "session start: leader combat set");
@@ -1744,6 +1747,60 @@ namespace
         Check(!LivenessWaitsForPlayer(true, none, p), "no real master assigned: stays watched");
     }
 
+    void TestRunBack()
+    {
+        RezFacts rez;
+        rez.resurrecterAlive = true;
+        rez.partyInCombat = true;
+        rez.msDead = 10000;
+        Check(HoldRelease(rez), "release held during the fight while a resurrecter lives");
+        rez.msDead = kRezHoldMaxMs;
+        Check(!HoldRelease(rez), "but not past the hold limit");
+        rez.msDead = 10000;
+        rez.partyInCombat = false;
+        rez.msOutOfCombat = 5000;
+        Check(HoldRelease(rez), "after the fight the resurrecter gets its cast window");
+        rez.msOutOfCombat = kRezCastWindowMs;
+        Check(!HoldRelease(rez), "then the bot releases and runs back");
+        rez.msOutOfCombat = 0;
+        rez.resurrecterAlive = false;
+        rez.partyInCombat = true;
+        Check(!HoldRelease(rez), "nobody to resurrect: release at once");
+
+        Check(WalkLimitMs(10.0f, 7.0f, kRunBackMaxMs) == kRunBackMinMs, "a short walk gets the minimum limit");
+        Check(WalkLimitMs(5000.0f, 7.0f, kRunBackMaxMs) == kRunBackMaxMs, "a long walk is capped");
+        uint32_t const mid = WalkLimitMs(700.0f, 7.0f, kRunBackMaxMs);
+        Check(mid > kRunBackMinMs && mid < kRunBackMaxMs, "a middle walk: distance at speed with detour and slack");
+        Check(WalkLimitMs(100.0f, 0.0f, kRejoinMaxMs) == kRejoinMaxMs, "no speed known: the cap");
+
+        WalkFacts w;
+        w.limitMs = 100000;
+        w.msWalking = 30000;
+        w.msSinceProgress = 5000;
+        Check(DecideWalk(w) == WalkFallback::None, "a walk making progress goes on");
+        w.pathFound = false;
+        Check(DecideWalk(w) == WalkFallback::None, "no path but progress (its own follow): the walk goes on");
+        w.msSinceProgress = kWalkProgressMs;
+        Check(DecideWalk(w) == WalkFallback::NoPath, "no path and no progress: fallback with reason no_path");
+        w.pathFound = true;
+        w.msSinceProgress = kWalkProgressMs;
+        Check(DecideWalk(w) == WalkFallback::Stuck, "no progress: fallback with reason stuck");
+        w.msSinceProgress = 0;
+        w.msWalking = 100000;
+        Check(DecideWalk(w) == WalkFallback::TimeLimit, "past the limit: fallback with reason time_limit");
+        Check(std::string(ToString(WalkFallback::NoPortal)) == "no_portal", "fallback reasons have names");
+
+        Check(RunBackOwnsGhost(RunBackPhase::Released, false), "the run back walks a ghost outside the dungeon");
+        Check(!RunBackOwnsGhost(RunBackPhase::Released, true), "inside, the ghost reclaims its corpse on its own");
+        Check(!RunBackOwnsGhost(RunBackPhase::Held, false), "a held corpse is not walked");
+        Check(Rejoined(30.0f, 40.0f) && !Rejoined(50.0f, 40.0f), "rejoined within the soft range of the leader");
+        Check(FollowWaits(RunBackPhase::Rejoining, true, true), "a walk order with a path: the bot's follow waits");
+        Check(!FollowWaits(RunBackPhase::Rejoining, true, false), "no path: its follow may still bring it closer");
+        Check(FollowWaits(RunBackPhase::Released, false, false), "a ghost walked outside: no follow");
+        Check(!FollowWaits(RunBackPhase::Entered, true, true), "inside after the portal: free");
+        Check(!FollowWaits(RunBackPhase::None, true, true), "not on its way back: free");
+    }
+
     void TestLeaderOffGround()
     {
         Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
@@ -1798,7 +1855,7 @@ namespace
                   .empty(),
               "warrior leader with dungeon lead + mark rti -> stable, no +cc every pass");
         std::vector<OwnedStrategy> const offStays = AvailableStrategies(FollowerNonCombatStrategies(), [](char const*) { return false; });
-        Check(offStays.size() == FollowerNonCombatStrategies().size() - 1, "off entries always apply; only 'on' ones filtered");
+        Check(offStays.size() == FollowerNonCombatStrategies().size() - 2, "off entries always apply; only 'on' ones filtered");
     }
 
     void TestInteraction()
@@ -1918,6 +1975,7 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestRunBack();
     TestLivenessWaitsForPlayer();
     TestSpawnSpots();
     TestRouteWaypointFallback();

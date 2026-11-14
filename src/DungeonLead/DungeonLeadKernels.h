@@ -530,7 +530,7 @@ namespace DungeonLeadKernel
         Combat,        // someone in the party is fighting
         BossCombat,    // fighting the current boss (its own anchor and leash)
         PostCombat,    // fight over, party not ready yet
-        WipeRecovery,  // leader dead - waiting for upstream's release/corpse-run/res chain
+        WipeRecovery,  // leader dead - waiting for the run back (resurrection in place or the walk back)
         Recovery,      // a bounded recovery is running (DungeonRecoveryController)
         Completing,    // route finished, session held until stopped
         Stopping,      // strategies restored, leader handback not yet observed
@@ -1901,19 +1901,29 @@ namespace DungeonLeadKernel
         return out;
     }
 
-    // What a session sets: followers on "+follow" with RPG, looting, grinding and staying off, and
+    // What a session sets: followers on "+follow" (and the run back's walk orders) with RPG, looting,
+    // grinding and staying off, and
     // "+cc" in combat; the leader on "+dungeon lead,+grind" with the same off-list, and
     // "+dungeon lead,+cc,+mark rti" in combat.
     inline std::vector<OwnedStrategy> const& FollowerNonCombatStrategies()
     {
         static std::vector<OwnedStrategy> const v = {{"follow", true},  {"passive", false}, {"stay", false},
                                                      {"grind", false},  {"dungeon lead", false},
-                                                     {"new rpg", false}, {"rpg", false},     {"loot", false}};
+                                                     {"new rpg", false}, {"rpg", false},     {"loot", false},
+                                                     {"dungeon lead run back", true}};
         return v;
     }
     inline std::vector<OwnedStrategy> const& FollowerCombatStrategies()
     {
         static std::vector<OwnedStrategy> const v = {{"cc", true}};
+        return v;
+    }
+    // Dead state, leader and followers alike: the session's run back decides release and the ghost's
+    // way back (upstream's corpse run stays off while it walks a ghost outside the dungeon). The
+    // followers' non-combat engine has it too: their own follow waits while a walk order runs.
+    inline std::vector<OwnedStrategy> const& DeadStrategies()
+    {
+        static std::vector<OwnedStrategy> const v = {{"dungeon lead run back", true}};
         return v;
     }
     inline std::vector<OwnedStrategy> const& LeaderNonCombatStrategies()
@@ -2025,6 +2035,147 @@ namespace DungeonLeadKernel
         if (crossingT)
             *crossingT = t;
         return cx * cx + cy * cy <= halfWidth * halfWidth;
+    }
+
+    // ---- Run back on foot -------------------------------------------------------------------
+    // A dead bot of the party comes back the way a player does: a party member who can resurrect
+    // brings it back where it fell; otherwise it releases, walks as a ghost from the graveyard to
+    // the dungeon's portal, enters (the instance revives a ghost whose corpse is inside) and walks
+    // to the party. A living straggler gets a walk order to the leader while the leader waits. A
+    // teleport is only the fallback when the walk fails within its bound, and it always says why.
+
+    // Release is held this long at most for a resurrection in place, and after the party's fight
+    // has ended a resurrecter gets this long to cast it.
+    constexpr uint32_t kRezHoldMaxMs = 120000;
+    constexpr uint32_t kRezCastWindowMs = 60000;
+
+    struct RezFacts
+    {
+        bool resurrecterAlive = false;  // a living party bot with a resurrection spell, on this map
+        bool partyInCombat = false;
+        uint32_t msDead = 0;
+        uint32_t msOutOfCombat = 0;  // since the party's last fight ended (0 while in combat)
+    };
+
+    // Keep a dead bot from releasing while someone can still resurrect it in place: during the
+    // fight (bounded by kRezHoldMaxMs) and for kRezCastWindowMs after it.
+    inline bool HoldRelease(RezFacts const& f)
+    {
+        if (!f.resurrecterAlive || f.msDead >= kRezHoldMaxMs)
+            return false;
+        return f.partyInCombat || f.msOutOfCombat < kRezCastWindowMs;
+    }
+
+    // Progress: the walk counts as moving on when it gets this much closer to its target within
+    // kWalkProgressMs; the time limit is the distance at the walker's speed with a detour factor,
+    // plus slack, within [min, max].
+    constexpr float kWalkProgressYd = 3.0f;
+    constexpr uint32_t kWalkProgressMs = 20000;
+    constexpr float kWalkDetourFactor = 1.6f;
+    constexpr uint32_t kWalkSlackMs = 45000;
+    constexpr uint32_t kRunBackMinMs = 60000;
+    constexpr uint32_t kRunBackMaxMs = 240000;   // a ghost run back to the portal
+    constexpr uint32_t kRejoinMaxMs = 300000;    // a walk inside the dungeon to the party
+    // A bot on its way back for longer than all of its bounds together is no longer held for.
+    constexpr uint32_t kRunBackEntryMaxMs = kRezHoldMaxMs + kRunBackMaxMs + kRejoinMaxMs + 60000;
+    // Close enough to the portal to step in.
+    constexpr float kPortalReachYd = 5.0f;
+
+    inline uint32_t WalkLimitMs(float distance, float speed, uint32_t maxMs)
+    {
+        if (speed <= 0.1f)
+            return maxMs;
+        double const ms = double(distance) * kWalkDetourFactor / speed * 1000.0 + kWalkSlackMs;
+        if (ms < kRunBackMinMs)
+            return kRunBackMinMs;
+        return ms > maxMs ? maxMs : uint32_t(ms);
+    }
+
+    enum class WalkFallback : uint8_t
+    {
+        None,
+        NoPath,      // the navmesh has no path from the walker to its target
+        Stuck,       // no progress for kWalkProgressMs
+        TimeLimit,   // still walking after its limit
+        NoPortal,    // no portal of this dungeon on the ghost's map
+        OtherMap,    // a living member outside the dungeon: nowhere to walk from
+    };
+
+    inline char const* ToString(WalkFallback r)
+    {
+        switch (r)
+        {
+            case WalkFallback::None:      return "none";
+            case WalkFallback::NoPath:    return "no_path";
+            case WalkFallback::Stuck:     return "stuck";
+            case WalkFallback::TimeLimit: return "time_limit";
+            case WalkFallback::NoPortal:  return "no_portal";
+            case WalkFallback::OtherMap:  return "other_map";
+        }
+        return "?";
+    }
+
+    struct WalkFacts
+    {
+        bool pathFound = true;        // the last path search found a way (complete or partial onward)
+        uint32_t msWalking = 0;
+        uint32_t limitMs = 0;
+        uint32_t msSinceProgress = 0;
+    };
+
+    // Whether a walk order has failed and the fallback (teleport) takes over, and why. A walk without
+    // a navmesh path is not given up at once: the bot's own follow movement may still bring it
+    // closer; only no progress ends it (reason no_path when the last search found no way).
+    inline WalkFallback DecideWalk(WalkFacts const& f)
+    {
+        if (f.msSinceProgress >= kWalkProgressMs)
+            return f.pathFound ? WalkFallback::Stuck : WalkFallback::NoPath;
+        if (f.limitMs && f.msWalking >= f.limitMs)
+            return WalkFallback::TimeLimit;
+        return WalkFallback::None;
+    }
+
+    // Where a dead or straggling bot is on its way back.
+    enum class RunBackPhase : uint8_t
+    {
+        None,
+        Held,       // dead, release held for a resurrection in place
+        Released,   // a ghost outside the dungeon, walking to the portal
+        Entered,    // stepped into the portal; the instance revives it
+        Rejoining,  // alive inside, walking to the party
+    };
+
+    inline char const* ToString(RunBackPhase p)
+    {
+        switch (p)
+        {
+            case RunBackPhase::None:      return "none";
+            case RunBackPhase::Held:      return "held";
+            case RunBackPhase::Released:  return "released";
+            case RunBackPhase::Entered:   return "at_entrance";
+            case RunBackPhase::Rejoining: return "rejoining";
+        }
+        return "?";
+    }
+
+    // A bot's own follow movement waits while the run back walks it: a ghost outside the dungeon, or
+    // a walk order to the leader that found a navmesh path (without one, its follow may still bring
+    // it closer).
+    inline bool FollowWaits(RunBackPhase p, bool onInstanceMap, bool walkHasPath)
+    {
+        return (p == RunBackPhase::Rejoining && walkHasPath) ||
+               (p == RunBackPhase::Released && !onInstanceMap);
+    }
+
+    // A rejoining member counts as back with the party within this distance of the leader.
+    inline bool Rejoined(float distanceToLeader, float softRange) { return distanceToLeader <= softRange; }
+
+    // Upstream's own corpse run (find corpse, spirit healer, revive from corpse) - and any follow
+    // movement - stays off while the run back walks a ghost outside the dungeon; inside it is free to
+    // reclaim its corpse.
+    inline bool RunBackOwnsGhost(RunBackPhase p, bool onInstanceMap)
+    {
+        return p == RunBackPhase::Released && !onInstanceMap;
     }
 }
 

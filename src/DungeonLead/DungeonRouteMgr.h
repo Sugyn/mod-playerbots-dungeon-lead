@@ -199,6 +199,26 @@ struct DungeonLeadMemberSnapshot
     std::string formation;
     std::vector<std::string> nonCombatStrategies;
     std::vector<std::string> combatStrategies;
+    std::vector<std::string> deadStrategies;
+};
+
+// One party bot on its way back (DungeonLead::RunBackMembers): a dead bot held for a resurrection
+// in place, a ghost walking from the graveyard to the portal, or a living bot walking to the party
+// (after a revival at the entrance, or a straggler).
+struct DungeonRunBackEntry
+{
+    DungeonLeadKernel::RunBackPhase phase = DungeonLeadKernel::RunBackPhase::None;
+    bool straggler = false;   // a living straggler's walk order, not a death
+    bool teleported = false;  // the fallback brought it
+    uint32 diedTs = 0;        // death (or the straggler's walk order)
+    uint32 walkTs = 0;        // current walk started
+    uint32 progressTs = 0;    // last time it came kWalkProgressYd closer
+    uint32 limitMs = 0;
+    float bestDist = -1.f;
+    bool pathFound = true;
+    uint32 retryTs = 0;       // last release or teleport attempt (retried at most every few seconds)
+    uint32 lastPathType = 0;  // PathGenerator type of the last leg searched (diagnostics)
+    uint32 legs = 0;          // legs walked
 };
 
 // Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
@@ -284,14 +304,8 @@ struct DungeonLeadState
     uint32 interactionActiveMs = 0;  // time actually spent holding at it (AdvanceInteractionClock)
     uint32 interactionLastTs = 0;
     uint32 lastLeashLogTs = 0;
-    // Upstream's death handling (BOT_STATE_DEAD: release -> find corpse -> revive) works, except
-    // in an instance with no graveyard of its own: the ghost is released to the nearest OUTDOOR
-    // graveyard, on a different map, and FindCorpseAction's MoveTo() can never path back.
-    // Teleporting the ghost back onto the instance map lets it resurrect by itself.
-    // recoveryTs throttles those teleports so a member who dies repeatedly can't be yanked every
-    // tick; wipeCount is how many times the leader has died this run, reported in the run summary
-    // so a "completed" result can never hide that it took several wipes to get there.
-    uint32 recoveryTs = 0;
+    // wipeCount is how many times the leader has died this run, reported in the run summary so a
+    // "completed" result can never hide that it took several wipes to get there.
     uint32 wipeCount = 0;
     std::vector<uint8> visited;
     std::vector<std::string> skippedSteps;  // bosses skipped (stuck/not-found) - reported at "route complete"
@@ -320,6 +334,8 @@ struct DungeonLeadState
     uint32 walkBlockedSince = 0;    // Travelling, but the leader's combat flag keeps the walk idle
     uint32 walkBlockedReportTs = 0; // last walk_blocked event (0 = none in this episode)
     std::map<uint64, uint8> stragglerBrought;  // times each bot was brought to the leader (recovery escalation)
+    std::map<uint64, DungeonRunBackEntry> runBack;  // party bots on their way back, by guid
+    uint32 partyOutOfCombatSince = 0;               // the party's last fight ended (0 = in a fight)
     ObjectGuid stragglerGuid;          // the straggler whose stillness is timed (recovery, PartyFragmented)
     uint32 stragglerStillSince = 0;    // since when it has not moved (0 = moving / not timed)
     uint32 stragglerSeenTs = 0;        // last recovery pass that saw it as the offender
@@ -491,8 +507,9 @@ public:
     uint32 RouteRows();
     std::vector<DungeonRoute const*> GetByMap(uint32 mapId, uint32 difficulty);
 
-    // DungeonLeadState is only ever read/written by its own bot's own AI update (one thread at a
-    // time per bot - dungeon-lead never reaches into another bot's state), so the mutex here only
+    // DungeonLeadState is only ever read/written by its own bot's own AI update and the world-thread
+    // guard pass (never both at once; other bots read what they need from copies, e.g. the run
+    // back's gates in DungeonRunBack.cpp), so the mutex here only
     // needs to protect the `states` map's own structure (insertion via operator[], erasure), not
     // the returned DungeonLeadState& itself. The one real hazard is a caller holding a reference
     // across a ResetState()/ResetRouteProgress() call on the SAME guid from the SAME call chain;

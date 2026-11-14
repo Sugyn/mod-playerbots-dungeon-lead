@@ -104,9 +104,12 @@ is beating a party member is.
 
 Recovery reasons (fragmented party, lost member, dead member, lost leadership, unavailable master,
 persistent waits) each have an action, a timeout, an escalation and an abort. Escalation only ever
-moves bot members - a real player is never teleported. The leader's own death is `WipeRecovery`:
-upstream's death handling resurrects the party; the module only brings ghosts that were released
-to another map back onto the instance map. The route resumes after the last checkpoint confirmed
+moves bot members - a real player is never teleported. Dead bots come back like players: a
+resurrecter of the party brings a bot back in place when it can (its release is held for that),
+otherwise the bot releases, walks as a ghost from the graveyard to the dungeon's portal, steps in
+and walks to the party; a straggler gets a walk order to the leader, who waits. A teleport is only
+the fallback of a walk that failed within its bound, with a `member_teleport` event. The leader's
+own death is `WipeRecovery`. The route resumes after the last checkpoint confirmed
 safe, so nothing that was only passed over stays skipped because of a wipe.
 
 ### Doors and events
