@@ -114,26 +114,41 @@ namespace
     // A masterless bot login leaves its group (mod-playerbots' login check); a player who logs back
     // in is still in theirs. Give it back its group once its login has settled.
     constexpr uint32 kLoginSettleMs = 5 * IN_MILLISECONDS;
+    // How long it keeps trying to be back in its group before it gives up (and records that).
+    constexpr uint32 kRejoinLimitMs = 30 * IN_MILLISECONDS;
+    // A resurrection offered and never taken stops holding back its own revive after this long.
+    constexpr uint32 kRezRequestHoldMs = 60 * IN_MILLISECONDS;
 
     // Back in the world after a logout: its group again, its release waits for its script again, it
     // follows the leader again, and the leader's session has its player back.
-    void Remark(SimState& s, Player* sim, uint32 now)
+    void Remark(SimState& s, Player* sim, uint32 now, PlayerbotAI* leaderAI)
     {
         PlayerbotAI* simAI = GET_PLAYERBOT_AI(sim);
         if (!simAI)
             return;
         if (!s.backSeenTs)
             s.backSeenTs = now;
-        if (getMSTimeDiff(s.backSeenTs, now) < kLoginSettleMs)
+        uint32 const back = getMSTimeDiff(s.backSeenTs, now);
+        if (back < kLoginSettleMs)
             return;
+        // its group again - checked on every pass until it holds (the login's own group handling
+        // may still be on its way), and given up on after kRejoinLimitMs
         if (s.group && (!sim->GetGroup() || sim->GetGroup()->GetGUID() != s.group))
-            if (Group* own = sGroupMgr->GetGroupByGUID(s.group.GetCounter()))
+        {
+            Group* own = sGroupMgr->GetGroupByGUID(s.group.GetCounter());
+            if (!own || own->IsFull() || back >= kRejoinLimitMs)
+            {
+                SimEvent(leaderAI, sim->GetName(), SimAction::Logout, "rejoin_failed", back, s.seed);
+                s.group = ObjectGuid::Empty;
+            }
+            else
             {
                 if (Group* other = sim->GetGroup())
                     other->RemoveMember(sim->GetGUID());
-                if (!own->IsFull())
-                    own->AddMember(sim);
+                own->AddMember(sim);
+                return;  // the next pass checks it
             }
+        }
         simAI->ChangeStrategy("+dungeon lead run back", BOT_STATE_DEAD);
         Player* leader = s.leader ? ObjectAccessor::FindPlayer(s.leader) : nullptr;
         Group* group = sim->GetGroup();
@@ -147,6 +162,7 @@ namespace
         }
         s.remark = false;
         s.backSeenTs = 0;
+        s.group = ObjectGuid::Empty;
     }
 
     // What runs on time whether or not a session still runs: logging back in, being resurrected,
@@ -167,6 +183,7 @@ namespace
                 s.loggedOut = false;  // it never went
                 s.action = SimAction::Follow;
                 s.remark = true;
+                s.group = ObjectGuid::Empty;  // it never left: nothing to rejoin
                 SimEvent(leaderAI, name, SimAction::Logout, "failed", away, s.seed);
             }
             else
@@ -188,7 +205,7 @@ namespace
             if (!ai->HasStrategy("dungeon lead run back", BOT_STATE_DEAD))
                 ai->ChangeStrategy("+dungeon lead run back", BOT_STATE_DEAD);
         if (s.remark)
-            Remark(s, sim, now);
+            Remark(s, sim, now, leaderAI);
 
         // dead: it waits, then accepts a resurrection (a party healer may bring it back earlier)
         if (!sim->IsAlive())
@@ -204,8 +221,10 @@ namespace
             if (Group* group = sim->GetGroup())
                 for (GroupReference* ref = group->GetFirstMember(); ref && !fightNear; ref = ref->next())
                     if (Player* p = ref->GetSource())
-                        fightNear = p->IsAlive() && p->IsInCombat();
-            if (getMSTimeDiff(s.deadSince, now) >= s.rezAfterMs && !fightNear && !sim->isResurrectRequested())
+                        fightNear = p->IsAlive() && p->IsInCombat() && p->GetMap() == sim->GetMap();
+            uint32 const deadMs = getMSTimeDiff(s.deadSince, now);
+            bool const rezOffered = sim->isResurrectRequested() && deadMs < s.rezAfterMs + kRezRequestHoldMs;
+            if (deadMs >= s.rezAfterMs && !fightNear && !rezOffered)
             {
                 sim->ResurrectPlayer(0.5f);
                 sim->SpawnCorpseBones();
@@ -374,6 +393,14 @@ void DungeonLead::SimPlayerTick(PlayerbotAI* leaderAI, DungeonLeadState& st)
             s.action = SimAction::Follow;  // SimPlayersTick() brings it back
             break;
         case SimAction::Logout:
+            if (sim->GetGroup() && sim->GetGroup()->isLFGGroup())
+            {
+                // A bot's masterless login leaves its group, and leaving a dungeon-finder group takes
+                // it out of the dungeon: a player's logout keeps both. Not played in a finder group.
+                SimEvent(leaderAI, name, SimAction::Logout, "skipped", 0, s.seed);
+                s.action = SimAction::Follow;
+                break;
+            }
             // The leader's master would point at a deleted player: the session waits for its
             // player by st.masterGuid meanwhile, and gets it back when it logs in (Remark).
             s.loggedOut = true;
