@@ -403,11 +403,25 @@ class _Builder:
         """Every teleport the module made, plus the ones it cancelled (`unexpected`): one entry per
         event, `who` = the players moved (None where the record does not say)."""
         out = []
+        # A run that records member_teleport names every party bot it moved there; its
+        # recovery_escalate lines then repeat the same teleports and are not counted again.
+        explicit = any(e["event_type"] == "member_teleport" for e in self.events)
         for e in self.events:
             t, d = e["event_type"], e["payload"].get("detail", "")
             if t in ("leader_unstuck", "leader_to_floor"):
                 kind, who = t, [(e.get("leader") or {}).get("name")]
+            elif t == "member_teleport":
+                # one party bot moved, with its reason: back to the entrance after a death
+                # (wipe_recovery) or to the leader (member_to_leader) - the same kinds as before
+                p = e["payload"]
+                kind = "wipe_recovery" if p.get("context") == "run_back" else "member_to_leader"
+                out.append({"run_ms": e["run_ms"], "kind": kind, "who": [p.get("who")],
+                            "reason": p.get("reason"), "context": p.get("context"), "detail": d,
+                            "position": _pos(e), "source": "payload"})
+                continue
             elif t == "recovery_escalate":
+                if explicit:
+                    continue
                 x = legacy.escalation(d)
                 if x["action"] == "none":
                     continue
@@ -421,6 +435,21 @@ class _Builder:
                 continue
             out.append({"run_ms": e["run_ms"], "kind": kind, "who": who, "detail": d, "position": _pos(e),
                         "source": "detail"})
+        return out
+
+    def run_back(self):
+        """The run back of dead and straggling party bots (`run_back` events), or None for a run
+        recorded before them."""
+        evs = [e for e in self.events if e["event_type"] == "run_back"]
+        start = next((e for e in self.events if e["event_type"] == "start"), None)
+        if not evs and not (start and start["payload"].get("run_back")):
+            return None
+        out = []
+        for e in evs:
+            p = e["payload"]
+            out.append({"run_ms": e["run_ms"], "phase": p.get("phase"), "who": p.get("who"),
+                        "straggler": bool(p.get("straggler")), "ms": p.get("ms"), "how": p.get("how"),
+                        "reason": p.get("reason")})
         return out
 
     def cc_marks(self):
@@ -723,6 +752,7 @@ def reconstruct(events, dropped=()):
         "alerts": b.alerts,
         "result": b.result(),
         "teleports": b.teleports(),
+        "run_back": b.run_back(),
         "cc_marks": b.cc_marks(),
         "dead_target_waits": dead_waits,
         "time_spans": b.time_spans(recoveries, dead_waits),

@@ -8,7 +8,8 @@ guessed 0. A 0 is a measured 0.
 import bisect
 import statistics
 
-METRICS_VERSION = 2  # 2: dead_target_waits, teleports, cc, wipe_to_resume_s, time_split, backtrack_ratio
+METRICS_VERSION = 3  # 2: dead_target_waits, teleports, cc, wipe_to_resume_s, time_split, backtrack_ratio
+# 3: member teleports (member, fallback_reasons), run_back
 
 # Classes that can cast one of the spells the module plans crowd control with (kCcSpells in
 # DungeonTargetManager.cpp: Polymorph, Banish / Fear, Hibernate / Entangling Roots / Cyclone,
@@ -22,6 +23,9 @@ DEAD_TARGET_MIN_MS = 1000
 
 TELEPORT_KINDS = ("leader_unstuck", "leader_to_floor", "member_to_leader", "wipe_recovery", "unexpected")
 LEADER_TELEPORT_KINDS = ("leader_unstuck", "leader_to_floor")
+# Party bots moved: brought to the leader, or put back at the entrance after a death (from
+# member_teleport, with its reason, where the run records it).
+MEMBER_TELEPORT_KINDS = ("member_to_leader", "wipe_recovery")
 
 TIME_CATEGORIES = ("walking", "pulling", "combat", "boss_prep", "waiting", "recovery", "other")
 WAIT_REASONS = ("healer_mana", "party_range", "eating_drinking", "dead_member", "patrol", "low_health",
@@ -61,14 +65,39 @@ def teleports(m):
     if tps is None:
         return None
     out = {"source": "leader_unstuck, leader_to_floor, recovery_escalate (action=brought_to_leader), "
-                     "wipe_recovery_teleport, unexpected_teleport (cancelled)"}
+                     "wipe_recovery_teleport, member_teleport, unexpected_teleport (cancelled)"}
     for kind in TELEPORT_KINDS:
         moved = [t for t in tps if t["kind"] == kind]
         # players moved; a recorded escalation that does not say whom it moved makes the count unknown
         out[kind] = None if any(t["who"] is None for t in moved) else sum(len(t["who"]) for t in moved)
     out["leader"] = sum(out[k] for k in LEADER_TELEPORT_KINDS)
+    out["member"] = None if any(out[k] is None for k in MEMBER_TELEPORT_KINDS) else sum(out[k] for k in MEMBER_TELEPORT_KINDS)
+    out["fallback_reasons"] = {}
+    for t in tps:
+        if t.get("source") == "payload" and t["kind"] in MEMBER_TELEPORT_KINDS:
+            r = t.get("reason") or "unknown"
+            out["fallback_reasons"][r] = out["fallback_reasons"].get(r, 0) + 1
     out["total"] = None if any(out[k] is None for k in TELEPORT_KINDS) else sum(out[k] for k in TELEPORT_KINDS)
     return out
+
+
+def run_back(m):
+    """Deaths brought back in place, ghosts that walked to the portal, walks to the party and
+    their fallbacks; None for a run recorded before the run back."""
+    rb = m.get("run_back")
+    if rb is None:
+        return None
+    walked = [x for x in rb if x["phase"] == "at_entrance" and x.get("how") == "portal"]
+    rejoined = [x for x in rb if x["phase"] == "rejoined"]
+    return {"source": "run_back",
+            "held": sum(1 for x in rb if x["phase"] == "held"),
+            "resurrected": sum(1 for x in rb if x["phase"] == "revived" and x.get("how") == "resurrected"),
+            "released": sum(1 for x in rb if x["phase"] == "released"),
+            "walked_to_portal": len(walked),
+            "walk_orders": sum(1 for x in rb if x["phase"] == "walk_order"),
+            "rejoined_walking": sum(1 for x in rejoined if x.get("how") == "walk"),
+            "fallbacks": sum(1 for x in rb if x["phase"] == "fallback"),
+            "back_ms_max": max((x["ms"] or 0 for x in rejoined if not x["straggler"]), default=None)}
 
 
 def party_cc_classes(m):
@@ -226,6 +255,7 @@ def compute(m):
         "metrics_version": METRICS_VERSION,
         "dead_target_waits": dead_target_waits(m),
         "teleports": teleports(m),
+        "run_back": run_back(m),
         "cc": cc(m),
         "wipe_to_resume_s": wipe_to_resume(m),
         "time_split": time_split(m),

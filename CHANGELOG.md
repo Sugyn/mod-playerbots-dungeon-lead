@@ -15,6 +15,7 @@ while the module is in alpha.
 - Validation campaigns with more than 20 parallel parties no longer run out of test bots while most of the bot pool is idle.
 ### Added
 - Run replay: run metrics for dead-target waits, teleports, crowd control, wipe-to-resume time, where the time went and backtracking, new health warnings, and `summary` / `compare-campaigns` commands that say whether a campaign is better, worse or the same as another.
+- Run replay: member teleports per run (with the reason of each fallback teleport) and the run back of dead and straggling party bots (resurrected in place, walked to the portal, rejoined walking, fallbacks) in the run metrics and the campaign summary.
 
 ## [0.15.0-alpha] - 2026-11-10
 
