@@ -275,24 +275,30 @@ namespace
     }
 
     // A navmesh tile of an outdoor map loaded for a walk, at most once per kTileRetryMs (loading reads
-    // the tile file; a grid that unloads later may take its tile with it).
+    // the tile file; a grid that unloads later may take its tile with it), and at most
+    // kTilesPerPass tile files per guard pass - the rest follow on the next passes. A tile loaded for
+    // a grid that never loads stays in memory (a few tiles per dungeon portal's surroundings).
     constexpr uint32 kTileRetryMs = 5 * MINUTE * IN_MILLISECONDS;
+    constexpr uint32 kTilesPerPass = 4;
+    uint32 g_tileBudget = kTilesPerPass;
     void EnsureTile(Map* map, uint32 gx, uint32 gy)
     {
         static std::map<uint64, uint32> loaded;
         uint64 const key = (uint64(map->GetId()) << 16) | (gx << 8) | gy;
         uint32 const now = getMSTime();
         auto it = loaded.find(key);
-        if (it != loaded.end() && getMSTimeDiff(it->second, now) < kTileRetryMs)
+        if ((it != loaded.end() && getMSTimeDiff(it->second, now) < kTileRetryMs) || !g_tileBudget)
             return;
+        --g_tileBudget;
         loaded[key] = now;
         map->GetMapCollisionData().LoadMMapTile(gx, gy);
     }
 
     // One leg of a walk along the navmesh: the computed points, not a straight line. A long way
     // comes back as a partial path; the next leg starts when this one ends. False = no path at all.
-    // Outside a dungeon only the navmesh tiles of loaded grids exist: the target's tile is loaded
-    // first, or the search finds no polygon there and answers with a straight shortcut.
+    // Outside a dungeon only the navmesh tiles of loaded grids exist: the tiles between the walker
+    // and its target are loaded first (EnsureTile, a few per pass), or the search ends at the point
+    // nearest the target as the crow flies.
     bool WalkLeg(Player* walker, float x, float y, float z, DungeonRunBackEntry& e)
     {
         Map* map = walker->GetMap();
@@ -576,6 +582,7 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
     DungeonRouteMgr::Entrance entrance;
     bool const haveEntrance = route && sDungeonRouteMgr.GetEntrance(*route, entrance);
     uint32 const now = getMSTime();
+    g_tileBudget = kTilesPerPass;
 
     // The party's fight: a resurrecter casts only after it, and walks inside wait for it.
     bool partyInCombat = false;
