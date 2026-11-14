@@ -33,6 +33,16 @@ struct DungeonRouteStep
     // Door rows: the world gameobject spawn at (x, y, z), resolved once at load; 0 = none found.
     // Lets a door that is gone be told apart from bad data (WalkDoorStep).
     uint32 doorSpawnId = 0;
+    // Spawn points of the row's creature, the row's own first and the rest nearest first, resolved
+    // once at load: for a boss with several (a pooled spawn, one alive per instance), and for an
+    // optional named mob with at most a few (to tell whether it is in the instance at all).
+    // Empty otherwise.
+    struct SpawnSpot
+    {
+        uint32 spawnId;
+        float x, y, z;
+    };
+    std::vector<SpawnSpot> spawnSpots;
 
     bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
     bool IsWalkable() const
@@ -113,7 +123,12 @@ enum class DungeonFailureReason : uint8
     // A mandatory-by-kind row (boss/required/door/use/talk) has no resolved position -
     // invalid/unresolved route data, not a live-run failure. See FailObjective's call site in the
     // step-advance skip loop (DungeonLeadNextAction::Execute).
-    RouteDataInvalid
+    RouteDataInvalid,
+    // No event and no leader movement for DungeonLeadKernel::kSessionStallMs (liveness rule).
+    SessionStalled,
+    // The leader bot left the world mid-run (logged out, or out of the world past the limit):
+    // the session is closed out from the guard pass, with no AI left to stop it.
+    LeaderDisconnected
 };
 
 char const* ToString(DungeonRunOutcome v);
@@ -187,6 +202,26 @@ struct DungeonLeadMemberSnapshot
     std::string formation;
     std::vector<std::string> nonCombatStrategies;
     std::vector<std::string> combatStrategies;
+    std::vector<std::string> deadStrategies;
+};
+
+// One party bot on its way back (DungeonLead::RunBackMembers): a dead bot held for a resurrection
+// in place, a ghost walking from the graveyard to the portal, or a living bot walking to the party
+// (after a revival at the entrance, or a straggler).
+struct DungeonRunBackEntry
+{
+    DungeonLeadKernel::RunBackPhase phase = DungeonLeadKernel::RunBackPhase::None;
+    bool straggler = false;   // a living straggler's walk order, not a death
+    bool teleported = false;  // the fallback brought it
+    uint32 diedTs = 0;        // death (or the straggler's walk order)
+    uint32 walkTs = 0;        // current walk started
+    uint32 progressTs = 0;    // last time it came kWalkProgressYd closer
+    uint32 limitMs = 0;
+    float bestDist = -1.f;
+    bool pathFound = true;
+    uint32 retryTs = 0;       // last release or teleport attempt (retried at most every few seconds)
+    uint32 lastPathType = 0;  // PathGenerator type of the last leg searched (diagnostics)
+    uint32 legs = 0;          // legs walked
 };
 
 // Per-bot progress through a route (kept here instead of an AI value to survive strategy resets).
@@ -209,6 +244,19 @@ struct DungeonLeadState
     bool lastGoodSet = false;
     float lastGoodX = 0.f, lastGoodY = 0.f, lastGoodZ = 0.f;
     bool unstuckUsed = false;
+    // Drop handling (MoveRouteTo): a jump in flight from the ledge to a landing point below, the
+    // attempts on the current step, the last refused verdict (logged once), and the last landed drop
+    // for the members to follow (DungeonLead::FollowDrop).
+    bool dropJumping = false;
+    uint32 dropJumpTs = 0;
+    uint8 dropAttempts = 0;
+    uint8 dropLastRefused = 0;
+    float dropFromX = 0.f, dropFromY = 0.f, dropFromZ = 0.f;
+    float dropToX = 0.f, dropToY = 0.f, dropToZ = 0.f;
+    uint32 dropDoneTs = 0;
+    uint32 dropProbeTs = 0;
+    uint8 dropProbeOffset = 0;  // first bearing of the next ledge probe
+    std::vector<std::pair<ObjectGuid, uint32>> dropMembersSent;  // member, getMSTime() of its jump (0: landed)
     // use/talk steps: time spent waiting at the step for its event (route walk ticks only), and
     // the last gossip attempt.
     uint32 eventWaitMs = 0;
@@ -233,6 +281,7 @@ struct DungeonLeadState
     bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
     std::string spreadOffenderTold;  // name of the last bot we pinged about for a too-spread group, "" if none
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
+    uint8 spotIndex = 0;             // which of the step's spawnSpots the walk is on (0 = the row's)
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
     uint32 packId = 0;               // DungeonPack::id of the pack being worked on (0 = none)
@@ -271,14 +320,8 @@ struct DungeonLeadState
     uint32 interactionActiveMs = 0;  // time actually spent holding at it (AdvanceInteractionClock)
     uint32 interactionLastTs = 0;
     uint32 lastLeashLogTs = 0;
-    // Upstream's death handling (BOT_STATE_DEAD: release -> find corpse -> revive) works, except
-    // in an instance with no graveyard of its own: the ghost is released to the nearest OUTDOOR
-    // graveyard, on a different map, and FindCorpseAction's MoveTo() can never path back.
-    // Teleporting the ghost back onto the instance map lets it resurrect by itself.
-    // recoveryTs throttles those teleports so a member who dies repeatedly can't be yanked every
-    // tick; wipeCount is how many times the leader has died this run, reported in the run summary
-    // so a "completed" result can never hide that it took several wipes to get there.
-    uint32 recoveryTs = 0;
+    // wipeCount is how many times the leader has died this run, reported in the run summary so a
+    // "completed" result can never hide that it took several wipes to get there.
     uint32 wipeCount = 0;
     std::vector<uint8> visited;
     std::vector<std::string> skippedSteps;  // bosses skipped (stuck/not-found) - reported at "route complete"
@@ -301,7 +344,14 @@ struct DungeonLeadState
     DungeonLeadKernel::LeadState sampleState = DungeonLeadKernel::LeadState::WaitingReady;
     uint32 sampleStep = 0;
     uint32 escalationDeferSince = 0;  // recovery escalation waiting for the leader to be on the ground
+    uint32 lastEventTs = 0;         // getMSTime() of this session's last v2 event
+    uint32 livenessMoveTs = 0;      // last time the leader moved kLivenessMoveYd from the mark below
+    float livenessX = 0.f, livenessY = 0.f, livenessZ = 0.f;
+    uint32 walkBlockedSince = 0;    // Travelling, but the leader's combat flag keeps the walk idle
+    uint32 walkBlockedReportTs = 0; // last walk_blocked event (0 = none in this episode)
     std::map<uint64, uint8> stragglerBrought;  // times each bot was brought to the leader (recovery escalation)
+    std::map<uint64, DungeonRunBackEntry> runBack;  // party bots on their way back, by guid
+    uint32 partyOutOfCombatSince = 0;               // the party's last fight ended (0 = in a fight)
     ObjectGuid stragglerGuid;          // the straggler whose stillness is timed (recovery, PartyFragmented)
     uint32 stragglerStillSince = 0;    // since when it has not moved (0 = moving / not timed)
     uint32 stragglerSeenTs = 0;        // last recovery pass that saw it as the offender
@@ -416,6 +466,13 @@ struct DungeonLeadState
         bestDist = 0.f;
         lastGoodSet = false;
         unstuckUsed = false;
+        dropJumping = false;
+        dropAttempts = 0;
+        dropLastRefused = 0;
+        dropDoneTs = 0;
+        dropProbeTs = 0;
+        dropProbeOffset = 0;
+        dropMembersSent.clear();
         firedAreaTriggers.clear();
         lastPathLogTs = 0;
         noRouteTold = false;
@@ -473,8 +530,9 @@ public:
     uint32 RouteRows();
     std::vector<DungeonRoute const*> GetByMap(uint32 mapId, uint32 difficulty);
 
-    // DungeonLeadState is only ever read/written by its own bot's own AI update (one thread at a
-    // time per bot - dungeon-lead never reaches into another bot's state), so the mutex here only
+    // DungeonLeadState is only ever read/written by its own bot's own AI update and the world-thread
+    // guard pass (never both at once; other bots read what they need from copies, e.g. the run
+    // back's gates in DungeonRunBack.cpp), so the mutex here only
     // needs to protect the `states` map's own structure (insertion via operator[], erasure), not
     // the returned DungeonLeadState& itself. The one real hazard is a caller holding a reference
     // across a ResetState()/ResetRouteProgress() call on the SAME guid from the SAME call chain;
@@ -521,6 +579,12 @@ public:
     // for as long as the process runs. Harmless to call for an instance id that was never marked.
     void ClearInstance(uint32 instanceId);
 
+    // Deaths of route creatures in the party's fights, by spawn (home) position, per instance -
+    // a unit that died away from its spot still settles its step (DungeonLeadKernel::
+    // RememberedKillClears). Bounded per instance.
+    void RememberKill(uint32 instanceId, uint32 entry, float x, float y, float z);
+    bool KilledNear(uint32 instanceId, uint32 entry, float x, float y, float z, float radius);
+
 private:
     void EnsureLoaded();
 
@@ -531,6 +595,12 @@ private:
     uint32 routeRows = 0;
     std::unordered_map<ObjectGuid, DungeonLeadState> states;
     std::unordered_map<uint32, std::unordered_set<uint32>> killedByInstance;
+    struct RememberedKill
+    {
+        uint32 entry;
+        float x, y, z;
+    };
+    std::unordered_map<uint32, std::vector<RememberedKill>> killsByInstance;
     std::unordered_map<uint32, Entrance> entranceByLfg;
 };
 

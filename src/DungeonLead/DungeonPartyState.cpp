@@ -8,6 +8,7 @@
 
 #include "DungeonPartyState.h"
 
+#include "DungeonLeadActions.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonRouteMgr.h"
 #include "Timer.h"
@@ -20,12 +21,24 @@
 
 namespace
 {
-    // In combat and either attacked or attacking - or not for long (DungeonLeadKernel::CombatCounts).
-    // The per-member clock lives in the leader's session state; outside a session the plain flag.
+    // In combat and either attacked or attacking nearby - or not for long
+    // (DungeonLeadKernel::CombatCounts, EnemyCounts). The per-member clock lives in the leader's
+    // session state; outside a session the plain flag. A member on another map is not scanned (its
+    // units belong to another map's update); it has no enemy here.
     bool CombatWithEnemy(Player* leader, Player* member)
     {
         bool const inCombat = member->IsInCombat();
-        bool const hasEnemy = !member->getAttackers().empty() || member->GetVictim() != nullptr;
+        bool hasEnemy = false;
+        if (member->GetMap() == leader->GetMap())
+        {
+            auto const near = [member](Unit* unit)
+            {
+                bool const sameMap = unit && unit->IsInWorld() && unit->GetMap() == member->GetMap();
+                return DungeonLeadKernel::EnemyCounts(sameMap, sameMap ? member->GetDistance(unit) : 0.0f);
+            };
+            hasEnemy = near(member->GetVictim()) ||
+                       std::any_of(member->getAttackers().begin(), member->getAttackers().end(), near);
+        }
         if (!sDungeonRouteMgr.HasState(leader->GetGUID()))
             return inCombat;
         DungeonLeadState& st = sDungeonRouteMgr.State(leader->GetGUID());
@@ -46,6 +59,11 @@ namespace
     }
 }
 
+bool DungeonPartyState::LeaderFightsEnemy(Player* leader)
+{
+    return CombatWithEnemy(leader, leader);
+}
+
 DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
 {
     DungeonPartySnapshot snap;
@@ -62,21 +80,26 @@ DungeonPartySnapshot DungeonPartyState::Evaluate(PlayerbotAI* leaderAI)
     DungeonLeadState* st = haveSession ? &sDungeonRouteMgr.State(bot->GetGUID()) : nullptr;
 
     Player* master = leaderAI->GetMaster();
+    bool const requestedByPlayer =
+        DungeonLeadKernel::SessionRequestedByPlayer(st != nullptr, st && st->origin == DungeonLeadSessionOrigin::AutoCanary);
+    if (master && (master == bot || !DungeonLeadKernel::MasterGatesParty(requestedByPlayer, DungeonLead::IsBotActor(master))))
+        master = nullptr;
     ObjectGuid masterGuid;
-    if (master && master != bot)
+    if (master)
     {
         f.master.assigned = true;
         f.master.online = master->IsInWorld() && master->GetSession();
         f.master.alive = master->IsAlive();
         f.master.inGroup = !group || group->IsMember(master->GetGUID());
         f.master.sameMap = master->GetMap() == bot->GetMap();
+        f.master.away = master->isAFK();
         if (f.master.sameMap)
             f.master.distance = bot->GetDistance(master);
         masterGuid = master->GetGUID();
         if (st)
             st->masterGuid = masterGuid;
     }
-    else if (st && st->masterGuid)
+    else if (st && st->masterGuid && requestedByPlayer)
     {
         // PlayerbotAI::GetMaster() returns null once mod-playerbots' own
         // RandomPlayerbotMgr::OnPlayerLogout clears it on a full logout - by then the Player object

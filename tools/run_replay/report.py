@@ -38,6 +38,80 @@ def _xyz(p):
 
 # -- timeline.md ----------------------------------------------------------------------------------
 
+_STRUCTURED_METRICS = ("metrics_version", "dead_target_waits", "teleports", "cc", "wipe_to_resume_s", "time_split",
+                       "backtrack_ratio")
+
+
+def _secs(s):
+    return _clock(int(round(s * 1000)))
+
+
+def _cc_classes(classes):
+    if classes is None:
+        return "unknown"
+    return ", ".join(classes) if classes else "none"
+
+
+def _structured_rows(mt):
+    unknown = "unknown (not in this record)"
+    ts = mt.get("time_split")
+    if ts and ts["total_s"]:
+        parts = []
+        for cat in ("walking", "pulling", "combat", "boss_prep", "waiting", "recovery", "other"):
+            v = ts[f"{cat}_s"]
+            if not v:
+                continue
+            text = f"{cat.replace('_', ' ')} {_secs(v)} ({v / ts['total_s']:.0%})"
+            sub = ts["waiting_by_reason_s"] if cat == "waiting" else ts["recovery_by_reason_s"] if cat == "recovery" \
+                else {}
+            why = [f"{k.replace('_', ' ')} {_secs(x)}" for k, x in sorted(sub.items(), key=lambda i: -i[1]) if x]
+            parts.append(text + (f": {', '.join(why)}" if why else ""))
+        time = "; ".join(parts)
+    else:
+        time = unknown
+    dw = mt.get("dead_target_waits")
+    dead = unknown if dw is None else (
+        f"{dw['count']} ({dw['found_dead']} found dead, {dw['not_found']} not found), "
+        f"{_secs(dw['total_s'])} in all, longest {_secs(dw['max_s'])}" if dw["count"] else "none")
+    tp = mt.get("teleports")
+    if tp is None:
+        tele = unknown
+    else:
+        kinds = [f"{k.replace('_', ' ')} {tp[k] if tp[k] is not None else '?'}"
+                 for k in ("leader_unstuck", "leader_to_floor", "member_to_leader", "wipe_recovery", "unexpected")
+                 if tp[k] != 0]
+        tele = ", ".join(kinds) if kinds else "none"
+    cc = mt.get("cc")
+    if cc is None:
+        cct = unknown
+    elif not cc["moons"]:
+        cct = "no moon placed"
+    else:
+        ends = [f"{cc['landed']} landed", f"{cc['released_without_cc']} released without CC "
+                f"({cc['released_last_enemy']} as the last enemy)", f"{cc['target_gone']} target gone"]
+        if cc.get("replaced"):
+            ends.append(f"{cc['replaced']} replaced by a new moon before an outcome")
+        if cc["unresolved"]:
+            ends.append(f"{cc['unresolved']} still marked at the end of the record")
+        by = cc.get("landed_by")
+        landed = "not recorded" if by is None else ", ".join(
+            f"{x['caster'] or '?'} ({x['spell'] or '?'}) {x['moons']}" for x in by) or "-"
+        cct = (f"{cc['moons']} moons: {', '.join(ends)}; landed ratio "
+               f"{cc['landed_ratio'] if cc['landed_ratio'] is not None else '-'}; landed by: {landed}; "
+               f"CC classes in the party: {_cc_classes(cc['party_cc_classes'])}")
+    wr = mt.get("wipe_to_resume_s")
+    if wr is None:
+        wipe = unknown
+    elif not wr["wipes"]:
+        wipe = "no wipe"
+    else:
+        wipe = ", ".join(f"#{i} {_secs(s) if s is not None else 'did not resume'}" for i, s in enumerate(wr["wipes"], 1))
+    bt = mt.get("backtrack_ratio")
+    back = unknown if bt is None else f"{bt['ratio']:.0%} of {bt['walked_yd']:.0f} yd walked moved away from the step's destination"
+    return [("Time", time), ("Waits on dead / absent targets", dead), ("Teleports", tele), ("Crowd control", cct),
+            ("Wipe to moving on", wipe), ("Backtracking", back)]
+
+
 def timeline_md(m):
     md, res, mt = m["metadata"], m["result"], m["metrics"]
     d = md.get("dungeon") or {}
@@ -60,7 +134,12 @@ def timeline_md(m):
         out += ["> The record of this run starts mid-run (first event_seq "
                 f"{md['first_event_seq']}); sections below cover only what was recorded.", ""]
     out += ["## Metrics", "", "| Metric | Value |", "|---|---|"]
-    out += [f"| {k} | {v if v is not None else 'unknown'} |" for k, v in sorted(mt.items())]
+    # the counts; the structured metrics have their own section below
+    out += [f"| {k} | {v if v is not None else 'unknown'} |" for k, v in sorted(mt.items())
+            if k not in _STRUCTURED_METRICS]
+    if "metrics_version" in mt:
+        out += ["", "## Run metrics", "", "| | |", "|---|---|"]
+        out += [f"| {label} | {text} |" for label, text in _structured_rows(mt)]
     out += ["", "## Timeline", ""]
     for t in m["timeline"]:
         ref = f" [{t['ref']}]" if t.get("ref") else ""

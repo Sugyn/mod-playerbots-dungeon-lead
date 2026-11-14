@@ -118,10 +118,58 @@ void DungeonRouteMgr::Load()
         doorsResolved = uint32(bestDist2.size());
     }
 
+    // Every spawn point of each boss or optional row's creature on its map, for creatures with a
+    // few spawn points at most: a pooled boss is alive at one of several points per instance and
+    // the row names only one of them; an optional rare may not be spawned at all. One pass over
+    // the loaded creature spawns, at load time only.
+    constexpr size_t kMaxUniqueSpawnPoints = 4;
+    std::unordered_map<uint32, std::vector<std::pair<DungeonRouteStep*, uint32>>> bossesByEntry;
+    for (auto& kv : routes)
+        for (DungeonRouteStep& s : kv.second.steps)
+            if ((s.kind == DungeonRouteKind::Boss || s.kind == DungeonRouteKind::Optional) && s.HasPosition())
+                bossesByEntry[s.entry].push_back({&s, kv.second.mapId});
+    uint32 pooledBosses = 0;
+    if (!bossesByEntry.empty())
+    {
+        for (auto const& kv : sObjectMgr->GetAllCreatureData())
+        {
+            auto it = bossesByEntry.find(kv.second.id);
+            if (it == bossesByEntry.end())
+                continue;
+            for (auto const& [s, mapId] : it->second)
+                if (kv.second.mapid == mapId)
+                    s->spawnSpots.push_back({kv.first, kv.second.posX, kv.second.posY, kv.second.posZ});
+        }
+        for (auto& kv : bossesByEntry)
+            for (auto const& [s, mapId] : kv.second)
+            {
+                // A boss needs them only when pooled (several points); an optional named mob (a
+                // rare) also with one, to tell whether it is in the instance at all. More points
+                // than that: a trash entry, the pack logic handles it.
+                size_t const minPoints = s->kind == DungeonRouteKind::Boss ? 2 : 1;
+                if (s->spawnSpots.size() < minPoints || s->spawnSpots.size() > kMaxUniqueSpawnPoints)
+                {
+                    s->spawnSpots.clear();
+                    continue;
+                }
+                auto dist2 = [s = s](DungeonRouteStep::SpawnSpot const& p)
+                {
+                    float const dx = p.x - s->x, dy = p.y - s->y, dz = p.z - s->z;
+                    return dx * dx + dy * dy + dz * dz;
+                };
+                std::sort(s->spawnSpots.begin(), s->spawnSpots.end(),
+                          [&](DungeonRouteStep::SpawnSpot const& a, DungeonRouteStep::SpawnSpot const& b)
+                          { return dist2(a) < dist2(b); });
+                if (s->spawnSpots.size() > 1)
+                    ++pooledBosses;
+            }
+    }
+
     routeRows = count;
     routeDigest = result ? DungeonLeadKernel::Hex64(digest) : std::string("unknown");
     LOG_INFO("playerbots", "Loaded {} dungeon route steps for {} LFD entries ({} unknown kind, {}/{} door spawns, "
-             "digest {})", count, routes.size(), unknownKinds, doorsResolved, uint32(doorMap.size()), routeDigest);
+             "{} bosses with several spawn points, digest {})", count, routes.size(), unknownKinds, doorsResolved,
+             uint32(doorMap.size()), pooledBosses, routeDigest);
 }
 
 void DungeonRouteMgr::EnsureLoaded()
@@ -276,6 +324,32 @@ void DungeonRouteMgr::ClearInstance(uint32 instanceId)
 {
     std::lock_guard<std::mutex> lock(mtx);
     killedByInstance.erase(instanceId);
+    killsByInstance.erase(instanceId);
+}
+
+void DungeonRouteMgr::RememberKill(uint32 instanceId, uint32 entry, float x, float y, float z)
+{
+    // a 5-man instance has a few hundred creatures; the cap only guards against a runaway caller
+    constexpr size_t kMaxKillsPerInstance = 2000;
+    std::lock_guard<std::mutex> lock(mtx);
+    std::vector<RememberedKill>& kills = killsByInstance[instanceId];
+    if (kills.size() < kMaxKillsPerInstance)
+        kills.push_back({entry, x, y, z});
+}
+
+bool DungeonRouteMgr::KilledNear(uint32 instanceId, uint32 entry, float x, float y, float z, float radius)
+{
+    std::lock_guard<std::mutex> lock(mtx);
+    auto it = killsByInstance.find(instanceId);
+    if (it == killsByInstance.end())
+        return false;
+    for (RememberedKill const& k : it->second)
+    {
+        float const dx = k.x - x, dy = k.y - y, dz = k.z - z;
+        if (k.entry == entry && dx * dx + dy * dy + dz * dz <= radius * radius)
+            return true;
+    }
+    return false;
 }
 
 char const* ToString(DungeonRunOutcome v)
@@ -321,6 +395,8 @@ char const* ToString(DungeonFailureReason v)
         case DungeonFailureReason::UnsupportedEvent:  return "unsupported_event";
         case DungeonFailureReason::InternalInvariant: return "internal_invariant";
         case DungeonFailureReason::RouteDataInvalid:  return "route_data_invalid";
+        case DungeonFailureReason::SessionStalled:    return "session_stalled";
+        case DungeonFailureReason::LeaderDisconnected: return "leader_disconnected";
     }
     return "unknown";
 }

@@ -101,7 +101,7 @@ bool DungeonPullController::StopForPull(PlayerbotAI* botAI, DungeonLeadState& st
 
     Player* bot = botAI->GetBot();
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
-    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex) : DungeonPack();
+    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex) : DungeonPack();
     if (!pack.Exists() || (pack.type != DungeonRouteNodeType::Pull && pack.type != DungeonRouteNodeType::Boss))
         return false;
 
@@ -139,7 +139,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
                          st.state != LeadState::Completing && !st.paused && bot->IsAlive() && group &&
                          DungeonLead::InFiveMan(bot);
     DungeonRoute const* route = working && st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
-    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex) : DungeonPack();
+    DungeonPack const pack = route ? DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex) : DungeonPack();
     bool const pullType = pack.Exists() && (pack.type == DungeonRouteNodeType::Pull ||
                                             pack.type == DungeonRouteNodeType::Boss);
     if (!pullType)
@@ -187,7 +187,7 @@ void DungeonPullController::Update(PlayerbotAI* botAI, DungeonPartySnapshot cons
     DungeonLeadKernel::Readiness const ready = DungeonPartyState::Readiness(party, DungeonLeadKernel::ReadyPurpose::Pull);
     f.partyReady = ready.status == DungeonLeadKernel::ReadyStatus::Ready;
     f.targetMarked = skull && skull->IsAlive() && (skull->GetGUID() == st.targetPrimary || IsPackMember(pack, skull));
-    f.leaderInCombat = bot->IsInCombat();
+    f.leaderInCombat = DungeonPartyState::LeaderFightsEnemy(bot);
     f.orderRefused = st.pullOrderRefused;
     // Patrols only matter once the pull is about to be made (in range, party ready).
     Creature* patrol = nullptr;

@@ -31,9 +31,21 @@
 | path_samples | 165 |
 | recoveries | 0 |
 | recoveries_failed | 0 |
+| run_back | unknown |
 | unexpected_adds | 20 |
 | units_engaged | 85 |
 | wipes | 0 |
+
+## Run metrics
+
+| | |
+|---|---|
+| Time | walking 01:45 (10%); combat 11:42 (69%); boss prep 00:04 (0%); waiting 03:25 (20%): eating drinking 02:47, post combat check 00:35, unattributed 00:02 |
+| Waits on dead / absent targets | none |
+| Teleports | none |
+| Crowd control | 15 moons: 4 landed, 11 released without CC (6 as the last enemy), 0 target gone; landed ratio 0.267; landed by: not recorded; CC classes in the party: mage |
+| Wipe to moving on | no wipe |
+| Backtracking | unknown (not in this record) |
 
 ## Timeline
 

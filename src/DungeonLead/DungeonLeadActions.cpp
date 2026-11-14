@@ -23,6 +23,7 @@
 #include "DungeonRecoveryController.h"
 #include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
+#include "DungeonRunBack.h"
 
 #include "Corpse.h"
 #include "Creature.h"
@@ -85,8 +86,9 @@ namespace
     constexpr float kDoorSightRange = 60.0f;    // a route door's state is read from this far
     constexpr float kDoorWaitDistance = 8.0f;   // wait at a closed route door from this close
     constexpr uint32 kTalkStillMs = 20000;      // a talk step's NPC stands still this long first
-    // A closed door this close to the leader that its path goes through (crosses its plane within
-    // kDoorHalfWidth of it): mmaps don't know doors, so bots would walk straight through it.
+    // A closed door its path goes through (crosses its plane within kDoorHalfWidth of it), when the
+    // door is this close to the leader or to the walk's destination (DoorOnPathCandidate): mmaps
+    // don't know doors, so bots would walk straight through it.
     constexpr float kDoorOnPathRange = 25.0f;
     constexpr float kDoorHalfWidth = 3.5f;
 
@@ -96,15 +98,22 @@ namespace
         for (ObjectGuid const& guid :
              botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects no los")->Get())
             if (GameObject* go = botAI->GetGameObject(guid))
-                if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY &&
-                    bot->GetDistance(go) <= kDoorOnPathRange &&
-                    go->GetExactDist(x, y, z) > 4.0f &&  // the destination itself (a cage to use)
-                    bot->GetExactDist(go) > 3.0f)        // one the leader stands in can't hold it back
-                    doors.push_back(go);
+                if (go->GetGoType() == GAMEOBJECT_TYPE_DOOR && go->GetGoState() == GO_STATE_READY)
+                {
+                    float const toDest = go->GetExactDist(x, y, z);
+                    if (DungeonLeadKernel::DoorOnPathCandidate(bot->GetDistance(go), toDest, kDoorOnPathRange) &&
+                        toDest > 4.0f &&                // the destination itself (a cage to use)
+                        bot->GetExactDist(go) > 3.0f)   // one the leader stands in can't hold it back
+                        doors.push_back(go);
+                }
         if (doors.empty())
             return nullptr;
         PathGenerator path(bot);
         path.CalculatePath(x, y, z);
+        // Only a real path says where the walk goes: a no-path answer is a straight line that the
+        // walk would not take (it may cross a door on another level).
+        if (path.GetPathType() & ~(PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORT | PATHFIND_FARFROMPOLY_END))
+            return nullptr;
         Movement::PointsArray const& pts = path.GetPath();
         for (size_t i = 1; i < pts.size(); ++i)
             for (GameObject* door : doors)
@@ -121,11 +130,6 @@ namespace
             }
         return nullptr;
     }
-    // Minimum gap between wipe-recovery teleports (see RecoverStrandedMembers). Long enough that a
-    // member dying repeatedly isn't yanked every tick, short enough that a real wipe is back on
-    // its feet well inside WipeRecoverySeconds.
-    constexpr uint32 kRecoveryRetrySeconds = 15;
-
     bool RouteHasEntry(PlayerbotAI* botAI, uint32 entry)
     {
         DungeonLeadState& st = sDungeonRouteMgr.State(botAI->GetBot()->GetGUID());
@@ -333,8 +337,37 @@ namespace
         return DungeonLeadKernel::JsonLine().Str("scope", ToString(route.Scope())).Raw("unmodeled", arr).Done();
     }
 
+    // The leader part of a v2 line: the live bot, or (for a leader that has left the world) what the
+    // session last knew of it.
+    struct LeaderEnvelope
+    {
+        uint32 mapId = 0, instanceId = 0;
+        std::string guid, name;
+        float x = 0.f, y = 0.f, z = 0.f, o = 0.f;
+        bool alive = false;
+    };
+
+    std::string BuildV2Line(LeaderEnvelope const& leader, DungeonLeadState& st, std::string const& event,
+                            std::string const* detail, std::string const& payload);
+
     std::string BuildV2Line(Player* bot, DungeonLeadState& st, std::string const& event, std::string const* detail,
                             std::string const& payload)
+    {
+        LeaderEnvelope e;
+        e.mapId = bot->GetMapId();
+        e.instanceId = bot->GetInstanceId();
+        e.guid = std::to_string(bot->GetGUID().GetCounter());
+        e.name = bot->GetName();
+        e.x = bot->GetPositionX();
+        e.y = bot->GetPositionY();
+        e.z = bot->GetPositionZ();
+        e.o = bot->GetOrientation();
+        e.alive = bot->IsAlive();
+        return BuildV2Line(e, st, event, detail, payload);
+    }
+
+    std::string BuildV2Line(LeaderEnvelope const& leader, DungeonLeadState& st, std::string const& event,
+                            std::string const* detail, std::string const& payload)
     {
         using DungeonLeadKernel::JsonLine;
         DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
@@ -349,6 +382,9 @@ namespace
         }
         p += "}";
 
+        // Liveness counts progress events only.
+        if (DungeonLeadKernel::LivenessCountsEvent(event))
+            st.lastEventTs = getMSTime();
         JsonLine j;
         j.Num("schema_version", int32_t(DungeonLeadKernel::kTelemetrySchemaVersion))
             .Num("event_seq", uint32_t(++st.eventSeq))
@@ -366,17 +402,17 @@ namespace
             .Open("dungeon")
             .Num("lfg_id", uint32_t(st.lfgId))
             .Str("name", route ? route->name : "")
-            .Num("map_id", uint32_t(bot->GetMapId()))
-            .Num("instance_id", uint32_t(bot->GetInstanceId()))
+            .Num("map_id", uint32_t(leader.mapId))
+            .Num("instance_id", uint32_t(leader.instanceId))
             .Close()
             .Open("leader")
-            .Str("guid", std::to_string(bot->GetGUID().GetCounter()))
-            .Str("name", bot->GetName())
-            .Num("x", bot->GetPositionX())
-            .Num("y", bot->GetPositionY())
-            .Num("z", bot->GetPositionZ())
-            .Num("o", bot->GetOrientation())
-            .Bool("alive", bot->IsAlive())
+            .Str("guid", leader.guid)
+            .Str("name", leader.name)
+            .Num("x", leader.x)
+            .Num("y", leader.y)
+            .Num("z", leader.z)
+            .Num("o", leader.o)
+            .Bool("alive", leader.alive)
             .Close()
             .Str("state", DungeonLeadKernel::ToString(st.state))
             .Num("step", uint32_t(st.stepIndex))
@@ -418,6 +454,7 @@ namespace
                 snap.formation = fv->Save();
         snap.nonCombatStrategies = memberAI->GetStrategies(BOT_STATE_NON_COMBAT);
         snap.combatStrategies = memberAI->GetStrategies(BOT_STATE_COMBAT);
+        snap.deadStrategies = memberAI->GetStrategies(BOT_STATE_DEAD);
         return snap;
     }
 
@@ -446,6 +483,10 @@ namespace
         delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_COMBAT), snap.combatStrategies);
         if (!delta.empty())
             memberAI->ChangeStrategy(delta, BOT_STATE_COMBAT);
+
+        delta = StrategyDelta(memberAI->GetStrategies(BOT_STATE_DEAD), snap.deadStrategies);
+        if (!delta.empty())
+            memberAI->ChangeStrategy(delta, BOT_STATE_DEAD);
 
         if (!snap.formation.empty() && memberAI->GetAiObjectContext())
             if (FormationValue* fv = dynamic_cast<FormationValue*>(
@@ -525,6 +566,7 @@ namespace
             auto canCreate = [memberAI](char const* n) { return memberAI->GetAiObjectContext()->GetStrategy(n) != nullptr; };
             std::vector<OwnedStrategy> const followerNonCombat = AvailableStrategies(FollowerNonCombatStrategies(), canCreate);
             std::vector<OwnedStrategy> const followerCombat = AvailableStrategies(FollowerCombatStrategies(), canCreate);
+            std::vector<OwnedStrategy> const followerDead = AvailableStrategies(DeadStrategies(), canCreate);
             bool const formationWiped = fv && fv->Save() != "leader";
             std::string const nonCombat = logWipeDetection
                 ? StrategyDelta(followerNonCombat, has(BOT_STATE_NON_COMBAT))
@@ -532,7 +574,10 @@ namespace
             std::string const combat = logWipeDetection
                 ? StrategyDelta(followerCombat, has(BOT_STATE_COMBAT))
                 : StrategyAll(followerCombat);
-            if (logWipeDetection && (formationWiped || !nonCombat.empty() || !combat.empty()))
+            std::string const dead = logWipeDetection
+                ? StrategyDelta(followerDead, has(BOT_STATE_DEAD))
+                : StrategyAll(followerDead);
+            if (logWipeDetection && (formationWiped || !nonCombat.empty() || !combat.empty() || !dead.empty()))
             {
                 LOG_INFO("playerbots.dungeonlead",
                          "[DungeonLead] follower {} drifted from the session's strategies (external AI "
@@ -553,6 +598,10 @@ namespace
                 memberAI->ChangeStrategy(nonCombat, BOT_STATE_NON_COMBAT);
             if (!combat.empty())
                 memberAI->ChangeStrategy(combat, BOT_STATE_COMBAT);
+            // "dungeon lead run back": the session decides when a dead bot releases and walks its ghost
+            // back to the portal (DungeonLead::RunBackMembers); upstream's corpse run stays off then.
+            if (!dead.empty())
+                memberAI->ChangeStrategy(dead, BOT_STATE_DEAD);
         }
         // The leader's two engines, same per-component check. HasStrategy("dungeon lead", ...) on
         // the non-combat engine mirrors DungeonLead::IsOn exactly (see its declaration).
@@ -563,12 +612,16 @@ namespace
         auto leaderCanCreate = [botAI](char const* n) { return botAI->GetAiObjectContext()->GetStrategy(n) != nullptr; };
         std::vector<OwnedStrategy> const ownNonCombat = AvailableStrategies(LeaderNonCombatStrategies(), leaderCanCreate);
         std::vector<OwnedStrategy> const ownCombat = AvailableStrategies(LeaderCombatStrategies(), leaderCanCreate);
+        std::vector<OwnedStrategy> const ownDead = AvailableStrategies(DeadStrategies(), leaderCanCreate);
         std::string const leaderNonCombat = logWipeDetection
             ? StrategyDelta(ownNonCombat, leaderHas(BOT_STATE_NON_COMBAT))
             : StrategyAll(ownNonCombat);
         std::string const leaderCombat = logWipeDetection
             ? StrategyDelta(ownCombat, leaderHas(BOT_STATE_COMBAT))
             : StrategyAll(ownCombat);
+        std::string const leaderDead = logWipeDetection
+            ? StrategyDelta(ownDead, leaderHas(BOT_STATE_DEAD))
+            : StrategyAll(ownDead);
         if (logWipeDetection && (!leaderNonCombat.empty() || !leaderCombat.empty()))
         {
             LOG_INFO("playerbots.dungeonlead",
@@ -585,6 +638,8 @@ namespace
             botAI->ChangeStrategy(leaderNonCombat, BOT_STATE_NON_COMBAT);
         if (!leaderCombat.empty())
             botAI->ChangeStrategy(leaderCombat, BOT_STATE_COMBAT);
+        if (!leaderDead.empty())
+            botAI->ChangeStrategy(leaderDead, BOT_STATE_DEAD);
     }
 
     // Equivalent to PositionsResetAction::ResetReturnPosition()/ResetStayPosition() (see
@@ -661,6 +716,130 @@ void DungeonLead::SamplePosition(PlayerbotAI* botAI, DungeonLeadState& st)
                       .Bool("in_combat", bot->IsInCombat())
                       .Raw("far_followers", FarFollowers(bot))
                       .Done());
+}
+
+namespace
+{
+    // Up to three units the leader is in combat with (combat references), nearest first: who keeps
+    // the combat flag up when no enemy is in reach.
+    std::string CombatRefsJson(Player* bot)
+    {
+        std::vector<std::pair<float, Unit*>> refs;
+        for (auto const& [guid, ref] : bot->GetCombatManager().GetPvECombatRefs())
+            if (Unit* other = ref->GetOther(bot))
+                refs.emplace_back(other->IsInMap(bot) ? bot->GetDistance(other) : -1.0f, other);
+        // off-map references (distance -1) last
+        std::sort(refs.begin(), refs.end(), [](auto const& a, auto const& b) {
+            return (a.first < 0.0f) != (b.first < 0.0f) ? b.first < 0.0f : a.first < b.first;
+        });
+        std::string out = "[";
+        for (std::size_t i = 0; i < refs.size() && i < 3; ++i)
+        {
+            Unit* u = refs[i].second;
+            Creature* c = u->ToCreature();
+            if (i)
+                out += ",";
+            out += DungeonLeadKernel::JsonLine()
+                       .Raw("unit", UnitJson(u))
+                       .Num("distance", refs[i].first)
+                       .Bool("alive", u->IsAlive())
+                       .Bool("evading", c && c->IsInEvadeMode())
+                       .Bool("has_victim", u->GetVictim() != nullptr)
+                       .Done();
+        }
+        return out + "]";
+    }
+}
+
+bool DungeonLead::WatchSessionLiveness(PlayerbotAI* botAI, DungeonLeadState& st, DungeonPartySnapshot const& party)
+{
+    Player* bot = botAI->GetBot();
+    uint32 const now = getMSTime();
+
+    // Liveness first: no progress event and no movement for kSessionStallMs ends the run with a
+    // snapshot. Waits that are bounded on their own (a door, a step's event) are exempt, and time
+    // spent exempt does not count: both clocks restart while liveness does not apply.
+    // A party bot on its way back is bounded too: its walk has a limit and a fallback.
+    bool const boundedWait = DungeonLeadKernel::LivenessBoundedWait(
+        DungeonLeadKernel::InteractionActive(st.interactionState), st.interactionIssued, st.eventWaitLastTs != 0,
+        st.eventWaitLastTs ? getMSTimeDiff(st.eventWaitLastTs, now) : 0) || DungeonLead::RunBackAny(st);
+    // A session waiting for its real player is never ended here (AutoBot Canary sessions have none).
+    bool const waitsForPlayer = DungeonLeadKernel::LivenessWaitsForPlayer(
+        DungeonLeadKernel::SessionRequestedByPlayer(true, st.origin == DungeonLeadSessionOrigin::AutoCanary), party.facts,
+        DungeonPartyState::Policy());
+    bool const watched = DungeonLeadKernel::LivenessApplies(st.state, st.paused, boundedWait, waitsForPlayer);
+    float const dx = bot->GetPositionX() - st.livenessX, dy = bot->GetPositionY() - st.livenessY,
+                dz = bot->GetPositionZ() - st.livenessZ;
+    if (!watched || !st.livenessMoveTs || dx * dx + dy * dy + dz * dz >= DungeonLeadKernel::kLivenessMoveYd * DungeonLeadKernel::kLivenessMoveYd)
+    {
+        st.livenessMoveTs = now;
+        st.livenessX = bot->GetPositionX();
+        st.livenessY = bot->GetPositionY();
+        st.livenessZ = bot->GetPositionZ();
+    }
+    if (!watched || !st.lastEventTs)
+        st.lastEventTs = now;
+    uint32 const sinceEvent = getMSTimeDiff(st.lastEventTs, now);
+    uint32 const sinceMove = getMSTimeDiff(st.livenessMoveTs, now);
+    if (watched && DungeonLeadKernel::SessionStalled(sinceEvent, sinceMove))
+    {
+        DungeonLeadKernel::Readiness const walkReady = DungeonLeadKernel::EvaluateReadiness(
+            party.facts, DungeonPartyState::Policy(), DungeonLeadKernel::ReadyPurpose::Walk);
+        LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] {} run={} stalled: no progress event for {} ms, no movement "
+                  "for {} ms (state {}, step {}) - ending the session", bot->GetName(), st.runId, sinceEvent, sinceMove,
+                  DungeonLeadKernel::ToString(st.state), st.stepIndex);
+        st.outcome = DungeonRunOutcome::Failed;
+        st.failureDomain = DungeonFailureDomain::Infrastructure;
+        st.failureReason = DungeonFailureReason::SessionStalled;
+        RecordEvent(botAI, "session_stalled", "no progress event and no movement",
+                    DungeonLeadKernel::JsonLine()
+                        .Num("ms_since_event", sinceEvent)
+                        .Num("ms_since_move", sinceMove)
+                        .Str("objective", DungeonLeadBrain::CurrentObjective(st).Describe())
+                        .Str("readiness", DungeonLeadKernel::ToString(walkReady.status))
+                        .Bool("moving", bot->isMoving())
+                        .Bool("in_combat", bot->IsInCombat())
+                        .Bool("combat_with_enemy", party.facts.selfInCombat)
+                        .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
+                        .Raw("refs", CombatRefsJson(bot))
+                        .Str("pull_state", DungeonLeadKernel::ToString(st.pullState))
+                        .Num("walk_step_ms", st.walkStepMs)
+                        .Str("interaction", DungeonLeadKernel::ToString(st.interactionState))
+                        .Done());
+        RecordRunSummary(botAI, "session_stalled");
+        Stop(botAI, /*giveLeaderBack*/ true);
+        return false;
+    }
+
+    // Diagnostics: Travelling and standing outside a bounded wait, while the leader's combat flag
+    // has no enemy behind it.
+    bool const walkBlocked = st.state == DungeonLeadKernel::LeadState::Travelling && !boundedWait && !st.paused &&
+                             bot->IsAlive() && bot->IsInCombat() && !party.facts.selfInCombat && !bot->isMoving();
+    if (!walkBlocked)
+    {
+        st.walkBlockedSince = 0;
+        st.walkBlockedReportTs = 0;
+        return true;
+    }
+    if (!st.walkBlockedSince)
+        st.walkBlockedSince = now;
+    uint32 const blockedMs = getMSTimeDiff(st.walkBlockedSince, now);
+    if (DungeonLeadKernel::ReportWalkBlocked(blockedMs, st.walkBlockedReportTs != 0,
+                                             st.walkBlockedReportTs ? getMSTimeDiff(st.walkBlockedReportTs, now) : 0))
+    {
+        st.walkBlockedReportTs = now;
+        RecordEventV2(botAI, "walk_blocked",
+                      DungeonLeadKernel::JsonLine()
+                          .Str("detail", "standing with a combat flag without an enemy")
+                          .Str("reason", "standing_with_stale_combat")
+                          .Num("blocked_ms", blockedMs)
+                          .Num("combat_refs", uint32_t(bot->GetCombatManager().GetPvECombatRefs().size()))
+                          .Num("attackers", uint32_t(bot->getAttackers().size()))
+                          .Bool("has_victim", bot->GetVictim() != nullptr)
+                          .Raw("refs", CombatRefsJson(bot))
+                          .Done());
+    }
+    return true;
 }
 
 void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st, Group* group)
@@ -765,6 +944,14 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
             // "not found". Bosses only (EntryKillMemoryEligible) - trash steps share entries across
             // packs.
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+            {
+                // Any route creature, by its spawn spot (the static spawn data - the home position
+                // moves with patrols and pulls): a step whose unit died away from it still knows it
+                // is done (TrackPack). A summoned unit has no spawn spot.
+                CreatureData const* spawn = c->GetSpawnId() ? sObjectMgr->GetCreatureData(c->GetSpawnId()) : nullptr;
+                if (spawn && std::any_of(route->steps.begin(), route->steps.end(),
+                                         [&](DungeonRouteStep const& s) { return s.entry == c->GetEntry(); }))
+                    sDungeonRouteMgr.RememberKill(st.instanceId, c->GetEntry(), spawn->posX, spawn->posY, spawn->posZ);
                 for (uint32 i = 0; i < route->steps.size(); ++i)
                     if (EntryKillMemoryEligible(route->steps[i].NodeType()) && route->steps[i].entry == c->GetEntry() &&
                         !sDungeonRouteMgr.IsStepKilled(st.instanceId, c->GetEntry()))
@@ -774,6 +961,7 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
                                       JsonLine().Str("name", route->steps[i].boss).Num("step", i)
                                           .Num("entry", uint32_t(c->GetEntry())).Bool("current_step", i == st.stepIndex).Done());
                     }
+            }
         }
     }
     if (attackers.empty() && !partyInCombat && !st.fightUnits.empty())
@@ -1169,6 +1357,30 @@ Creature* DungeonLead::FindBossNear(PlayerbotAI* botAI, float range)
     return best;
 }
 
+namespace
+{
+    // A party bot is casting a crowd control spell (one that applies the aura types
+    // Unit::HasBreakableByDamageCrowdControlAura() looks for) at `target` right now.
+    bool CcCastInProgress(Group* group, Creature* target)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || !m->IsInWorld() || !m->IsAlive() || m->GetMap() != target->GetMap() || !DungeonLead::IsBotActor(m))
+                continue;
+            Spell const* spell = m->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+            if (!spell || spell->m_targets.GetUnitTargetGUID() != target->GetGUID())
+                continue;
+            SpellInfo const* info = spell->m_spellInfo;
+            if (info->HasAura(SPELL_AURA_MOD_CONFUSE) || info->HasAura(SPELL_AURA_MOD_FEAR) ||
+                info->HasAura(SPELL_AURA_MOD_STUN) || info->HasAura(SPELL_AURA_MOD_ROOT) ||
+                info->HasAura(SPELL_AURA_TRANSFORM))
+                return true;
+        }
+        return false;
+    }
+}
+
 void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
@@ -1206,6 +1418,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         {
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC landed on {}", bot->GetName(), c->GetName());
             DungeonLead::RecordEvent(botAI, "cc_landed", c->GetName());
+            DungeonTargetManager::RecordCcOutcome(botAI, c, "landed", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
             st.ccLandedTold = true;
         }
         st.ccMarkedTs = getMSTime();
@@ -1219,11 +1432,14 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     // never aggros onto anyone (picked by proximity to the boss, not confirmed to actually be part
     // of the pull) would hold the grace window open forever under the combat-aware wait below,
     // permanently excluding it from normal DPS targeting.
-    if (GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS)
+    bool const absoluteExpired =
+        GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS;
+    if (absoluteExpired)
     {
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed within the absolute ceiling ({}s since marked), releasing mark",
                  bot->GetName(), c->GetName(), sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds);
         DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
+        DungeonTargetManager::RecordCcOutcome(botAI, c, "released_absolute", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
         if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
             group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
         st.ccFailed.push_back(st.ccGuid);
@@ -1247,13 +1463,16 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         return;
     }
 
-    if (getMSTime() - st.ccMarkedTs < sDungeonLeadConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS)
-        return;  // still within the grace window, give the CC class a chance to act
+    bool const graceExpired =
+        getMSTime() - st.ccMarkedTs >= sDungeonLeadConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS;
+    if (!DungeonLeadKernel::ReleaseUnlandedMoon(graceExpired, absoluteExpired, CcCastInProgress(group, c)))
+        return;  // still within the grace window, or a CC cast at it is under way
 
     // nobody managed to land CC on it (no CC-capable class in the group, spell unusable on this
     // creature, on cooldown, ...): stop excluding it from normal DPS targeting
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed, releasing mark", bot->GetName(), c->GetName());
     DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
+    DungeonTargetManager::RecordCcOutcome(botAI, c, "released_timeout", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
     if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
         group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
     st.ccFailed.push_back(st.ccGuid);
@@ -1309,22 +1528,6 @@ std::string DungeonLead::DiagnosePath(Player* bot, float dx, float dy, float dz)
     return out.str();
 }
 
-// Puts any party member that death has stranded on a different map back onto the instance map, at
-// the route's entrance.
-//
-// Upstream mod-playerbots already implements death recovery in full, on its own engine
-// (BOT_STATE_DEAD, installed unconditionally by AiFactory::AddDefaultDeadStrategies, triggering
-// auto release -> find corpse -> revive from corpse). Nothing in Dungeon Lead blocks it. It has
-// exactly one step it cannot perform: a dungeon with no graveyard of its own releases the ghost to
-// the nearest outdoor graveyard, which is on another map, and FindCorpseAction's MoveTo() towards
-// the corpse cannot path across maps. Teleporting that ghost back onto the instance map lets the
-// bot resurrect by itself. So this does the one impossible step and lets upstream do the rest; it
-// deliberately does not reimplement release, corpse-running or resurrection.
-//
-// The entrance is the aim point rather than the place of death: it is a known-walkable step
-// (the same one RunTestParty teleports parties to), it has no mobs standing on it, and a corpse
-// run from there is an ordinary same-map run that works. recoveryTs throttles this so a member
-// dying over and over cannot be teleported every single tick.
 void DungeonLead::KeepInstanceValid(PlayerbotAI* botAI)
 {
     // AzerothCore marks a player's instance invalid when a group is left or disbanded while inside
@@ -1397,7 +1600,7 @@ void DungeonLead::AssistEvent(PlayerbotAI* botAI, DungeonLeadState& st)
     // joins the fight.
     using DungeonLeadKernel::LeadState;
     Player* bot = botAI->GetBot();
-    if (!bot->IsAlive() || bot->IsInCombat() || st.paused || !DungeonLeadKernel::IsActive(st.state) ||
+    if (!bot->IsAlive() || DungeonPartyState::LeaderFightsEnemy(bot) || st.paused || !DungeonLeadKernel::IsActive(st.state) ||
         st.state == LeadState::WipeRecovery || st.state == LeadState::Completing)
         return;
     DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
@@ -1458,41 +1661,47 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
         }
     }
 
-    if (st.recoveryTs && GetMSTimeDiffToNow(st.recoveryTs) < kRecoveryRetrySeconds * IN_MILLISECONDS)
-        return;
+    // Bringing them back is the run back's (DungeonLead::RunBackMembers): resurrection in place,
+    // release, the ghost's walk to the portal and the walk to the party.
+    DungeonLead::RunBackMembers(botAI, st);
+}
 
-    DungeonRoute const* route = sDungeonRouteMgr.GetByLfgId(st.lfgId);
-    if (!route)
-        return;
-    DungeonRouteMgr::Entrance entrance;
-    if (!sDungeonRouteMgr.GetEntrance(*route, entrance))
-        return;
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+namespace
+{
+    // The terminal event of a run whose leader left the world (logged out, or out of the world past
+    // the limit): no AI is left to stop the session, so the guard pass writes it - with what the
+    // session last knew of the leader - before the run summary closes the run. Without it the run
+    // has no terminal event and its replay cannot tell it from a cut record.
+    void RecordLeaderDisconnected(ObjectGuid guid, DungeonLeadState& st, std::string const& how, uint32 msGone)
     {
-        Player* member = ref->GetSource();
-        if (!member || !member->IsInWorld())
-            continue;
-        // Bot-only, same restriction DungeonRecoveryController's living-regroup escalation
-        // already applies (its own IsBotMember()) - a real player's corpse release/re-entry is
-        // their own business, never this module's to clear motion on or teleport.
-        if (IsRealPlayer(member) || IsSelfBot(member))
-            continue;
-        // Only the stranded dead. A living member outside the instance is a different problem
-        // (never entered, or walked out) and is not this function's business; a dead member still
-        // inside can reach its own corpse unaided, which is exactly what we want it to do.
-        if (member->IsAlive() || member->GetMapId() == st.mapId)
-            continue;
-
-        LOG_INFO("playerbots.dungeonlead",
-                 "[DungeonLead] {} died and was released to map {} - returning it to the map {} entrance "
-                 "so it can reach its corpse (run={})",
-                 member->GetName(), member->GetMapId(), st.mapId, st.runId);
-        DungeonLead::RecordEvent(botAI, "wipe_recovery_teleport", member->GetName());
-
-        member->GetMotionMaster()->Clear();
-        member->TeleportTo(st.mapId, entrance.x, entrance.y, entrance.z, entrance.o);
-        st.recoveryTs = getMSTime();
+        if (st.runSummaryRecorded)
+            return;  // the run already has its terminal result
+        if (st.outcome == DungeonRunOutcome::Running)
+        {
+            st.outcome = DungeonRunOutcome::Failed;
+            st.failureDomain = DungeonFailureDomain::Infrastructure;
+            st.failureReason = DungeonFailureReason::LeaderDisconnected;
+        }
+        LeaderEnvelope e;
+        e.mapId = st.mapId;
+        e.instanceId = st.instanceId;
+        e.guid = std::to_string(guid.GetCounter());
+        e.name = st.tankName;
+        if (st.sampleHave)
+        {
+            e.x = st.sampleX;
+            e.y = st.sampleY;
+            e.z = st.sampleZ;
+        }
+        std::string const detail = how + " state=" + DungeonLeadKernel::ToString(st.state);
+        g_telemetry.Push(DungeonLeadKernel::TelemetryFile::EventsV2,
+                         BuildV2Line(e, st, "leader_disconnected", &detail,
+                                     DungeonLeadKernel::JsonLine()
+                                         .Str("how", how)
+                                         .Str("last_state", DungeonLeadKernel::ToString(st.state))
+                                         .Num("ms_gone", msGone)
+                                         .Bool("position_known", st.sampleHave)
+                                         .Done()));
     }
 }
 
@@ -1536,7 +1745,7 @@ void DungeonLead::GuardActiveSessions()
         // it.
         if (!bot)
         {
-            DungeonLeadState const& goneSt = sDungeonRouteMgr.State(guid);
+            DungeonLeadState& goneSt = sDungeonRouteMgr.State(guid);
             if (goneSt.state == DungeonLeadKernel::LeadState::Stopping)
             {
                 // run summary was already written when Stop() ran - only the handback was pending
@@ -1552,6 +1761,7 @@ void DungeonLead::GuardActiveSessions()
             // but its followers are not - restore whichever of them are still resolvable before
             // the snapshots disappear with ResetState() below.
             RestoreSessionFollowers(goneSt.memberSnapshots, guid);
+            RecordLeaderDisconnected(guid, goneSt, "hard_disconnect", 0);
             DungeonLead::RecordRunSummary(guid, goneSt.tankName, "hard_disconnect");
             sDungeonRouteMgr.ResetState(guid);
             continue;
@@ -1580,6 +1790,7 @@ void DungeonLead::GuardActiveSessions()
             if (absentSt.state != DungeonLeadKernel::LeadState::Stopping)
             {
                 RestoreSessionFollowers(absentSt.memberSnapshots, guid);
+                RecordLeaderDisconnected(guid, absentSt, "leader_not_in_world", absentMs);
                 DungeonLead::RecordRunSummary(guid, absentSt.tankName, "leader_not_in_world");
             }
             sDungeonRouteMgr.ResetState(guid);
@@ -1636,11 +1847,8 @@ void DungeonLead::GuardActiveSessions()
         DungeonLead::SamplePosition(botAI, st);
         DungeonLead::ObserveCombatEvidence(botAI, st, group);
 
-        // Pull every party member - leader included - back onto the instance map if death has
-        // stranded them outside it (see RecoverStrandedMembers): upstream's own recovery chain is
-        // fine except for one step it cannot perform (pathing to a corpse on another map). We aim
-        // at the route's entrance rather than where the member died: the entrance is a
-        // known-walkable, mob-free spot, and a corpse run from there is an ordinary same-map run.
+        // Dead party bots - leader included - come back the way players do (DungeonRunBack.cpp):
+        // a resurrection in place, or release, a ghost's walk to the portal and the walk to the party.
         DungeonLead::RecoverStrandedMembers(botAI, st);
         DungeonLead::KeepInstanceValid(botAI);
         DungeonLead::FireAreaTriggers(botAI, st);
@@ -1648,6 +1856,10 @@ void DungeonLead::GuardActiveSessions()
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
+        // The moon's lifecycle runs here, every pass: as an action of the leader's own AI it
+        // competes with the tank's combat actions and in a fight rarely gets a turn, so landings
+        // went unseen and releases came late or early.
+        DungeonLead::CheckCcMark(botAI);
         DungeonTargetManager::Update(botAI);
         DungeonPullController::Update(botAI, party);
         // The pull controller can end the session (out of attempts -> FailObjective -> Stop). The
@@ -1661,8 +1873,11 @@ void DungeonLead::GuardActiveSessions()
             continue;  // session ended (recovery failed)
         if (!DungeonLeadBrain::Update(botAI, party))
             continue;  // session ended (wipe give-up)
+        if (!DungeonLead::WatchSessionLiveness(botAI, st, party))
+            continue;  // session ended (stalled)
         if (!bot->IsAlive())
             continue;  // nothing below applies to a corpse
+        DungeonLead::FollowDrop(botAI, st);
 
         // Observability only - the reapply below is unconditional regardless of this check (a
         // FOLLOWER-only wipe wouldn't show up here at all, see below), but logging specifically
@@ -1959,7 +2174,10 @@ void DungeonLead::ActivateSession(PlayerbotAI* botAI, Group* group, Player* mast
     DungeonLead::RecordEvent(botAI, "start",
                               "tank=" + std::string(PlayerbotAI::IsTank(bot) ? "yes" : "no") +
                               " origin=" + ToString(origin),
-                              DungeonLeadKernel::JsonLine().Raw("context", DungeonLead::ContextJson()).Done());
+                              DungeonLeadKernel::JsonLine()
+                                  .Raw("context", DungeonLead::ContextJson())
+                                  .Bool("run_back", true)  // dead and straggling bots come back on foot
+                                  .Done());
 
     // A group leadership change (needed above whenever the tank wasn't already leader) makes every
     // bot in the group receive SMSG_GROUP_LIST, which the base module's WorldPacketHandlerStrategy
@@ -2158,7 +2376,7 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
 // ---------------------------------------------------------------------------------------------
 bool DungeonLeadNextAction::isUseful()
 {
-    if (!bot || !botAI || !bot->IsAlive() || bot->IsInCombat())
+    if (!bot || !botAI || !bot->IsAlive() || DungeonPartyState::LeaderFightsEnemy(bot))
         return false;
     if (!DungeonLead::InFiveMan(bot))
         return false;
@@ -2168,16 +2386,20 @@ bool DungeonLeadNextAction::isUseful()
     if (!DungeonLeadBrain::Update(botAI, party))
         return false;
     DungeonLeadState& st = sDungeonRouteMgr.State(bot->GetGUID());
+    // A combat flag without an enemy only lets a walk the brain wants run; in any other state the
+    // fight's own movement must not be cancelled below.
+    if (bot->IsInCombat() && st.state != DungeonLeadKernel::LeadState::Travelling)
+        return false;
     if (st.paused)
     {
         // "startdungeon pause": stand still until "startdungeon continue" (out of combat here)
-        if (bot->isMoving())
+        if (bot->isMoving() && !st.dropJumping)  // never cut a jump short in the air
             bot->StopMoving();
         return false;
     }
     if (st.state == DungeonLeadKernel::LeadState::Travelling && DungeonPullController::StopForPull(botAI, st))
     {
-        if (bot->isMoving())
+        if (bot->isMoving() && !st.dropJumping)  // never cut a jump short in the air
             bot->StopMoving();
         return false;  // in pull range: the pull controller takes it from here
     }
@@ -2275,7 +2497,7 @@ bool DungeonLeadNextAction::isUseful()
         // don't just refuse a new move - a move already committed on a previous tick keeps
         // playing out on its own spline otherwise, so the tank visibly "runs off" from a party
         // member who just sat down to drink or pulled something
-        if (bot->isMoving())
+        if (bot->isMoving() && !st.dropJumping)  // never cut a jump short in the air
             bot->StopMoving();
         return false;
     }
@@ -2390,6 +2612,26 @@ DungeonPackSighting DungeonLead::TrackPack(PlayerbotAI* botAI, DungeonLeadState&
     DungeonPackSighting sighting =
         DungeonPacks::Observe(botAI->GetBot(), pack, st.instanceId, samePack ? st.packLocked : noLock);
     DungeonLeadKernel::PackState const prev = samePack ? st.packState : DungeonLeadKernel::PackState::Unknown;
+    if (!sighting.observation.rememberedKilled && prev != DungeonLeadKernel::PackState::Cleared &&
+        prev != DungeonLeadKernel::PackState::Skipped)
+    {
+        bool killedAtSpot = false;
+        for (uint32 entry : pack.expectedEntries)
+            killedAtSpot = killedAtSpot ||
+                           sDungeonRouteMgr.KilledNear(st.instanceId, entry, pack.x, pack.y, pack.z, DungeonPacks::kMemberRadius);
+        if (DungeonLeadKernel::RememberedKillClears(killedAtSpot, prev == DungeonLeadKernel::PackState::Engaged,
+                                                    sighting.observation.alive,
+                                                    botAI->GetBot()->GetExactDist(pack.x, pack.y, pack.z)))
+        {
+            sighting.observation.rememberedKilled = true;
+            DungeonLead::RecordEventV2(botAI, "pack_killed_elsewhere",
+                                       DungeonLeadKernel::JsonLine()
+                                           .Num("pack_id", uint32_t(pack.id))
+                                           .Str("name", pack.name)
+                                           .Num("entry", uint32_t(pack.expectedEntries.empty() ? 0 : pack.expectedEntries.front()))
+                                           .Done());
+        }
+    }
     SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prev, sighting.observation));
 
     // Once the pack itself is fighting, its membership is fixed - a neighbouring group with the
@@ -2449,6 +2691,8 @@ void DungeonLead::AdvanceStep(DungeonLeadState& st, bool confirmed)
     st.stuckAttempts = 0;
     st.stuckTs = 0;
     st.unstuckUsed = false;
+    st.dropAttempts = 0;
+    st.dropLastRefused = 0;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     st.talkNpcStillSince = 0;
     st.interactionIssued = false;
@@ -2504,10 +2748,13 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.anchorSet = false;
     st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
     st.arrivedTold = false;
+    st.spotIndex = 0;
     st.bestDist = 0.f;
     st.stuckTs = 0;
     st.stuckAttempts = 0;
     st.unstuckUsed = false;
+    st.dropAttempts = 0;
+    st.dropLastRefused = 0;
     st.eventWaitMs = st.eventWaitLastTs = st.talkTriedTs = 0;
     st.talkNpcStillSince = 0;
     st.interactionIssued = false;
@@ -2543,7 +2790,7 @@ bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, Dungeo
         {
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
             {
-                DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+                DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
                 if (pack.Exists())
                     SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
             }
@@ -2872,9 +3119,41 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     if (step.kind == DungeonRouteKind::Talk)
         return WalkTalkStep(st, dest, step);
 
+    // A boss with several spawn points: go to the one whose spawn is alive in this instance, when
+    // the map has it loaded; otherwise the walk visits the points nearest first (below).
+    bool spawnLive = false;
+    if (!step.spawnSpots.empty())
+    {
+        Map::CreatureBySpawnIdContainer& store = bot->GetMap()->GetCreatureBySpawnIdStore();
+        for (uint32 i = 0; i < step.spawnSpots.size(); ++i)
+        {
+            auto const range = store.equal_range(step.spawnSpots[i].spawnId);
+            bool const live = std::any_of(range.first, range.second,
+                                          [](auto const& kv) { return kv.second && kv.second->IsAlive(); });
+            spawnLive = spawnLive || live;
+            if (live && i != st.spotIndex)
+            {
+                st.spotIndex = uint8(i);
+                st.arrivedTold = false;
+                DungeonLead::RecordEventV2(botAI, "spawn_spot",
+                              DungeonLeadKernel::JsonLine()
+                                  .Str("name", step.boss)
+                                  .Num("step", uint32_t(st.stepIndex))
+                                  .Num("spot", uint32_t(i))
+                                  .Num("spots", uint32_t(step.spawnSpots.size()))
+                                  .Str("how", "live")
+                                  .Done());
+                break;
+            }
+        }
+    }
+    if (st.spotIndex < step.spawnSpots.size())
+        dest = WorldPosition(bot->GetMapId(), step.spawnSpots[st.spotIndex].x, step.spawnSpots[st.spotIndex].y,
+                             step.spawnSpots[st.spotIndex].z, 0.f);
+
     // Pack nodes (pull/boss/interaction) advance only once their pack is Cleared (or Skipped
     // below) - never just because the tank reached the coordinate. Travel nodes have no pack.
-    DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+    DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
     DungeonPackSighting sighting;
     if (pack.Exists())
     {
@@ -2897,6 +3176,31 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         return true;
     }
 
+    // An optional named mob that is not alive anywhere in this instance (a rare that did not spawn,
+    // or one that died out of the party's sight): nothing to walk to or wait for. Instances load all
+    // their grids, so the spawn store holds every creature the instance has.
+    if (DungeonLeadKernel::SkipAbsentOptional(!step.IsMandatory(), !step.spawnSpots.empty(), spawnLive))
+    {
+        // Not a failure - there is nothing to fight: no failure round, not a skipped stop of the
+        // route, only its own outcome.
+        DungeonLead::RecordEvent(botAI, "objective_absent", step.boss,
+                                 DungeonLeadKernel::JsonLine()
+                                     .Str("name", step.boss)
+                                     .Num("step", uint32_t(st.stepIndex))
+                                     .Num("entry", uint32_t(step.entry))
+                                     .Num("spots", uint32_t(step.spawnSpots.size()))
+                                     .Done());
+        if (DungeonRoute const* absentRoute = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+        {
+            DungeonPack const absentPack = DungeonPacks::ForStep(*absentRoute, st.stepIndex, st.spotIndex);
+            if (absentPack.Exists())
+                DungeonLead::SetPackState(botAI, st, absentPack, DungeonLeadKernel::PackState::Skipped);
+        }
+        botAI->TellMasterNoFacing("Dungeon lead: " + step.boss + " is not here, moving on");
+        DungeonLead::AdvanceStep(st, /*confirmed*/ false);
+        return true;
+    }
+
     float dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
     if (dist <= sDungeonLeadConfig.dungeonLeadArriveDistance)
     {
@@ -2915,6 +3219,20 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // above confirms an actual kill on a later tick. The one exception: if nothing at all shows
         // up here (not even a corpse) after a while, there is nothing left to confirm a kill on, so
         // give up and move on rather than parking here forever.
+        if (DungeonLeadKernel::NextSpawnSpot(sighting.observation.found, st.spotIndex, step.spawnSpots.size()))
+        {
+            ++st.spotIndex;
+            st.arrivedTold = false;
+            DungeonLead::RecordEventV2(botAI, "spawn_spot",
+                          DungeonLeadKernel::JsonLine()
+                              .Str("name", step.boss)
+                              .Num("step", uint32_t(st.stepIndex))
+                              .Num("spot", uint32_t(st.spotIndex))
+                              .Num("spots", uint32_t(step.spawnSpots.size()))
+                              .Str("how", "next")
+                              .Done());
+            return true;
+        }
         if (!st.arrivedTold)
         {
             st.arrivedTold = true;
@@ -3024,7 +3342,7 @@ bool DungeonLeadNextAction::EventWaitExpired(DungeonLeadState& st)
     {
         uint32 const delta = getMSTimeDiff(st.eventWaitLastTs, now);
         // consecutive walk ticks (a talk step asks every 5 s); a longer gap was a fight or a recovery
-        if (delta < 15000)
+        if (delta < DungeonLeadKernel::kEventWaitGapMs)
             st.eventWaitMs += delta;
     }
     st.eventWaitLastTs = now;
@@ -3574,8 +3892,365 @@ bool DungeonLeadNextAction::MoveAlongPath(Movement::PointsArray points, float pa
     return true;
 }
 
+namespace
+{
+    // A landing below a ledge seen from a unit on it: out at head height to the point above the
+    // landing, then straight down. One ray from the head to a landing far below cuts through the
+    // ledge the unit stands on. Static M2 doodads of the map (roots, vines, trees, loose rocks)
+    // do not count - a falling body goes past them, as units walking off such ledges do; the
+    // map's buildings and rock (WMO models and terrain) do, and so does every game object
+    // (gates and portcullises are M2 game objects and are not in the navmesh). Used for the
+    // leader's landing and for a member following it.
+    // Which ray is blocked, for the refusal's telemetry: "" (none), "out" or "down".
+    char const* DropSightBlocked(Unit* unit, float toX, float toY, float toZ)
+    {
+        Map* const map = unit->GetMap();
+        float const headZ = unit->GetPositionZ() + 1.5f;
+        // the ignore flag applies to the static map models; with GOBJECT_M2 in the checks the
+        // game objects are checked with nothing ignored
+        auto const checks = LineOfSightChecks(LINEOFSIGHT_CHECK_VMAP | LINEOFSIGHT_CHECK_GOBJECT_ALL);
+        if (!map->isInLineOfSight(unit->GetPositionX(), unit->GetPositionY(), headZ, toX, toY, headZ,
+                                  unit->GetPhaseMask(), checks, VMAP::ModelIgnoreFlags::M2))
+            return "out";
+        if (!map->isInLineOfSight(toX, toY, headZ, toX, toY, toZ + 1.5f, unit->GetPhaseMask(), checks,
+                                  VMAP::ModelIgnoreFlags::M2))
+            return "down";
+        return "";
+    }
+
+    bool DropLandingInSight(Unit* unit, float toX, float toY, float toZ)
+    {
+        return !*DropSightBlocked(unit, toX, toY, toZ);
+    }
+
+    // Lowest health of the living party members, in percent (100 without a group).
+    uint8 PartyMinHealthPct(Player* bot)
+    {
+        uint8 lowest = uint8(bot->GetHealthPct());
+        if (Group* group = bot->GetGroup())
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                if (Player* m = ref->GetSource(); m && m->IsAlive() && m->IsInMap(bot))
+                    lowest = std::min<uint8>(lowest, uint8(m->GetHealthPct()));
+        return lowest;
+    }
+
+    // Whether anyone in the party takes fall damage: a real player, also one whose character a
+    // bot AI plays (its client still reports the fall).
+    bool PartyHasFallDamage(Player* bot)
+    {
+        if (!DungeonLead::IsBotActor(bot))
+            return true;
+        if (Group* group = bot->GetGroup())
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+                if (Player* m = ref->GetSource(); m && !DungeonLead::IsBotActor(m))
+                    return true;
+        return false;
+    }
+
+    constexpr float kDropJumpSpeedXY = 8.0f;
+    constexpr float kDropJumpSpeedZ = 4.0f;
+}
+
+bool DungeonLeadNextAction::TryStartDrop(DungeonLeadState& st, WorldPosition const& dest)
+{
+    using namespace DungeonLeadKernel;
+    // A leader on its way is left alone unless the walk keeps making no progress.
+    uint32 const msWithoutProgress = st.stuckTs ? GetMSTimeDiffToNow(st.stuckTs) : 0;
+    if (st.dropJumping || (bot->isMoving() && msWithoutProgress < kDropNoProgressMs))
+        return false;
+    float const dx = dest.GetPositionX(), dy = dest.GetPositionY(), dz = dest.GetPositionZ();
+    float const ex = bot->GetPositionX(), ey = bot->GetPositionY(), ez = bot->GetPositionZ();
+    DropFacts f;
+    f.endGap = dest.GetExactDist(ex, ey, ez);
+    f.edgeAboveObjective = ez - dz;
+    if (f.endGap < kDropMinEndGap || f.edgeAboveObjective < kDropMinHeight)
+        return false;  // cheap checks first: no path search for an objective that is not below
+    uint32 const now = getMSTime();
+    if (st.dropProbeTs && getMSTimeDiff(st.dropProbeTs, now) < kDropProbeEveryMs)
+        return false;
+    st.dropProbeTs = now;
+
+    PathGenerator path(bot);
+    path.CalculatePath(dx, dy, dz);
+    PathType const pathType = path.GetPathType();
+    G3D::Vector3 const end = path.GetActualEndPosition();
+    f.pathEndsShort = DropPathEndsShort(pathType & PATHFIND_NOPATH, pathType & PATHFIND_INCOMPLETE,
+                                        bot->GetExactDist2d(end.x, end.y), msWithoutProgress);
+    if (!f.pathEndsShort)
+        return false;
+    f.attemptsOnStep = st.dropAttempts;
+    f.partyMinHealthPct = PartyMinHealthPct(bot);
+    f.fallDamageInParty = PartyHasFallDamage(bot);
+
+    // Ledge probe: on 12 bearings, the objective's first and then outwards to behind the leader,
+    // the first point within kDropMaxHorizontal where the floor (or deep water) lies a drop below.
+    // A candidate is judged on the cheap facts first; path searches only for one that passes them,
+    // for at most kDropMaxPathProbes per probe; when they run out, the next probe starts further
+    // round, so steps nearby cannot hide a ledge behind them. The first candidate that may drop
+    // wins; otherwise the refusal that got furthest is reported.
+    DropFacts chosen = f;
+    char const* chosenBlocked = "unchecked";
+    DropVerdict v = DecideDrop(f);  // out of attempts / party hurt need no landing
+    float lx = 0.f, ly = 0.f, lz = 0.f;
+    if (v != DropVerdict::OutOfAttempts && v != DropVerdict::PartyHurt)
+    {
+        float const base = std::atan2(dy - ey, dx - ex);
+        int pathProbes = 0;
+        bool found = false;
+        bool outOfProbes = false;
+        int bearingOutOfProbes = 0;
+        for (int i = 0; i < 12 && !found; ++i)
+        {
+            int const k = (i + st.dropProbeOffset) % 12;
+            float const angle = base + ((k % 2) ? 1.f : -1.f) * float((k + 1) / 2) * float(M_PI) / 6.f;
+            float const hx = std::cos(angle), hy = std::sin(angle);
+            for (float s : {1.5f, 3.0f, 4.5f, 6.0f})
+            {
+                float const px = ex + hx * s, py = ey + hy * s;
+                float const floorZ = bot->GetMapHeight(px, py, ez + 1.0f);
+                if (floorZ <= INVALID_HEIGHT || ez - floorZ < kDropMinHeight)
+                    continue;  // no floor, or still the ledge itself
+                DropFacts c = f;
+                char const* blocked = "unchecked";  // sight is checked only when the cheap facts allow a drop
+                c.landingFound = true;
+                c.horizontal = s;
+                float landZ = floorZ;
+                float const waterZ = bot->GetMapWaterOrGroundLevel(px, py, floorZ + 1.0f);
+                c.landingInWater = waterZ > floorZ + 0.5f && DropWaterIsDeep(waterZ - floorZ, f.fallDamageInParty);
+                if (c.landingInWater)
+                    landZ = waterZ;  // jump onto the surface; the paths start there too
+                c.fallHeight = ez - floorZ;  // shallow water does not soften the fall
+                if (c.landingInWater)
+                    c.fallHeight = ez - waterZ;
+                // the cheap facts, with the path facts assumed fine
+                DropFacts cheap = c;
+                cheap.landingInSight = cheap.landingOnMesh = cheap.belowComplete = true;
+                cheap.connectedBack = false;
+                cheap.gain = kDropMinGain;
+                DropVerdict cv = DecideDrop(cheap);
+                if (cv == DropVerdict::Drop)
+                {
+                    blocked = DropSightBlocked(bot, px, py, landZ);
+                    c.landingInSight = !*blocked;
+                    if (c.landingInSight && pathProbes < kDropMaxPathProbes)
+                    {
+                        ++pathProbes;
+                        PathGenerator below(bot);
+                        below.CalculatePath(px, py, landZ, dx, dy, dz, false);
+                        PathType const bt = below.GetPathType();
+                        c.landingOnMesh = !(bt & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH));
+                        G3D::Vector3 const be = below.GetActualEndPosition();
+                        float const belowGap = dest.GetExactDist(be.x, be.y, be.z);
+                        c.belowComplete = !(bt & PATHFIND_INCOMPLETE) || belowGap <= kDropBelowArrive;
+                        c.gain = f.endGap - belowGap;
+                        PathGenerator back(bot);
+                        back.CalculatePath(px, py, landZ, ex, ey, ez, false);
+                        PathType const kt = back.GetPathType();
+                        G3D::Vector3 const ke = back.GetActualEndPosition();
+                        float const kx = ke.x - ex, ky = ke.y - ey;
+                        c.connectedBack = !DropFloorsSeparate(kt & PATHFIND_NOPATH, kt & PATHFIND_INCOMPLETE,
+                                                              std::sqrt(kx * kx + ky * ky), ez - ke.z);
+                        cv = DecideDrop(c);
+                    }
+                    else if (!c.landingInSight)
+                        cv = DropVerdict::NotInSight;
+                    else
+                    {
+                        outOfProbes = true;
+                        bearingOutOfProbes = k;
+                        break;  // out of path searches for this probe: the bearing is not judged
+                    }
+                }
+                if (PreferDropCandidate(v, cv))
+                {
+                    v = cv;
+                    chosen = c;
+                    chosenBlocked = blocked;
+                    lx = px;
+                    ly = py;
+                    lz = landZ;
+                }
+                found = cv == DropVerdict::Drop;
+                if (cv == DropVerdict::Connected)
+                    continue;  // a step down the leader can walk: a deeper floor may lie further out
+                break;  // the nearest floor below the edge on this bearing
+            }
+        }
+        st.dropProbeOffset = NextDropProbeOffset(found, outOfProbes, bearingOutOfProbes);
+    }
+    f = chosen;
+
+    if (v == DropVerdict::NotNeeded)
+        return false;
+    auto facts = [&](JsonLine j) {
+        return j.Str("verdict", ToString(v))
+            .Num("fall", f.fallHeight)
+            .Bool("water", f.landingInWater)
+            .Bool("fall_damage", f.fallDamageInParty)
+            .Num("horizontal", f.horizontal)
+            .Num("gain", f.gain)
+            .Num("end_gap", f.endGap)
+            .Bool("in_sight", f.landingInSight)
+            .Str("sight_blocked", chosenBlocked)
+            .Bool("on_mesh", f.landingOnMesh)
+            .Bool("below_complete", f.belowComplete)
+            .Bool("connected", f.connectedBack)
+            .Num("party_min_health", uint32_t(f.partyMinHealthPct))
+            .Num("attempt", uint32_t(f.attemptsOnStep))
+            .Num("to_x", lx)
+            .Num("to_y", ly)
+            .Num("to_z", lz)
+            .Done();
+    };
+    if (v != DropVerdict::Drop)
+    {
+        if (st.dropLastRefused != uint8(v))
+        {
+            st.dropLastRefused = uint8(v);
+            DungeonLead::RecordEventV2(botAI, "drop", facts(JsonLine().Str("phase", "refused")));
+        }
+        return false;
+    }
+
+    ++st.dropAttempts;
+    st.dropJumping = true;
+    st.dropJumpTs = getMSTime();
+    st.dropFromX = ex;
+    st.dropFromY = ey;
+    st.dropFromZ = ez;
+    st.dropToX = lx;
+    st.dropToY = ly;
+    st.dropToZ = lz;
+    st.stuckTs = getMSTime();
+    st.stuckAttempts = 0;
+    DungeonLead::RecordEventV2(botAI, "drop", facts(JsonLine().Str("phase", "jump").Str("who", "leader")));
+    bot->GetMotionMaster()->MoveJump(lx, ly, lz, kDropJumpSpeedXY, kDropJumpSpeedZ);
+    return true;
+}
+
+namespace
+{
+    // The leader's jump is over: landed (the members may follow, the walk measures progress afresh
+    // and the landing becomes the last good spot - never the ledge it left) or given up.
+    void EndDrop(PlayerbotAI* botAI, DungeonLeadState& st, bool landed)
+    {
+        Player* bot = botAI->GetBot();
+        uint32 const ms = GetMSTimeDiffToNow(st.dropJumpTs);
+        st.dropJumping = false;
+        if (landed)
+        {
+            st.dropDoneTs = getMSTime();
+            st.dropMembersSent.clear();
+            st.bestDist = 0.f;
+            st.lastGoodSet = true;
+            st.lastGoodX = bot->GetPositionX();
+            st.lastGoodY = bot->GetPositionY();
+            st.lastGoodZ = bot->GetPositionZ();
+        }
+        DungeonLead::RecordEventV2(botAI, "drop",
+                                   DungeonLeadKernel::JsonLine()
+                                       .Str("phase", landed ? "landed" : "gave_up")
+                                       .Str("who", "leader")
+                                       .Num("ms", ms)
+                                       .Num("z", bot->GetPositionZ())
+                                       .Num("to_z", st.dropToZ)
+                                       .Done());
+    }
+
+    bool DropLanded(Player* bot, DungeonLeadState const& st)
+    {
+        return !bot->isMoving() && std::fabs(bot->GetPositionZ() - st.dropToZ) <= DungeonLeadKernel::kDropLandedZ;
+    }
+}
+
+bool DungeonLeadNextAction::AdvanceDrop(DungeonLeadState& st)
+{
+    if (!st.dropJumping)
+        return false;
+    st.stuckTs = getMSTime();  // a drop in flight is not being stuck
+    st.stuckAttempts = 0;
+    bool const landed = DropLanded(bot, st);
+    if (!landed && GetMSTimeDiffToNow(st.dropJumpTs) < DungeonLeadKernel::kDropJumpMaxMs)
+        return true;
+    EndDrop(botAI, st, landed);
+    return false;
+}
+
+void DungeonLead::FollowDrop(PlayerbotAI* botAI, DungeonLeadState& st)
+{
+    using DungeonLeadKernel::JsonLine;
+    Player* bot = botAI->GetBot();
+    // The landing is also seen from here: the walk may not run right after it (a fight, a step
+    // the leader reached in the air).
+    if (st.dropJumping && (DropLanded(bot, st) || GetMSTimeDiffToNow(st.dropJumpTs) >= DungeonLeadKernel::kDropJumpMaxMs))
+        EndDrop(botAI, st, DropLanded(bot, st));
+    if (!st.dropDoneTs)
+        return;
+    Group* group = bot->GetGroup();
+    if (!group)
+        return;
+    // A member's jump that has not brought it down in time (its own movement can cut a long jump
+    // short, and a bot has no gravity to finish it) ends with the member put on the landing.
+    for (auto& [guid, jumpTs] : st.dropMembersSent)
+    {
+        if (!jumpTs || GetMSTimeDiffToNow(jumpTs) < DungeonLeadKernel::kDropJumpMaxMs)
+            continue;
+        jumpTs = 0;
+        Player* m = ObjectAccessor::FindPlayer(guid);
+        if (!m || !m->IsAlive() || !m->IsInMap(bot) || m->isMoving())
+            continue;
+        float const ground = m->GetMapHeight(m->GetPositionX(), m->GetPositionY(), m->GetPositionZ());
+        bool const inAir = ground <= INVALID_HEIGHT || m->GetPositionZ() - ground > DungeonLeadKernel::kDropLandedZ;
+        if (!inAir || std::fabs(m->GetPositionZ() - st.dropToZ) <= DungeonLeadKernel::kDropLandedZ)
+            continue;
+        RecordEventV2(botAI, "drop",
+                      JsonLine()
+                          .Str("phase", "placed")
+                          .Str("who", m->GetName())
+                          .Num("z", m->GetPositionZ())
+                          .Num("to_z", st.dropToZ)
+                          .Done());
+        m->NearTeleportTo(st.dropToX, st.dropToY, st.dropToZ, m->GetOrientation());
+    }
+    uint32 const since = GetMSTimeDiffToNow(st.dropDoneTs);
+    if (since > DungeonLeadKernel::kDropMemberWindowMs + DungeonLeadKernel::kDropJumpMaxMs)
+    {
+        st.dropDoneTs = 0;
+        return;
+    }
+    if (since > DungeonLeadKernel::kDropMemberWindowMs)
+        return;  // no new jumps; the last ones may still need placing
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* m = ref->GetSource();
+        if (!m || m == bot || !m->IsAlive() || !m->IsInMap(bot) || !DungeonLead::IsBotActor(m))
+            continue;
+        if (std::any_of(st.dropMembersSent.begin(), st.dropMembersSent.end(),
+                        [&](auto const& sent) { return sent.first == m->GetGUID(); }))
+            continue;
+        float const above = m->GetPositionZ() - st.dropToZ;
+        float const toEdge = m->GetExactDist2d(st.dropFromX, st.dropFromY);
+        float const level = m->GetPositionZ() - st.dropFromZ;
+        if (!DungeonLeadKernel::MemberFollowsDrop(since, above, toEdge, level))
+            continue;
+        if (!DropLandingInSight(m, st.dropToX, st.dropToY, st.dropToZ))
+            continue;
+        st.dropMembersSent.emplace_back(m->GetGUID(), getMSTime());
+        RecordEventV2(botAI, "drop",
+                      JsonLine()
+                          .Str("phase", "jump")
+                          .Str("who", m->GetName())
+                          .Num("fall", above)
+                          .Num("to_edge", toEdge)
+                          .Done());
+        m->GetMotionMaster()->MoveJump(st.dropToX, st.dropToY, st.dropToZ, kDropJumpSpeedXY, kDropJumpSpeedZ);
+    }
+}
+
 bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition const& dest, DungeonRouteStep const& step)
 {
+    if (AdvanceDrop(st))
+        return true;  // a drop from a ledge is in flight
     if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
         return false;
 
@@ -3667,7 +4342,26 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         float const backDist = bot->GetExactDist(st.lastGoodX, st.lastGoodY, st.lastGoodZ);
         // no ground at all under it (INVALID_HEIGHT): it is inside the rock, any good spot is better
         bool const noGround = ground <= INVALID_HEIGHT + 1.0f;
-        if (!st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround))
+        bool const mayGoBack = !st.unstuckUsed && st.lastGoodSet && backDist > 5.0f && (backDist < 80.0f || noGround);
+        bool startOffMesh = false;
+        if (mayGoBack && !noGround)
+        {
+            // FARFROMPOLY_START: a polygon near the leader, but too far. No polygon at all gives a
+            // bare NOPATH, which an objective off the mesh gives too: a one-yard probe tells them apart.
+            PathGenerator probe(bot);
+            probe.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+            PathType const pt = probe.GetPathType();
+            bool selfProbeFails = false;
+            if ((pt & PATHFIND_NOPATH) && !(pt & PATHFIND_FARFROMPOLY_START))
+            {
+                PathGenerator self(bot);
+                self.CalculatePath(bot->GetPositionX() + 1.0f, bot->GetPositionY(), bot->GetPositionZ());
+                selfProbeFails = self.GetPathType() & (PATHFIND_FARFROMPOLY_START | PATHFIND_NOPATH);
+            }
+            startOffMesh = DungeonLeadKernel::LeaderOffMesh(pt & PATHFIND_FARFROMPOLY_START, pt & PATHFIND_NOPATH,
+                                                            selfProbeFails);
+        }
+        if (mayGoBack && DungeonLeadKernel::LeaderUnstuckHelps(startOffMesh, noGround))
         {
             st.unstuckUsed = true;
             std::string const detail =
@@ -3716,6 +4410,9 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
         DungeonInteractionController::StartForDoor(botAI, st, door, "on_path");
         return true;
     }
+    // At the end of a path that stops above the objective: jump down instead of searching on.
+    if (TryStartDrop(st, dest))
+        return true;
     // schema v2 path_decision: which way the walk chose and the path behind it (points thinned to
     // at most 16), at most every 3 s or when the choice changes - the replay map draws it.
     auto recordPath = [&](char const* kind, PathGenerator const* path, float tx, float ty, float tz)
@@ -3805,8 +4502,9 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
 
     // No usable path to the step at all - typically far away, e.g. walking back from the entrance
     // after a wipe. Walk the route's own earlier stops instead: the latest one a path reaches (and
-    // that is not where the leader stands) brings it closest along the route; from there the next
-    // stretch opens up. Not more often than every 3 s.
+    // that is not near where the leader stands - a stop the walk just came from leads back into the
+    // same dead end) brings it closest along the route; from there the next stretch opens up. Not
+    // more often than every 3 s.
     if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
     {
         if (!st.routeWaypointTs || GetMSTimeDiffToNow(st.routeWaypointTs) >= 3000)
@@ -3815,7 +4513,8 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             for (int j = int(std::min<size_t>(st.stepIndex, route->steps.size())) - 1; j >= 0; --j)
             {
                 DungeonRouteStep const& w = route->steps[j];
-                if (!w.HasPosition() || bot->GetExactDist(w.x, w.y, w.z) < 10.0f)
+                if (!w.HasPosition() ||
+                    !DungeonLeadKernel::RouteWaypointFallbackUsable(bot->GetExactDist(w.x, w.y, w.z)))
                     continue;
                 PathGenerator wp(bot);
                 wp.CalculatePath(w.x, w.y, w.z);

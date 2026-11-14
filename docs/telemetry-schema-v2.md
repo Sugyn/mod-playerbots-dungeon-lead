@@ -32,10 +32,10 @@ pack_id. Grouped by what they prove, with what a replay is missing:
 | Targets | `target_plan`, `mark_moon`, `cc_landed`, `cc_released`, `cc_target_gone` | the plan by name | GUIDs/entries; plan per pull |
 | Combat | `boss_prep`, `boss_combat`, `leash_hold`, `waiting` (group in combat) | boss anchor, leash refusals | boss engaged/killed times, mob deaths, party deaths, add joins |
 | Readiness | `waiting`, `post_combat_decision` | why the leader waited | party spread / healer distance as numbers |
-| Recovery | `recovery_start/complete/failed`, `recovery_escalate(_deferred)`, `wipe_detected`, `wipe_recovered`, `wipe_recovery_teleport`, `wipe_giveup`, `checkpoint_restore` | recovery episodes, wipes, checkpoint | who died, when, where, order; positions before/after |
+| Recovery | `recovery_start/complete/failed`, `recovery_escalate(_deferred)`, `wipe_detected`, `wipe_recovered`, `wipe_recovery_teleport` (before run back on foot), `run_back`, `member_teleport`, `wipe_giveup`, `checkpoint_restore` | recovery episodes, wipes, checkpoint | who died, when, where, order; positions before/after |
 | Interaction | `interaction_state`, `door_open`, `door_opened_by_us`, `door_not_found`, `door_needs_player`, `use`, `use_waiting`, `use_needs_player`, `use_failed`, `key_looted`, `talk`, `talk_waiting`, `talk_not_ours`, `event_assist`, `area_trigger` | what was opened/used/talked to and how | object position as numbers |
 | Integrity | `unexpected_teleport`, `instance_validity_restored`, `strategy_restored`, `telemetry_dropped` | integrity events | - |
-| Objectives | `objective_retry`, `objective_failed`, `objective_skipped`, `route_complete` | objective outcome with requirement and reason | - |
+| Objectives | `objective_retry`, `objective_failed`, `objective_skipped`, `objective_absent`, `route_complete` | objective outcome with requirement and reason | - |
 
 What v1 cannot answer at all: where the party walked between `pathing` lines, which mobs (not how
 many) joined a pull, who died where, which build and campaign produced a run, the order of events
@@ -105,11 +105,15 @@ the process.
 and `campaign_id`:
 
 - `campaign_started`: `started_at`, `commit_sha`, `module_version`, `validation_profile`,
-  `parallelism`, `timeout_minutes`, `dungeons` (LFG ids, in queue order), `context` (run context).
-- `run_result`: `lfg_id`, `tank`, `started`, `ended` (false = the campaign stopped a run that was
-  still active - a campaign failure, not a dungeon one), `minutes`.
-- `run_requeued`: `lfg_id`, `reason`.
-- `campaign_finished`: `finished_at`, `runs`.
+  `parallelism`, `timeout_minutes`, `repeat` (passes over the list, 0 = until stopped), `dungeons`
+  (LFG ids, in queue order), `context` (run context).
+- `run_result`: `lfg_id`, `pass` (1 = first pass over the list), `run_started_at` (UTC time the
+  party was sent in; joins the result to its run when a repeated list runs a dungeon again with the
+  same tank), `tank`, `started`, `ended` (false = the campaign stopped a run that was still active -
+  a campaign failure, not a dungeon one), `minutes`.
+- `run_requeued`: `lfg_id`, `pass`, `reason`.
+- `campaign_refill`: `pass` (the pass just queued), `runs_done`.
+- `campaign_finished`: `finished_at`, `runs`, `stopped` (true = ended by `.dungeonlead validate stop`).
 - `heartbeat` (no `campaign_id`; once a minute while the world tick runs): `time` (server local
   time), `active_sessions`, `queued_lines`, `lost_lines` (cumulative lines that left the buffer
   but did not reach their file - open, write or flush failed - since process start; 0 = no known
@@ -129,6 +133,8 @@ increments, each with its own entry here.
 
 | Semantic event | v2 event_type | Payload |
 |---|---|---|
+| run back | `run_back` | `phase`, `who`, `role`, `straggler` (a living straggler's walk order, not a death), `ms` (since the death or the walk order), `map`, `x`, `y`, `z`; per phase: `held` - release held for a resurrection in place (`resurrecter`); `released` - a ghost outside the dungeon walks to the portal (`portal_dist`, `limit_ms`, `portal` false = no portal of the dungeon on that map); `at_entrance` - stepped into the portal (`how`, `walk_ms`); `revived` (`how`: `resurrected` in place, `portal` - revived on entering, `teleport` - after a fallback); `walk_order` - a straggler walks to the leader, who waits (`leader_dist`, `limit_ms`); `rejoined` - within the soft range of the leader (`how` walk/teleport, `walk_ms`); `fallback` - the walk failed within its bound, or a dead bot was on its way back longer than all its bounds together (`reason`: `no_path` - no 3 yd progress in 20 s and the last search found no way, `stuck` - no 3 yd progress in 20 s, `time_limit` - distance at the walker's speed x 1.6 + 45 s, at least 60 s, at most 240 s to the portal and 300 s to the party, `no_portal`, `other_map`; `portal_dist` or `leader_dist`; diagnostics `best_dist`, `legs`, `path_type` of the last leg (PathGenerator flags; 0x10000 = a 50 yd leg toward a target the search could not reach, 0x20000 = a ghost's leg over the ground where the navmesh search found no way, 0x40000 = the run back's own search (steep ground included; | 0x04 when it ended short of the target)), `walker_probe` / `leader_probe` - the path type of a one-yard search from the walker / the leader: `NOT_USING_PATH` (0x08) there means it stands where no path can start) |
+| member teleport | `member_teleport` | `who`, `role`, `context` (`run_back`, `rejoin`, `straggler`, `recovery`), `reason` (as in `run_back` fallback; `escalation` - the recovery brings a bot that kept falling behind), `from_map`, `from_x/y/z`, `to_map`, `to_x/y/z`, `distance` (-1 across maps) - every teleport of a party bot; a real player is never moved |
 | dead bots | `dead_member_state` (v2 only, every 15 s per dead bot) | `name`, `role`, `map`, `ghost`, `x`, `y`, `z`, `moving`, `has_corpse`, `corpse_map`, `corpse_dist`, `leader_dist` |
 | leader path | `position_sample` (v2 only) | `moving`, `in_combat`, `far_followers[]` (followers over 30 yd from the leader: `name`, `role`, `dist`, `x`, `y`, `z`, `los`, `alive`, `moving`, `sitting`, `in_combat`, `motion` = movement generator type) (+ envelope position) |
 | walk decision | `path_decision` (v2 only) | `kind` (direct / direct_rejected / path_end / short_detour / route_waypoint / probe / no_path), `objective`, `dest_*`, `move_*`, `path_type`, `path_points`, `path_length`, `path` (<= 16 `[x,y,z]` points). The recorded path is the one the leader is sent along (for probe/no_path it is computed for the record) |
@@ -137,6 +143,10 @@ increments, each with its own entry here.
 | combat_add_joined | `combat_unit_joined` (v2 only) | `fight_id`, `unit` {guid (per-instance counter), spawn (world DB creature.guid), entry, name, x, y, z}, `level`, `elite`, `in_pack`, `pack_id`, `victim` |
 | mob_died | `mob_died` (v2 only) | `fight_id`, `unit` |
 | mob_fleeing | `mob_fleeing` (v2 only) | `name`, `entry`, `spawn`, `health_pct`, `x`, `y`, `z`, `fight_id` - a fight member started running for help (flee for assistance) or fleeing; once per unit and fight |
+| moon outcome | `cc_outcome` (v2 only, once per moon: landed or released) | `outcome` (`landed`, `released_timeout`, `released_absolute`, `released_last_enemy`), `name`, `entry`, `spawn`, `marked_ms`, `in_combat`, `health_pct`; `spell_id`, `spell`, `caster` when a breakable crowd control aura is on the target; `casters`: per party bot with the combat `cc` strategy `name`, `class`, `alive`, `dist`, `los`, `can_cast`, `casting` (spell id, 0 = none), `targets_it`, `moving` |
+| pack_killed_elsewhere | `pack_killed_elsewhere` (v2 only) | `pack_id`, `name`, `entry` - the current step's pack counts as done because a unit of its entry spawned at its spot died in an earlier fight and nothing alive is there |
+| spawn_spot | `spawn_spot` (v2 only) | `name`, `step`, `spot`, `spots`, `how` (`live`: the spawn alive in this instance, `next`: nothing at the previous point) - the walk to a boss with several spawn points moved to another of them |
+| objective_absent | `objective_absent` | `name`, `step`, `entry`, `spots` - an optional named mob has no living creature at any of its spawn points in the instance; the step is passed at once with this outcome of its own: not an objective failure (no `objective_skipped` / `objective_failed`, no failure round) and not a skipped stop of the route; also written as a v1 event |
 | recovery_walk_stopped | `recovery_walk_stopped` (v2 only) | `reason` - the recovery ended while the leader was still on its walk back to a straggler; the walk was stopped |
 | boss_killed | `boss_killed` (v2 only) | `name`, `step`, `entry`, `current_step` - a route boss died (also while another step was worked on: the step is then skipped as done) |
 | member_died | `member_died`, `member_revived` (v2 only) | `name`, `guid`, `role`, `leader`, `x`, `y`, `z`, `fight_id`, `attackers`; died: `party[]` - each other member's `name`, `role`, `dist`, `los`, `alive`, `health_pct`, `mana_pct`, `casting`, `attackers` |
@@ -144,13 +154,17 @@ increments, each with its own entry here.
 | combat_anchor_set | `combat_anchor_set` (v2 only) | `kind` (fight_start / boss_home / held_at_fight), `x`, `y`, `z`, `radius`, `boss_home_dist` |
 | state | `state_transition` | `from`, `to`, `reason`, `after_ms`, `objective` (+ `detail`) |
 | pack | `pack_state` | `pack_id`, `name`, `type`, `boss`, `optional`, `from`, `to` (+ `detail`) |
-| run_started / run_ended | `start`, `stop`, `canary_stop`, `test_result` | `detail` |
+| run_started / run_ended | `start`, `stop`, `canary_stop`, `test_result` | `detail`; `start` also `context` and `run_back` (true: dead and straggling bots of this run come back on foot - `run_back` / `member_teleport` events) |
+| leader disconnected | `leader_disconnected` (v2 only) | `how` (`hard_disconnect` - the leader bot logged out; `leader_not_in_world` - out of the world past the limit), `last_state`, `ms_gone` (how long it was out of the world; 0 = not measured, a logout), `position_known` (+ `detail`) - the run's terminal event when its leader left the world: no AI is left to stop the session, so the guard pass writes it with what the session last knew of the leader (map, instance, last sampled position; `alive` false) and outcome `failed` / `infrastructure` / `leader_disconnected` (a run already `partial` keeps that outcome) |
 | route_step_* | `route_selected`, `reached`, `objective_*`, `skip_stuck`, `route_complete` | `detail` |
 | pull lifecycle | `pull_state`, `pull_start`, `pull_established`, `pull_failed`, `pack_resolution`, `pack_reset` | `detail` |
 | boss | `boss_prep`, `boss_combat`, `pack_state` of a boss pack | `detail` / structured `pack_state` |
 | wipe / recovery | `wipe_*`, `recovery_*`, `checkpoint_restore` | `detail` |
 | interaction | `interaction_state`, `door_*`, `use*`, `talk*`, `key_looted`, `area_trigger`, `event_assist` | `detail` |
 | integrity | `unexpected_teleport`, `instance_validity_restored`, `strategy_restored`, `telemetry_dropped` | `detail` |
+| walk_blocked | `walk_blocked` (v2 only, after 30 s, then every 5 min while it lasts) | `detail`, `reason` (`standing_with_stale_combat`), `blocked_ms`, `combat_refs`, `attackers`, `has_victim`, `refs[]` (up to three units the leader is in combat with, nearest first, off-map last with distance -1: `unit`, `distance`, `alive`, `evading`, `has_victim`) - diagnostic: the brain says travelling, the leader stands outside a door or event wait, and its combat flag has no enemy behind it |
+| session_stalled | `session_stalled` | `ms_since_event`, `ms_since_move`, `objective`, `readiness`, `moving`, `in_combat`, `combat_with_enemy`, `combat_refs`, `refs[]`, `pull_state`, `walk_step_ms`, `interaction` (interaction state) (+ `detail`) - no progress event and no leader movement for 5 minutes in a watched state (waiting ready, travelling, pre-pull, pulling, post-combat, boss preparation) outside a pause, a bounded wait (an interaction in progress or issued, a step's event wait) and a wait for the session's real player (a session a player started whose master is dead, offline, out of the group, too far (beyond the leash or on another map) or marked away - never AutoBot Canary sessions); time outside a watched state does not count. Progress events are all events except `position_sample`, `walk_blocked` and `path_decision`. The run ends as failed (`session_stalled`); also written as a v1 event |
+| drop | `drop` (v2 only) | `phase` (`jump`, `landed`, `gave_up`, `refused` - once per verdict and step, `placed` - a member whose jump did not bring it down in 8 s is put on the landing), `who` (`leader` or the member's name); leader jump/refused: `verdict`, `fall`, `water` (landing in deep water), `fall_damage` (someone in the party takes fall damage: a real player or a self-bot), `horizontal`, `gain`, `end_gap`, `in_sight`, `sight_blocked` (`out` - from head height out to the point above the landing, `down` - from there to the landing, empty when seen, `unchecked` when the verdict came before the sight check; static M2 doodads of the map do not block, terrain, WMO buildings and all game objects do), `on_mesh`, `below_complete`, `connected`, `party_min_health`, `attempt`, `to_x/y/z`; landed/gave_up: `ms`, `z`, `to_z`; placed: `who`, `z`, `to_z`; member jump: `fall`, `to_edge` - the navmesh offers no path to the objective below (no path, or a partial one that ends where the leader stands or makes no progress) and the ledge probe (every 3 s at most, up to 4 landing candidates judged with path searches) finds a floor or deep water (2 yd, 4 yd with fall damage in the party) a drop below within 6 yd on one of 12 bearings, on a floor not linked to the edge; the leader jumps down; bot members on the ledge follow. Height limit 12 yd onto ground when someone takes fall damage, 40 yd into deep water or for a party of bots only |
 
 Combat evidence (`fight_*`, `combat_unit_joined`, `mob_died`, `member_*`) comes from the session
 guard on the world thread every ~2 s: the party members' current attackers and alive flags - no

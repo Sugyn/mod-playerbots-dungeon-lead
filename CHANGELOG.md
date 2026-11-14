@@ -6,6 +6,41 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+## [0.16.0-alpha] - 2026-11-14
+
+### Added
+
+- Dead party bots come back like players: a party member who can resurrect brings a dead bot back where it fell (its release is held during the fight and for up to a minute after); otherwise the bot releases, walks as a ghost from the graveyard to the dungeon's portal, steps in and walks to the party, which waits. A bot falling behind gets a walk order to the leader, who waits for it, instead of the leader walking back. The walk searches its way on the navmesh including steep ground (a ghost also over lava), which the bots' own path search leaves out. A teleport is only the fallback when such a walk fails within its bound (no progress for 20 seconds - reason `no_path` when no way was found, `stuck` otherwise - or its time limit); every teleport of a party bot writes a `member_teleport` event with its reason, and a real player is never moved. A `run_back` telemetry event records each phase.
+- When the navmesh ends on a ledge above the objective, the leader jumps down to the floor below instead of being moved back (only drops the party survives: onto ground below fall-damage height when a real player is in the party, into deep water, or further for a party of bots only, which takes no fall damage), and bot members on the ledge follow; a `drop` telemetry event records each jump and each refused one.
+- A session whose leader makes no progress and writes no event for five minutes ends with the reason `session_stalled` and a snapshot of its state, instead of running until an outside time limit. A session that waits for its real player (dead, offline, out of the group, too far or on another map, or marked away) is never ended this way, however long the player is gone.
+- A `walk_blocked` telemetry event reports a travelling leader that stands while its combat flag has no enemy behind it, with the creatures that hold the flag.
+- A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
+- `AiPlayerbot.DungeonLead.ValidationRepeat` runs a validation campaign's dungeon list several times (0 = until stopped): when the queue runs empty the list is queued again, so slots that finish a run keep starting new ones instead of waiting for the campaign's longest runs.
+- Run replay: run metrics for dead-target waits, teleports, crowd control, wipe-to-resume time, where the time went and backtracking, new health warnings, and `summary` / `compare-campaigns` commands that say whether a campaign is better, worse or the same as another.
+- Run replay: member teleports per run (with the reason of each fallback teleport) and the run back of dead and straggling party bots (resurrected in place, walked to the portal, rejoined walking, fallbacks) in the run metrics and the campaign summary.
+
+### Changed
+
+- `AiPlayerbot.DungeonLead.ValidationParallel` accepts up to 50 parallel validation parties (was 10). The test bot pool needs 2 warriors, 1 priest, 1 mage and 1 rogue per party.
+- A leader stuck on a route step is teleported back to its last good spot only when it stands away from the navmesh or with no floor under it; a leader on the navmesh whose objective is out of reach fails the objective at once, and the route's failure rules decide what follows (an optional waypoint is skipped).
+- Wailing Caverns: a waypoint on the lower level leads from the Pythas approach towards Lord Pythas, where the direct path along the upper ledge leaves the navmesh (route updates 0001 and 0002).
+- CI compiles only when sources, config, CMake files or the workflow change.
+
+### Fixed
+
+- A bot that mod-playerbots made the leader's master no longer stops the run with "waiting for you, master too far"; sessions nobody asked for (validation, canary) have no master to wait for.
+- Crowd control marks are checked every session pass: a landed crowd control is seen, and the moon is no longer taken off while a party member is casting crowd control at the target.
+- A leader walking where the map height lookup finds no ground (some tunnels) is no longer taken for stuck inside the rock and teleported back during a regroup.
+- A route target that died away from its spot in an earlier fight (it ran for help, or joined a fight as an add) no longer keeps the leader waiting at the empty spot.
+- An optional named mob that is not alive in the instance (a rare that did not spawn, or one that already died elsewhere) is passed at once instead of the leader walking to its spot and waiting there. It has its own outcome (`objective_absent`): not a failed objective, no failure round and not one of the route's skipped stops; the run replay shows it as passed.
+- A boss with several possible spawn points (Lady Anacondra in Wailing Caverns) is looked for at the point where it is alive in the instance, or at each point in turn, instead of failing the run at the one point the route names.
+- When the navmesh has no path onward, the leader no longer walks back to the route stop it just came from (it looped there, e.g. at Roogug in Razorfen Kraul); it searches forward instead.
+- A leader held in combat by a creature far away (for example a boss behind a closed door) no longer stands still on its route: the walk, doors, pulls and event help follow the same combat rule as the session's decisions.
+- A party member that a boss keeps on its threat list from the far end of the instance (after a wipe, the boss neither comes nor leaves combat) no longer keeps the party waiting "in combat": an attacker or target more than 60 yards away does not count as a fight, so after 20 seconds the party walks on and marks the next pack.
+- A closed door near the end of the leader's walk is now seen before the leader walks through it, not only a door near the leader (the server does not stop bots at closed doors). After a wipe in Scarlet Monastery Cathedral the party could walk through the closed Secret Door into a room it could not open from inside.
+- A run whose leader bot leaves the world (logs out, or stays out of the world) now ends with a `leader_disconnected` terminal event and the failure reason `leader_disconnected`, so its replay shows a run ended by the disconnect (unhealthy: `leader_disconnected`) instead of a cut record.
+- Validation campaigns with more than 20 parallel parties no longer run out of test bots while most of the bot pool is idle.
+
 ## [0.15.0-alpha] - 2026-11-10
 
 ### Added

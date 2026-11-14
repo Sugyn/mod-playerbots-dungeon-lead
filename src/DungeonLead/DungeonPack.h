@@ -62,9 +62,15 @@ struct DungeonPackSighting
 
 namespace DungeonPacks
 {
+    // A unit spawned this close to the pack's spot is part of it (plus the nearest one, see
+    // DungeonLeadKernel::ResolvePack); farther ones with the same entry belong to another group.
+    constexpr float kMemberRadius = 12.0f;
+
     // The pack for a route step, or an empty pack (Exists()==false) for nodes that have none:
     // Travel anchors, rows without a creature entry or position.
-    DungeonPack ForStep(DungeonRoute const& route, uint32_t stepIndex);
+    // `spotIndex`: for a boss with several spawn points, the one the walk is on
+    // (DungeonRouteStep::spawnSpots); the row's own position otherwise.
+    DungeonPack ForStep(DungeonRoute const& route, uint32_t stepIndex, uint32_t spotIndex = 0);
 
     // Live units of `pack` as seen from `bot` (DungeonLeadKernel::ResolvePack): expected entries by
     // spawn position plus the lead, or the `locked` members once engaged, plus any unit attacking

@@ -57,3 +57,49 @@ def first_word_name(detail):
     """The leading name of details like "Defias Cannon key=5397" / "Cookie dist=406.2 ..."."""
     m = re.match(r"(.*?)(?= \w+=|$)", detail)
     return m.group(1) if m else detail
+
+
+def readiness(detail):
+    """The readiness text of a `waiting` detail: "group too spread - Osan" -> "group too spread"."""
+    return detail.split(" - ", 1)[0].strip() or None
+
+
+def post_combat_decision(detail):
+    # "recovery readiness=someone is low on health lowest_health=31 healer_mana=8 waited_ms=4011"
+    m = re.match(r"(?P<next>\S+) readiness=(?P<ready>.*?)(?= lowest_health=| healer_mana=| waited_ms=|$)", detail)
+    if not m:
+        return {"next": None, "readiness": None}
+    return {"next": m["next"], "readiness": m["ready"]}
+
+
+def pull_state(detail):
+    # "#5 Slavering Worg approaching->waiting_party attempt=0 reason=group spread out, holding the pull (Osan)"
+    # "#7 Slavering Worg approaching->waiting_patrol attempt=0 patrol=Shadowfang Wolfguard spawn=134516 dist=16"
+    m = re.search(r"(?P<from>[a-z_]+)->(?P<to>[a-z_]+)(?: attempt=\d+)?(?P<rest>.*)", detail)
+    if not m:
+        return {"from": None, "to": None, "reason": None, "patrol": None}
+    r = re.search(r" reason=(.*?)(?: \([^)]*\))?$", m["rest"])
+    p = re.search(r" patrol=(.*?)(?= spawn=| dist=|$)", m["rest"])
+    return {"from": m["from"], "to": m["to"], "reason": r.group(1) if r else None,
+            "patrol": p.group(1) if p else None}
+
+
+def escalation(detail):
+    # "party_fragmented member=Ogan action=brought_to_leader +Izluun +Nobuan"
+    m = re.match(r"(?P<reason>\S+) member=(?P<member>\S+)(?: action=(?P<action>\S+))?(?P<rest>.*)", detail)
+    if not m:
+        return {"reason": None, "member": None, "action": None, "others": []}
+    return {"reason": m["reason"], "member": None if m["member"] == "-" else m["member"], "action": m["action"],
+            "others": re.findall(r"\+(\S+)", m["rest"])}
+
+
+def cc_release_reason(detail):
+    """The reason of a `cc_released` detail ("Defias Pirate reason=last_enemy"), None if it names none."""
+    m = re.search(r" reason=(\S+)", detail)
+    return m.group(1) if m else None
+
+
+def teleport_player(detail):
+    """The player of an `unexpected_teleport` detail: "Ogan to map 0 (...) options=0 spell=8690 ..."."""
+    m = re.match(r"(\S+) to map ", detail)
+    return m.group(1) if m else None

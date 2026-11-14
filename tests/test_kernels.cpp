@@ -184,6 +184,13 @@ namespace
         Check(CombatCounts(true, false, 5000), "combat flag, no enemy for a moment: still counts");
         Check(!CombatCounts(true, false, kStaleCombatMs), "combat flag with no enemy for 20 s: stale, the walk resumes");
         Check(!CombatCounts(false, false, 0), "not in combat");
+        Check(EnemyCounts(true, 35.0f), "attacker at range: an enemy");
+        Check(EnemyCounts(true, kStaleCombatFarYd), "attacker at the far bound: still an enemy");
+        Check(!EnemyCounts(true, 285.0f), "boss holding a revived member from across the instance: no enemy");
+        Check(!EnemyCounts(false, 0.0f), "unit on another map: no enemy");
+        Check(!CombatCounts(true, EnemyCounts(true, 285.0f), kStaleCombatMs), "held from 285 yd for 20 s: stale, the party walks on");
+        Check(CombatCounts(true, EnemyCounts(true, 285.0f), 5000), "held from 285 yd for a moment: still counts");
+        Check(CombatCounts(true, EnemyCounts(true, 40.0f), kStaleCombatMs), "attacker back within 40 yd: a fight again");
 
         Check(Walk(Party()) == ReadyStatus::Ready, "healthy party -> Ready");
 
@@ -509,6 +516,11 @@ namespace
         Check(DecidePackState(PackState::Engaged, Seen(0, 0, 0)) == PackState::Engaged,
               "engaged pack pulled out of probe range stays Engaged");
         Check(DecidePackState(PackState::Available, Seen(0, 0, 0)) == PackState::Unknown, "available pack gone -> Unknown");
+        Check(RememberedKillClears(true, false, 0, 40.0f), "killed away from its spot, nothing alive there, near -> done");
+        Check(!RememberedKillClears(true, false, 1, 40.0f), "a remembered kill never clears a pack with a living member");
+        Check(!RememberedKillClears(true, true, 0, 40.0f), "a pack being fought is not settled by memory");
+        Check(!RememberedKillClears(true, false, 0, 140.0f), "too far for the probe to have seen the living members");
+        Check(!RememberedKillClears(false, false, 0, 10.0f), "no remembered kill at the spot");
         PackObservation remembered = Seen(0, 0, 0);
         remembered.rememberedKilled = true;
         Check(DecidePackState(PackState::Unknown, remembered) == PackState::Cleared, "instance kill memory -> Cleared");
@@ -1199,6 +1211,12 @@ namespace
               "path along the corridor past a cell door does not cross it");
         Check(!SegmentCrossesDoor(0.f, 0.f, 0.f, -5.f, 20.f, 5.f, 20.f, 6.f),
               "crossing the door's plane far from the door doesn't count");
+        // SM Cathedral: the leader 32 yd from the Secret Door issues one path to Fairbanks, 11 yd
+        // behind the door - the door is checked although the leader is not near it yet
+        Check(DoorOnPathCandidate(32.f, 11.f, 25.f), "a door by the destination is checked from afar");
+        Check(DoorOnPathCandidate(10.f, 60.f, 25.f), "a door near the leader is checked");
+        Check(!DoorOnPathCandidate(40.f, 40.f, 25.f), "a door far from both is not");
+        Check(!DoorOnPathCandidate(70.f, 11.f, 25.f), "a door by the destination is not stopped at from far away");
         // from the walkway above the cells down to the next boss - crosses a cell's plane 8.6 yd
         // from the cell door: not through the door
         Check(!SegmentCrossesDoor(-244.14f, 2134.41f, -0.375f, -237.35f, 2133.24f, -252.09f, 2123.11f, 3.5f),
@@ -1530,14 +1548,14 @@ namespace
         auto hasSet = [](std::vector<std::string> on) {
             return [on](char const* n) { return std::find(on.begin(), on.end(), n) != on.end(); };
         };
-        std::vector<std::string> const followerOk = {"follow"};
+        std::vector<std::string> const followerOk = {"follow", "dungeon lead run back"};
         Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet(followerOk)).empty(),
               "follower as set -> no non-combat change");
         Check(StrategyDelta(FollowerCombatStrategies(), hasSet({"cc"})).empty(), "follower combat as set -> no change");
         Check(StrategyDelta(FollowerCombatStrategies(), hasSet({})) == "+cc", "lost only cc -> +cc");
-        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "rpg"})) == "-rpg",
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "dungeon lead run back", "rpg"})) == "-rpg",
               "rpg put back -> -rpg only (follow untouched)");
-        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "loot", "new rpg"})) == "-new rpg,-loot",
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow", "dungeon lead run back", "loot", "new rpg"})) == "-new rpg,-loot",
               "several conflicts -> exactly those");
         Check(StrategyDelta(LeaderCombatStrategies(), hasSet({"dungeon lead", "cc", "mark rti"})).empty(),
               "leader combat as set -> no change");
@@ -1545,8 +1563,11 @@ namespace
               "leader lost mark rti -> +mark rti");
         Check(StrategyDelta(LeaderNonCombatStrategies(), hasSet({"dungeon lead", "grind"})).empty(),
               "leader non-combat as set -> no change");
-        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot",
-              "session start: the same follower set as before");
+        Check(StrategyAll(FollowerNonCombatStrategies()) == "+follow,-passive,-stay,-grind,-dungeon lead,-new rpg,-rpg,-loot,+dungeon lead run back",
+              "session start: the follower set, with the run back");
+        Check(StrategyAll(DeadStrategies()) == "+dungeon lead run back", "session start: the dead state, leader and followers");
+        Check(StrategyDelta(FollowerNonCombatStrategies(), hasSet({"follow"})) == "+dungeon lead run back",
+              "lost the run back -> +dungeon lead run back only");
         Check(StrategyAll(LeaderNonCombatStrategies()) == "+dungeon lead,+grind,-passive,-stay,-new rpg,-rpg,-loot",
               "session start: the same leader non-combat set as before");
         Check(StrategyAll(LeaderCombatStrategies()) == "+dungeon lead,+cc,+mark rti", "session start: leader combat set");
@@ -1635,6 +1656,192 @@ namespace
         Check(w.Summarize().count == 0, "reset starts a new window");
     }
 
+    void TestMoonRelease()
+    {
+        Check(!ReleaseUnlandedMoon(false, false, false), "inside the grace window the moon stays");
+        Check(ReleaseUnlandedMoon(true, false, false), "grace over, nobody casting: release");
+        Check(!ReleaseUnlandedMoon(true, false, true), "grace over but a CC cast is on the way: keep");
+        Check(ReleaseUnlandedMoon(true, true, true), "the absolute ceiling ends it even mid-cast");
+        Check(ReleaseUnlandedMoon(false, true, false), "the absolute ceiling alone ends it");
+    }
+
+    void TestMasterGate()
+    {
+        Check(MasterGatesParty(true, false), "a player who asked for the session is waited for");
+        Check(!MasterGatesParty(true, true), "a bot that mod-playerbots made master is not");
+        Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
+        Check(SessionRequestedByPlayer(false, false), "readiness outside a session waits for the player");
+        Check(!ReportWalkBlocked(29000, false, 0), "a short block is not reported");
+        Check(ReportWalkBlocked(30000, false, 0), "a block of 30 s is reported");
+        Check(!ReportWalkBlocked(120000, true, 60000), "not again within the repeat interval");
+        Check(ReportWalkBlocked(400000, true, 300000), "again after the repeat interval");
+        Check(!SessionStalled(299999, 400000), "an event within 5 min keeps the session alive");
+        Check(!SessionStalled(400000, 299999), "movement within 5 min keeps the session alive");
+        Check(SessionStalled(300000, 300000), "5 min without event and movement is a stall");
+        Check(LivenessApplies(LeadState::Travelling, false, false), "liveness watches a travelling session");
+        Check(LivenessApplies(LeadState::WaitingReady, false, false), "and a waiting one");
+        Check(!LivenessApplies(LeadState::Travelling, true, false), "not a paused one");
+        Check(LivenessApplies(LeadState::PrePull, false, false) && LivenessApplies(LeadState::Pulling, false, false),
+              "it watches pull preparation and the pull itself");
+        Check(LivenessApplies(LeadState::PostCombat, false, false) && LivenessApplies(LeadState::BossPrep, false, false),
+              "and the post-combat gate and boss preparation");
+        Check(!LivenessApplies(LeadState::Starting, false, false) && !LivenessApplies(LeadState::Stopping, false, false),
+              "leadership start and hand-back have their own limits");
+        Check(!LivenessApplies(LeadState::Travelling, false, true), "a bounded wait is exempt");
+        Check(LivenessBoundedWait(true, false, false, 0), "an interaction in progress is a bounded wait");
+        Check(LivenessBoundedWait(false, true, false, 0), "so is an issued interaction");
+        Check(LivenessBoundedWait(false, false, true, 14999), "so is an event wait that ticked just now");
+        Check(!LivenessBoundedWait(false, false, true, 15000), "an event wait that stopped ticking is not");
+        Check(!LivenessBoundedWait(false, false, false, 0), "a finished interaction is no wait at all");
+        Check(LivenessCountsEvent("state_transition") && LivenessCountsEvent("mob_died"), "progress events count");
+        Check(!LivenessCountsEvent("position_sample") && !LivenessCountsEvent("walk_blocked") &&
+                  !LivenessCountsEvent("path_decision"),
+              "samples, diagnostics and re-pathing in place do not");
+        Check(!LivenessApplies(LeadState::Travelling, false, true), "not a wait at a door or for an event");
+        Check(!LivenessApplies(LeadState::Combat, false, false) && !LivenessApplies(LeadState::BossCombat, false, false),
+              "not a fight");
+        Check(!LivenessApplies(LeadState::WipeRecovery, false, false), "not a wipe recovery (bounded on its own)");
+        Check(!LivenessApplies(LeadState::Recovery, false, false), "not a recovery (bounded on its own)");
+        Check(!LivenessApplies(LeadState::Completing, false, false), "not a finished route held for its player");
+        Check(!LivenessApplies(LeadState::WaitingReady, false, false, true), "not a session waiting for its real player");
+        Check(!LivenessApplies(LeadState::Travelling, false, false, true), "also while travelling");
+        Check(SessionRequestedByPlayer(true, false), "a session a player started keeps its master");
+        Check(!SessionRequestedByPlayer(true, true), "an AutoBot Canary session has no master");
+    }
+
+    void TestLivenessWaitsForPlayer()
+    {
+        ReadinessPolicy const p;
+        PartyFacts here;
+        here.hasGroup = true;
+        here.master.assigned = true;
+        here.master.online = true;
+        here.master.alive = true;
+        here.master.sameMap = true;
+        here.master.distance = 10.0f;
+        Check(!LivenessWaitsForPlayer(true, here, p), "a player-started session whose player is with the party stays watched");
+
+        PartyFacts offline = here;
+        offline.master.online = false;
+        Check(LivenessWaitsForPlayer(true, offline, p), "player-started: an offline player is waited for, liveness exempt");
+        Check(!LivenessWaitsForPlayer(false, offline, p), "AutoBot Canary: no real player, stays watched");
+
+        PartyFacts far = here;
+        far.master.distance = p.leash + 1.0f;
+        Check(LivenessWaitsForPlayer(true, far, p), "player-started: a player beyond the leash is waited for");
+        Check(!LivenessWaitsForPlayer(false, far, p), "AutoBot Canary: stays watched");
+
+        PartyFacts otherMap = here;
+        otherMap.master.sameMap = false;
+        Check(LivenessWaitsForPlayer(true, otherMap, p), "player-started: a player on another map is waited for");
+
+        PartyFacts away = here;
+        away.master.away = true;
+        Check(LivenessWaitsForPlayer(true, away, p), "player-started: a player marked away is waited for");
+        Check(!LivenessWaitsForPlayer(false, away, p), "AutoBot Canary: stays watched");
+
+        PartyFacts dead = here;
+        dead.master.alive = false;
+        Check(LivenessWaitsForPlayer(true, dead, p), "player-started: a dead player is waited for");
+
+        PartyFacts left = here;
+        left.master.inGroup = false;
+        Check(LivenessWaitsForPlayer(true, left, p), "player-started: a player who left the group holds the party");
+
+        PartyFacts none;
+        none.hasGroup = true;
+        Check(!LivenessWaitsForPlayer(true, none, p), "no real master assigned: stays watched");
+    }
+
+    void TestRunBack()
+    {
+        RezFacts rez;
+        rez.resurrecterAlive = true;
+        rez.partyInCombat = true;
+        rez.msDead = 10000;
+        Check(HoldRelease(rez), "release held during the fight while a resurrecter lives");
+        rez.msDead = kRezHoldMaxMs;
+        Check(!HoldRelease(rez), "but not past the hold limit");
+        rez.msDead = 10000;
+        rez.partyInCombat = false;
+        rez.msOutOfCombat = 5000;
+        Check(HoldRelease(rez), "after the fight the resurrecter gets its cast window");
+        rez.msOutOfCombat = kRezCastWindowMs;
+        Check(!HoldRelease(rez), "then the bot releases and runs back");
+        rez.msOutOfCombat = 0;
+        rez.resurrecterAlive = false;
+        rez.partyInCombat = true;
+        Check(!HoldRelease(rez), "nobody to resurrect: release at once");
+
+        Check(WalkLimitMs(10.0f, 7.0f, kRunBackMaxMs) == kRunBackMinMs, "a short walk gets the minimum limit");
+        Check(WalkLimitMs(5000.0f, 7.0f, kRunBackMaxMs) == kRunBackMaxMs, "a long walk is capped");
+        uint32_t const mid = WalkLimitMs(700.0f, 7.0f, kRunBackMaxMs);
+        Check(mid > kRunBackMinMs && mid < kRunBackMaxMs, "a middle walk: distance at speed with detour and slack");
+        Check(WalkLimitMs(100.0f, 0.0f, kRejoinMaxMs) == kRejoinMaxMs, "no speed known: the cap");
+
+        WalkFacts w;
+        w.limitMs = 100000;
+        w.msWalking = 30000;
+        w.msSinceProgress = 5000;
+        Check(DecideWalk(w) == WalkFallback::None, "a walk making progress goes on");
+        w.pathFound = false;
+        Check(DecideWalk(w) == WalkFallback::None, "no path but progress (its own follow): the walk goes on");
+        w.msSinceProgress = kWalkProgressMs;
+        Check(DecideWalk(w) == WalkFallback::NoPath, "no path and no progress: fallback with reason no_path");
+        w.pathFound = true;
+        w.msSinceProgress = kWalkProgressMs;
+        Check(DecideWalk(w) == WalkFallback::Stuck, "no progress: fallback with reason stuck");
+        w.msSinceProgress = 0;
+        w.msWalking = 100000;
+        Check(DecideWalk(w) == WalkFallback::TimeLimit, "past the limit: fallback with reason time_limit");
+        Check(std::string(ToString(WalkFallback::NoPortal)) == "no_portal", "fallback reasons have names");
+
+        Check(RunBackOwnsGhost(RunBackPhase::Released, false), "the run back walks a ghost outside the dungeon");
+        Check(!RunBackOwnsGhost(RunBackPhase::Released, true), "inside, the ghost reclaims its corpse on its own");
+        Check(!RunBackOwnsGhost(RunBackPhase::Held, false), "a held corpse is not walked");
+        Check(Rejoined(30.0f, 40.0f) && !Rejoined(50.0f, 40.0f), "rejoined within the soft range of the leader");
+        Check(FollowWaits(RunBackPhase::Rejoining, true, true), "a walk order with a path: the bot's follow waits");
+        Check(!FollowWaits(RunBackPhase::Rejoining, true, false), "no path: its follow may still bring it closer");
+        Check(FollowWaits(RunBackPhase::Released, false, false), "a ghost walked outside: no follow");
+        Check(!FollowWaits(RunBackPhase::Entered, true, true), "inside after the portal: free");
+        Check(!FollowWaits(RunBackPhase::None, true, true), "not on its way back: free");
+    }
+
+    void TestValidationRefill()
+    {
+        Check(!ValidationRefills(1, 1), "repeat 1: one pass, no refill");
+        Check(ValidationRefills(1, 3), "repeat 3: the list is queued again after the first pass");
+        Check(ValidationRefills(2, 3), "repeat 3: and after the second");
+        Check(!ValidationRefills(3, 3), "repeat 3: not after the third");
+        Check(ValidationRefills(1, 0), "repeat 0: refill until stopped");
+        Check(ValidationRefills(500, 0), "repeat 0: also after many passes");
+    }
+
+    void TestLeaderOffGround()
+    {
+        Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
+        Check(!LeaderOffGround(true, true), "no height in a tunnel, but on the navmesh: on the ground");
+        Check(LeaderOffGround(true, false), "no height and off the navmesh: inside the rock");
+    }
+
+    void TestSpawnSpots()
+    {
+        Check(NextSpawnSpot(0, 0, 4), "nothing at the first of four points: go on");
+        Check(!NextSpawnSpot(1, 0, 4), "found there (alive or a corpse): stay");
+        Check(!NextSpawnSpot(0, 3, 4), "the last point: no further point, the normal timeout applies");
+        Check(!NextSpawnSpot(0, 0, 0), "a single-spawn boss has no points to walk");
+        Check(SkipAbsentOptional(true, true, false), "an optional rare that did not spawn is skipped at once");
+        Check(!SkipAbsentOptional(true, true, true), "alive somewhere in the instance: go for it");
+        Check(!SkipAbsentOptional(false, true, false), "a boss is never skipped this way");
+        Check(!SkipAbsentOptional(true, false, false), "spawn points unknown (a trash entry): the normal walk");
+    }
+
+    void TestRouteWaypointFallback()
+    {
+        Check(!RouteWaypointFallbackUsable(20.0f), "the stop the walk just came from is not a fallback");
+        Check(RouteWaypointFallbackUsable(120.0f), "an earlier stop far away (after a wipe) is");
+    }
+
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
     // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
     // Only "on" strategies the class can create are owned (warriors have no "cc").
@@ -1664,7 +1871,7 @@ namespace
                   .empty(),
               "warrior leader with dungeon lead + mark rti -> stable, no +cc every pass");
         std::vector<OwnedStrategy> const offStays = AvailableStrategies(FollowerNonCombatStrategies(), [](char const*) { return false; });
-        Check(offStays.size() == FollowerNonCombatStrategies().size() - 1, "off entries always apply; only 'on' ones filtered");
+        Check(offStays.size() == FollowerNonCombatStrategies().size() - 2, "off entries always apply; only 'on' ones filtered");
     }
 
     void TestInteraction()
@@ -1746,8 +1953,118 @@ namespace
     }
 }
 
+void TestDropDecision()
+{
+    Check(LeaderUnstuckHelps(true, false), "leader off the navmesh: back to the last good spot");
+    Check(LeaderUnstuckHelps(false, true), "no floor under the leader: back to the last good spot");
+    Check(!LeaderUnstuckHelps(false, false), "leader on the navmesh, objective out of reach: no teleport, the step fails");
+    Check(LeaderOffMesh(true, false, false), "polygon near the leader but too far: off the mesh");
+    Check(LeaderOffMesh(false, true, true), "no polygon at all, and the one-yard probe fails too: off the mesh");
+    Check(!LeaderOffMesh(false, true, false), "no path to an objective off the mesh, leader's own spot fine: on the mesh");
+    Check(!LeaderOffMesh(false, false, false), "path found: on the mesh");
+    Check(NextDropProbeOffset(false, true, 5) == 5, "probe ran out at bearing 5: the next one starts there");
+    Check(NextDropProbeOffset(false, true, 0) == 0, "ran out at the objective's own bearing: start there again");
+    Check(NextDropProbeOffset(true, true, 5) == 0, "a drop found: back to the objective's bearing");
+    Check(NextDropProbeOffset(false, false, 7) == 0, "all bearings judged: back to the objective's bearing");
+    DropFacts f;
+    f.pathEndsShort = true;
+    f.endGap = 30.f;
+    f.edgeAboveObjective = 8.f;
+    f.landingFound = true;
+    f.fallHeight = 7.f;
+    f.horizontal = 3.f;
+    f.landingInSight = true;
+    f.landingOnMesh = true;
+    f.gain = 25.f;
+    f.belowComplete = true;
+    Check(DecideDrop(f) == DropVerdict::Drop, "a short, clear drop toward the objective is taken");
+    DropFacts g = f;
+    g.pathEndsShort = false;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "a path that reaches the objective needs no drop");
+    g = f;
+    g.edgeAboveObjective = 1.f;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "an objective not below the edge needs no drop");
+    g = f;
+    g.endGap = 3.f;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "a path ending next to the objective needs no drop");
+    g = f;
+    g.attemptsOnStep = kDropMaxAttemptsPerStep;
+    Check(DecideDrop(g) == DropVerdict::OutOfAttempts, "attempts per step are bounded");
+    g = f;
+    g.partyMinHealthPct = 30;
+    Check(DecideDrop(g) == DropVerdict::PartyHurt, "a hurt party does not drop");
+    g = f;
+    g.landingFound = false;
+    Check(DecideDrop(g) == DropVerdict::NoLanding, "no floor below, no drop");
+    g = f;
+    g.fallHeight = 13.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "a fall that would hurt a player is not taken");
+    g.landingInWater = true;
+    g.fallHeight = 35.f;
+    Check(DecideDrop(g) == DropVerdict::Drop, "deep water takes a long fall, also with a player");
+    g.fallHeight = 41.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "but not an arbitrary one");
+    g = f;
+    g.fallDamageInParty = false;
+    g.fallHeight = 34.f;
+    Check(DecideDrop(g) == DropVerdict::Drop, "a party of bots only takes no fall damage");
+    g.fallHeight = 41.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "bounded for bots too");
+    Check(DropPathEndsShort(true, false, 100.f, 0), "no path at all: the navmesh ends here");
+    Check(DropPathEndsShort(false, true, 3.f, 0), "a partial path that ends where the leader stands");
+    Check(!DropPathEndsShort(false, true, 20.f, 0), "a partial path that still leads on is walked");
+    Check(DropPathEndsShort(false, true, 20.f, kDropNoProgressMs), "unless the walk keeps making no progress on it");
+    Check(!DropPathEndsShort(false, true, 20.f, kDropNoProgressMs - 1), "a short pause in progress is not that");
+    Check(DropMaxHeight(false, true) == kDropMaxHeight && DropMaxHeight(true, true) == kDropMaxHeightNoFallDamage &&
+              DropMaxHeight(false, false) == kDropMaxHeightNoFallDamage,
+          "the height limit: ground with fall damage, or water / bots only");
+    Check(DropWaterIsDeep(2.f, false) && !DropWaterIsDeep(3.f, true) && DropWaterIsDeep(4.f, true),
+          "a player needs deeper water than a bot");
+    Check(DropFloorsSeparate(true, false, 50.f, 0.f), "no path back up: the floors are separate");
+    Check(DropFloorsSeparate(false, true, 3.f, 30.f), "a partial path that stops below the edge: separate");
+    Check(!DropFloorsSeparate(false, true, 40.f, 30.f), "a partial path that stops elsewhere may be a long link");
+    Check(!DropFloorsSeparate(false, true, 3.f, 0.5f), "a partial path that reaches the edge's level is a link");
+    Check(!DropFloorsSeparate(false, false, 0.f, 0.f), "a complete path is a link");
+    Check(PreferDropCandidate(DropVerdict::NoLanding, DropVerdict::TooHigh), "a refusal that got further is kept");
+    Check(!PreferDropCandidate(DropVerdict::Connected, DropVerdict::TooHigh), "not one that stopped earlier");
+    Check(PreferDropCandidate(DropVerdict::NoGain, DropVerdict::Drop), "a drop always wins");
+    Check(!PreferDropCandidate(DropVerdict::Drop, DropVerdict::NoGain), "and is never replaced");
+    g = f;
+    g.fallDamageInParty = false;
+    g.landingInWater = true;
+    g.fallHeight = 39.f;
+    Check(DecideDrop(g) == DropVerdict::Drop, "bots into water within the long limit");
+    g.fallHeight = 45.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "not beyond it");
+    Check(!DropPathEndsShort(false, false, 0.f, 5), "a complete path never ends short");
+    g = f;
+    g.horizontal = 7.f;
+    Check(DecideDrop(g) == DropVerdict::TooFar, "a landing far from the edge is not taken");
+    g = f;
+    g.landingInSight = false;
+    Check(DecideDrop(g) == DropVerdict::NotInSight, "nothing solid may lie between edge and landing");
+    g = f;
+    g.landingOnMesh = false;
+    Check(DecideDrop(g) == DropVerdict::OffMesh, "the landing must be walkable");
+    g = f;
+    g.gain = 5.f;
+    Check(DecideDrop(g) == DropVerdict::NoGain, "a drop that does not bring the objective closer is not taken");
+    g = f;
+    g.connectedBack = true;
+    Check(DecideDrop(g) == DropVerdict::Connected, "linked floors are walked, not jumped");
+    g = f;
+    g.belowComplete = false;
+    Check(DecideDrop(g) == DropVerdict::BelowIncomplete, "the floor below must lead to the objective");
+    Check(MemberFollowsDrop(30000, 6.f, 4.f, 0.5f), "a member at the edge follows a recent drop");
+    Check(!MemberFollowsDrop(30000, 1.f, 4.f, 0.f), "a member already below does not");
+    Check(!MemberFollowsDrop(30000, 6.f, 15.f, 0.f), "a member far from the edge does not");
+    Check(!MemberFollowsDrop(30000, 6.f, 4.f, 8.f), "a member on another floor does not");
+    Check(!MemberFollowsDrop(kDropMemberWindowMs + 1, 6.f, 4.f, 0.f), "an old drop is not followed");
+}
+
 int main()
 {
+    TestDropDecision();
     TestLeadership();
     TestHealer();
     TestReadiness();
@@ -1781,6 +2098,14 @@ int main()
     TestEventCreature();
     TestDurationWindow();
     TestStepWalkAndAvailability();
+    TestMoonRelease();
+    TestMasterGate();
+    TestLeaderOffGround();
+    TestRunBack();
+    TestLivenessWaitsForPlayer();
+    TestValidationRefill();
+    TestSpawnSpots();
+    TestRouteWaypointFallback();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
