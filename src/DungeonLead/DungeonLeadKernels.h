@@ -2457,6 +2457,45 @@ namespace DungeonLeadKernel
         }
         return lo + (hi - lo) * (roll % 1000) / 1000;
     }
+
+    // ---- Start from the dungeon queue (AiPlayerbot.DungeonLead.QueueAutoStart) ---------------
+    struct QueueStartFacts
+    {
+        bool lfgGroup = false;         // a group the dungeon finder formed
+        bool inDungeon = false;        // the player is inside the group's dungeon
+        bool routeKnown = false;       // the module has a route for it
+        bool playerPresent = false;    // at least one real player (or simulated player) in the group
+        bool tankIsPlayer = false;     // the group's tank is a real player
+        bool tankBotReady = false;     // a bot tank is in the dungeon with the player
+        bool sessionRunning = false;   // someone in the group already leads a session
+        bool inCombat = false;
+    };
+
+    enum class QueueStart : uint8_t
+    {
+        Nothing,        // not a dungeon-finder group with a player, or already handled
+        Wait,           // not yet: the tank is not in, or a fight is on
+        Start,          // the bot tank leads the run (origin queue)
+        PlayerTanks,    // the player is the tank: they lead, the module does nothing
+        NotSupported,   // no route for this dungeon: one short message to the party
+    };
+
+    inline QueueStart DecideQueueStart(QueueStartFacts const& f)
+    {
+        if (!f.lfgGroup || !f.playerPresent || !f.inDungeon || f.sessionRunning)
+            return QueueStart::Nothing;
+        if (f.tankIsPlayer)
+            return QueueStart::PlayerTanks;
+        if (!f.routeKnown)
+            return QueueStart::NotSupported;
+        if (!f.tankBotReady || f.inCombat)
+            return QueueStart::Wait;
+        return QueueStart::Start;
+    }
+
+    // After the route of a queue session is done, the bots leave the group after this long (the
+    // player has the loot window and the dungeon finder's teleport out).
+    constexpr uint32_t kQueueBreakupDelayMs = 30000;
 }
 
 #endif

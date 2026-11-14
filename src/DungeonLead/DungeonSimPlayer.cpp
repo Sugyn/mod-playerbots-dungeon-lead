@@ -178,6 +178,10 @@ void DungeonLead::SimPlayerTick(PlayerbotAI* leaderAI, DungeonLeadState& st)
     }
     if (!sim || !sim->IsInWorld())
         return;
+    // The dungeon finder's accept resets a bot's AI: its release keeps waiting for the script.
+    if (PlayerbotAI* ai = GET_PLAYERBOT_AI(sim))
+        if (!ai->HasStrategy("dungeon lead run back", BOT_STATE_DEAD))
+            ai->ChangeStrategy("+dungeon lead run back", BOT_STATE_DEAD);
     if (s.remark)
     {
         if (PlayerbotAI* ai = GET_PLAYERBOT_AI(sim))

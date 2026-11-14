@@ -279,6 +279,25 @@ AiPlayerbot.DungeonLead.ValidationParallel = 3
 
 AiPlayerbot.DungeonLead.StepWalkLimitSeconds = 600
 
+#    AiPlayerbot.DungeonLead.QueueAutoStart
+#        Description: 1 = a group the dungeon finder formed is led by its bot tank as soon as it is in
+#                      a dungeon this module has a route for and a real player is in it (the party
+#                      waits for its player like a run started with "startdungeon"). A player tank
+#                      leads themselves; a dungeon without a route gets one short message. At the end
+#                      the leader says so, hands the lead back and the bots leave the group. Filling
+#                      the queue with bots is mod-playerbots' job (Playerbots.RandomBotJoinLfg).
+#        Default:     0
+
+AiPlayerbot.DungeonLead.QueueAutoStart = 0
+
+#    AiPlayerbot.DungeonLead.ValidationQueue
+#        Description: Test tool, with ValidationSimPlayer: a validation party joins the dungeon finder
+#                      queue for its dungeon instead of being formed and sent in directly, so the run
+#                      starts from the queue (needs QueueAutoStart = 1).
+#        Default:     0
+
+AiPlayerbot.DungeonLead.ValidationQueue = 0
+
 #    AiPlayerbot.DungeonLead.ValidationSimPlayer
 #        Description: Test tool, never for a normal server. 1 = the first dps, 2 = the healer of each
 #                      validation party is a simulated player: the module treats it exactly like a

@@ -8,6 +8,8 @@ while the module is in alpha.
 
 ### Added
 
+- `AiPlayerbot.DungeonLead.QueueAutoStart` (off by default): when a group the dungeon finder formed enters a dungeon with a route, with a bot tank and a real player, the bot tank leads the run by itself (new session origin `queue`; the party waits for its player like a run started with "startdungeon"). A player tank leads themselves, a dungeon without a route gets one short message. After the last boss the leader says the dungeon is done, hands the lead back, and the bots leave the group 30 seconds later.
+- Test tool `AiPlayerbot.DungeonLead.ValidationQueue`: with a simulated player, validation parties join the dungeon finder queue for their dungeon instead of being sent in directly.
 - Test tool `AiPlayerbot.DungeonLead.ValidationSimPlayer` (off by default): a validation party's first dps or healer plays a simulated player that the module treats exactly like a real player - the session is a player's session with it as the master, and the module never releases, walks, moves or teleports it - while a seeded script makes it lag behind, stand still, go away, die, log out and back in or leave the group. A `sim_player` telemetry event records each action and any teleport of it during a session.
 
 ## [0.16.0-alpha] - 2026-11-14

@@ -25,6 +25,7 @@
 #include "DungeonPartyState.h"
 #include "DungeonRunBack.h"
 #include "DungeonSimPlayer.h"
+#include "DungeonQueueStart.h"
 
 #include "Corpse.h"
 #include "Creature.h"
@@ -2345,7 +2346,7 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
                                          " attempts=" + std::to_string(st.leadershipAttempts));
             if (starting)
                 ActivateSession(botAI, group,
-                                st.origin == DungeonLeadSessionOrigin::Manual ? botAI->GetMaster() : nullptr,
+                                st.origin != DungeonLeadSessionOrigin::AutoCanary ? botAI->GetMaster() : nullptr,
                                 DungeonLeadKernel::TransitionReason::LeadershipConfirmed);
             else
                 sDungeonRouteMgr.ResetState(bot->GetGUID());
@@ -2367,7 +2368,7 @@ void DungeonLead::ReconcileLeadership(PlayerbotAI* botAI)
         st.failureDomain = DungeonFailureDomain::PartyCoordination;
         DungeonLead::RecordEvent(botAI, "leadership_failed", "acquire " + reason);
         DungeonLead::RecordRunSummary(botAI, "leadership_not_acquired");
-        if (st.origin == DungeonLeadSessionOrigin::Manual)
+        if (st.origin != DungeonLeadSessionOrigin::AutoCanary)
             botAI->TellMaster("Dungeon lead: could not take the party lead - not starting");
     }
     else
@@ -3050,7 +3051,18 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
             // wasTestMode==false) is left running - a player who typed that command may still want
             // the group held/formed after the pathed content runs out (farming, waiting on
             // something the route doesn't model).
-            if (wasTestMode || origin != DungeonLeadSessionOrigin::Manual)
+            if (origin == DungeonLeadSessionOrigin::Queue)
+            {
+                // The dungeon finder's run is done: say so, hand the lead back, and the bots leave
+                // the group a little later, as players do when a dungeon-finder run ends.
+                Player* player = botAI->GetMaster();
+                botAI->TellMasterNoFacing("Dungeon lead: that was the last boss - the dungeon is done. Thanks for the run!");
+                Group* group = bot->GetGroup();
+                if (group)
+                    DungeonLead::ScheduleQueueBreakup(group->GetGUID(), player ? player->GetGUID() : ObjectGuid::Empty);
+                DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
+            }
+            else if (wasTestMode || origin != DungeonLeadSessionOrigin::Manual)
                 DungeonLead::Stop(botAI, /*giveLeaderBack*/ true);
         }
         return false;
