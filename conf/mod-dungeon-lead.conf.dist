@@ -262,6 +262,20 @@ AiPlayerbot.DungeonLead.DoorWaitSeconds = 120
 
 AiPlayerbot.DungeonLead.EventWaitSeconds = 600
 
+#    AiPlayerbot.DungeonLead.RunBackOnFoot
+#        Description: How dead and straggling party bots come back. 1 = on foot: a party member who
+#                      can resurrect brings a dead bot back where it fell; otherwise the bot walks as
+#                      a ghost from the graveyard to the dungeon's portal and on to the party, and a
+#                      bot falling behind walks to the leader; a teleport is only the fallback of a
+#                      walk that fails. The walks search their way on the navmesh themselves and load
+#                      navmesh tiles outside the dungeon. 0 = the earlier way: a dead bot released
+#                      outside the dungeon is put back at the entrance (all of them together, at
+#                      most every 15 seconds), a straggler is brought to the leader by the recovery.
+#                      Read at server start.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.RunBackOnFoot = 1
+
 #    AiPlayerbot.DungeonLead.ValidationParallel
 #        Description: How many dungeons `.dungeonlead validate` runs at the same time, each with its
 #                      own test party of 5 bots (also capped by CanaryMaxConcurrent). Range 1-50.
