@@ -1817,6 +1817,55 @@ namespace
         Check(ValidationRefills(500, 0), "repeat 0: also after many passes");
     }
 
+    void TestSimPlayer()
+    {
+        Check(ChooseSimAction(0, false) == SimAction::Lag, "lowest draws: lag");
+        Check(ChooseSimAction(60, false) == SimAction::Still, "then stand still");
+        Check(ChooseSimAction(110, false) == SimAction::Away, "then away");
+        Check(ChooseSimAction(140, false) == SimAction::Die, "then die");
+        Check(ChooseSimAction(160, false) == SimAction::Logout, "then log out");
+        Check(ChooseSimAction(175, false) == SimAction::Leave, "then leave the group");
+        Check(ChooseSimAction(178, false) == SimAction::Follow, "most draws: play along");
+        Check(ChooseSimAction(0, true) == SimAction::Follow, "no lagging off in a fight");
+        Check(ChooseSimAction(160, true) == SimAction::Follow, "no logout in a fight");
+        Check(ChooseSimAction(140, true) == SimAction::Die, "dying in a fight is fine");
+        Check(SimActionMs(SimAction::Logout, 999) < 120000 && SimActionMs(SimAction::Die, 999) < 120000,
+              "absences stay shorter than the session's bound for a missing player");
+        Check(SimActionMs(SimAction::Lag, 0) == 20000 && SimActionMs(SimAction::Follow, 500) == 0, "durations");
+    }
+
+    void TestQueueStart()
+    {
+        QueueStartFacts f;
+        f.lfgGroup = f.inDungeon = f.routeKnown = f.playerPresent = f.tankBotReady = true;
+        Check(DecideQueueStart(f) == QueueStart::Start, "a queue group with a player and a bot tank inside: start");
+        QueueStartFacts g = f;
+        g.lfgGroup = false;
+        Check(DecideQueueStart(g) == QueueStart::Nothing, "not a dungeon-finder group: nothing");
+        g = f;
+        g.playerPresent = false;
+        Check(DecideQueueStart(g) == QueueStart::Nothing, "bots only: nothing (the canary's business)");
+        g = f;
+        g.tankIsPlayer = true;
+        Check(DecideQueueStart(g) == QueueStart::PlayerTanks, "the player tanks: the module does nothing");
+        g = f;
+        g.routeKnown = false;
+        Check(DecideQueueStart(g) == QueueStart::NotSupported, "unsupported dungeon: a message");
+        g = f;
+        g.tankBotReady = false;
+        Check(DecideQueueStart(g) == QueueStart::Wait, "the tank not in yet: wait");
+        g = f;
+        g.inCombat = true;
+        Check(DecideQueueStart(g) == QueueStart::Wait, "a fight on: wait");
+        g = f;
+        g.sessionRunning = true;
+        Check(DecideQueueStart(g) == QueueStart::Nothing, "already running: nothing");
+        g = f;
+        g.inDungeon = false;
+        Check(DecideQueueStart(g) == QueueStart::Nothing, "still outside: nothing");
+        Check(SessionRequestedByPlayer(true, false), "a queue session is a player's session (waits for its player)");
+    }
+
     void TestLeaderOffGround()
     {
         Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
@@ -2101,6 +2150,8 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestQueueStart();
+    TestSimPlayer();
     TestRunBack();
     TestLivenessWaitsForPlayer();
     TestValidationRefill();

@@ -2386,6 +2386,116 @@ namespace DungeonLeadKernel
     {
         return p == RunBackPhase::Released && !onInstanceMap;
     }
+
+    // ---- Simulated player (test tool) -------------------------------------------------------
+    // What the simulated player of a validation party does next. Once a minute the script draws a
+    // number in [0, 1000) and picks an action with these chances (per mille); the durations keep
+    // every wait shorter than the session's own bounds for a missing real player (recovery abort
+    // after act + escalate, 120 s by default), so a scripted absence does not end the run - except
+    // leaving the group, which ends it as it would for a player.
+    enum class SimAction : uint8_t
+    {
+        Follow,   // plays along (its own follow and class AI)
+        Lag,      // stays behind for a while
+        Still,    // stands still briefly
+        Away,     // marked away (AFK) and standing
+        Die,      // dies; comes back after a while (accepts a resurrection)
+        Logout,   // logs out and back in
+        Leave,    // leaves the group (ends the run)
+    };
+
+    inline char const* ToString(SimAction a)
+    {
+        switch (a)
+        {
+            case SimAction::Follow: return "follow";
+            case SimAction::Lag:    return "lag";
+            case SimAction::Still:  return "still";
+            case SimAction::Away:   return "away";
+            case SimAction::Die:    return "die";
+            case SimAction::Logout: return "logout";
+            case SimAction::Leave:  return "leave";
+        }
+        return "?";
+    }
+
+    constexpr uint32_t kSimDecideMs = 60000;
+    // per mille per decision, in this order: lag, still, away, die, logout, leave
+    constexpr uint32_t kSimChances[6] = {60, 50, 30, 20, 15, 3};
+
+    inline SimAction ChooseSimAction(uint32_t roll, bool partyInCombat)
+    {
+        uint32_t edge = 0;
+        SimAction const order[6] = {SimAction::Lag, SimAction::Still, SimAction::Away,
+                                    SimAction::Die, SimAction::Logout, SimAction::Leave};
+        for (int i = 0; i < 6; ++i)
+        {
+            edge += kSimChances[i];
+            if (roll < edge)
+            {
+                // a player does not walk away or log out in the middle of a fight
+                if (partyInCombat && order[i] != SimAction::Die)
+                    return SimAction::Follow;
+                return order[i];
+            }
+        }
+        return SimAction::Follow;
+    }
+
+    // How long an action lasts, from a second draw in [0, 1000): min + draw spread over the range.
+    inline uint32_t SimActionMs(SimAction a, uint32_t roll)
+    {
+        uint32_t lo = 0, hi = 0;
+        switch (a)
+        {
+            case SimAction::Lag:    lo = 20000; hi = 60000; break;
+            case SimAction::Still:  lo = 10000; hi = 30000; break;
+            case SimAction::Away:   lo = 30000; hi = 90000; break;
+            case SimAction::Die:    lo = 15000; hi = 50000; break;
+            case SimAction::Logout: lo = 30000; hi = 90000; break;
+            default: return 0;
+        }
+        return lo + (hi - lo) * (roll % 1000) / 1000;
+    }
+
+    // ---- Start from the dungeon queue (AiPlayerbot.DungeonLead.QueueAutoStart) ---------------
+    struct QueueStartFacts
+    {
+        bool lfgGroup = false;         // a group the dungeon finder formed
+        bool inDungeon = false;        // the player is inside the group's dungeon
+        bool routeKnown = false;       // the module has a route for it
+        bool playerPresent = false;    // at least one real player (or simulated player) in the group
+        bool tankIsPlayer = false;     // the group's tank is a real player
+        bool tankBotReady = false;     // a bot tank is in the dungeon with the player
+        bool sessionRunning = false;   // someone in the group already leads a session
+        bool inCombat = false;
+    };
+
+    enum class QueueStart : uint8_t
+    {
+        Nothing,        // not a dungeon-finder group with a player, or already handled
+        Wait,           // not yet: the tank is not in, or a fight is on
+        Start,          // the bot tank leads the run (origin queue)
+        PlayerTanks,    // the player is the tank: they lead, the module does nothing
+        NotSupported,   // no route for this dungeon: one short message to the party
+    };
+
+    inline QueueStart DecideQueueStart(QueueStartFacts const& f)
+    {
+        if (!f.lfgGroup || !f.playerPresent || !f.inDungeon || f.sessionRunning)
+            return QueueStart::Nothing;
+        if (f.tankIsPlayer)
+            return QueueStart::PlayerTanks;
+        if (!f.routeKnown)
+            return QueueStart::NotSupported;
+        if (!f.tankBotReady || f.inCombat)
+            return QueueStart::Wait;
+        return QueueStart::Start;
+    }
+
+    // After the route of a queue session is done, the bots leave the group after this long (the
+    // player has the loot window and the dungeon finder's teleport out).
+    constexpr uint32_t kQueueBreakupDelayMs = 30000;
 }
 
 #endif

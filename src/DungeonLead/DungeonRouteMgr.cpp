@@ -407,6 +407,7 @@ char const* ToString(DungeonLeadSessionOrigin v)
     {
         case DungeonLeadSessionOrigin::Manual:     return "manual";
         case DungeonLeadSessionOrigin::AutoCanary: return "auto_canary";
+        case DungeonLeadSessionOrigin::Queue:      return "queue";
     }
     return "unknown";
 }

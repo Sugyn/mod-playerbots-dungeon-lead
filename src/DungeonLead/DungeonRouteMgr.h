@@ -143,6 +143,7 @@ enum class DungeonLeadSessionOrigin : uint8
 {
     Manual,      // "startdungeon" chat command, requested by a real player
     AutoCanary,  // AutoBot Canary controller - unattended, config-gated, off by default
+    Queue,       // a dungeon-finder group with a real player (AiPlayerbot.DungeonLead.QueueAutoStart)
 };
 
 char const* ToString(DungeonLeadSessionOrigin v);

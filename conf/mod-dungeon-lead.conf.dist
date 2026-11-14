@@ -279,6 +279,46 @@ AiPlayerbot.DungeonLead.ValidationParallel = 3
 
 AiPlayerbot.DungeonLead.StepWalkLimitSeconds = 600
 
+#    AiPlayerbot.DungeonLead.QueueAutoStart
+#        Description: 1 = a group the dungeon finder formed is led by its bot tank as soon as it is in
+#                      a dungeon this module has a route for and a real player is in it (the party
+#                      waits for its player like a run started with "startdungeon"). A player tank
+#                      leads themselves; a dungeon without a route gets one short party message. When
+#                      the route is done the leader says so, hands the lead back and the bots leave the
+#                      group; a route that ends short only hands the lead back. Filling
+#                      the queue with bots is mod-playerbots' job (Playerbots.RandomBotJoinLfg).
+#        Default:     0
+
+AiPlayerbot.DungeonLead.QueueAutoStart = 0
+
+#    AiPlayerbot.DungeonLead.ValidationQueue
+#        Description: Test tool, with ValidationSimPlayer: a validation party joins the dungeon finder
+#                      queue for its dungeon as one group, its simulated player the leader, instead of
+#                      being sent in directly, so the run starts from the queue (needs
+#                      QueueAutoStart = 1; without it the parties are sent in directly).
+#        Default:     0
+
+AiPlayerbot.DungeonLead.ValidationQueue = 0
+
+#    AiPlayerbot.DungeonLead.ValidationSimPlayer
+#        Description: Test tool, never for a normal server. 1 = the first dps, 2 = the healer of each
+#                      validation party is a simulated player: the module treats it exactly like a
+#                      real player (the session is a player's session with it as the master; it is
+#                      never released, walked, moved or teleported by the module) while a seeded
+#                      script plays it - it follows, lags behind, stands still, goes away (AFK),
+#                      dies, logs out and back in, or leaves the group. Every action is recorded as
+#                      a `sim_player` event. 0 = off.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.ValidationSimPlayer = 0
+
+#    AiPlayerbot.DungeonLead.ValidationSimPlayerSeed
+#        Description: Seed of the simulated player's script (with the character's guid); 0 = from the
+#                      clock. The seed of each party is in its log line and `sim_player` events.
+#        Default:     0
+
+AiPlayerbot.DungeonLead.ValidationSimPlayerSeed = 0
+
 #    AiPlayerbot.DungeonLead.ValidationAutostart
 #        Description: Comma-separated LFG ids for one `.dungeonlead validate` campaign started
 #                      automatically 2 minutes after the world starts (once per process), in this
