@@ -171,12 +171,17 @@ namespace
                 VLog("dungeon " + std::to_string(slot.lfg) + " level " + std::to_string(level) + " (" + SlotName(i, slot) + ")");
                 slot.bots.clear();
                 std::string name;
+                // the tank's faction is the party's: everyone else is of that faction
+                int team = 2;  // TEAM_NEUTRAL: the tank takes the faction with more free characters
                 if (DungeonLead::AcquireTestBot(DungeonLead::TestBotRole::Tank, level, msg, &name))
+                {
                     slot.bots.push_back(name);
-                if (DungeonLead::AcquireTestBot(DungeonLead::TestBotRole::Healer, level, msg, &name))
+                    team = DungeonLead::TestBotTeam(name);
+                }
+                if (DungeonLead::AcquireTestBot(DungeonLead::TestBotRole::Healer, level, msg, &name, team))
                     slot.bots.push_back(name);
                 for (uint8 cls : {uint8(CLASS_WARRIOR), uint8(CLASS_MAGE), uint8(CLASS_ROGUE)})
-                    if (DungeonLead::AcquireDpsTestBot(cls, level, msg, &name))
+                    if (DungeonLead::AcquireDpsTestBot(cls, level, msg, &name, team))
                         slot.bots.push_back(name);
                 Enter(slot, Phase::Assemble);
                 return;

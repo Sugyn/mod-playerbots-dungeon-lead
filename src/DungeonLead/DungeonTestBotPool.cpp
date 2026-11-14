@@ -219,7 +219,7 @@ namespace
     // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
     // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
     bool AcquireBot(DungeonLead::TestBotRole role, uint8 classId, uint32 targetLevel, std::string& outMessage,
-                    std::string* outName)
+                    std::string* outName, int partyTeamArg)
     {
         QueryResult accIds = PlayerbotsDatabase.Query("SELECT account_id FROM playerbots_account_type WHERE account_type = 2");
         if (!accIds)
@@ -263,17 +263,28 @@ namespace
         for (TestBotLease const& l : g_leases)
             leasedAccounts.insert(l.accountId);
 
-        // One faction per party, the first lease's: a mixed party isn't a real one, and the other
-        // faction's members attack faction NPCs the run needs (e.g. a prisoner who opens a door).
-        TeamId const partyTeam = g_leases.empty() ? TEAM_NEUTRAL : g_leases.front().team;
+        // One faction per party: a mixed party isn't a real one, and the other faction's members
+        // attack faction NPCs the run needs (e.g. a prisoner who opens a door). A party's members
+        // take its first member's faction (`partyTeamArg`) and nothing else; its first member takes
+        // the faction with more characters of its class still free (DungeonLeadKernel::ChoosePartyTeam).
+        bool const strictTeam = partyTeamArg != TEAM_NEUTRAL;
+        TeamId partyTeam = TeamId(partyTeamArg);
+        if (!strictTeam)
+        {
+            uint32 freeAlliance = 0, freeHorde = 0;
+            for (Candidate const& c : candidates)
+                if (std::none_of(g_leases.begin(), g_leases.end(), [&](TestBotLease const& l) { return l.guid == c.guid; }))
+                    (c.team == TEAM_ALLIANCE ? freeAlliance : freeHorde)++;
+            partyTeam = DungeonLeadKernel::ChoosePartyTeam(freeAlliance, freeHorde) ? TEAM_ALLIANCE : TEAM_HORDE;
+        }
 
-        // Passes: same faction and a fresh account first (fresh accounts spread
-        // AccountInstancesPerHour load - see the struct comment on accountId), then same faction on
-        // any account, then anything. Never refuse an acquisition - degrade gracefully, and say so.
-        for (int pass = 0; pass < 3; ++pass)
+        // Passes: the party's faction and a fresh account first (fresh accounts spread
+        // AccountInstancesPerHour load - see the struct comment on accountId), then the party's
+        // faction on any account. Without a party faction to keep, also anything else.
+        for (int pass = 0; pass < (strictTeam ? 2 : 3); ++pass)
         {
             bool const requireFreshAccount = pass == 0;
-            bool const requireTeam = pass < 2 && partyTeam != TEAM_NEUTRAL;
+            bool const requireTeam = pass < 2;
             for (Candidate const& c : candidates)
             {
                 if (requireTeam && c.team != partyTeam)
@@ -519,15 +530,25 @@ uint32 DungeonLead::PendingTestPartyCount()
     return uint32(g_pendingStarts.size());
 }
 
-bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName)
+bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName,
+                                 int partyTeam)
 {
     RoleClassSpec const rc = ClassSpecFor(role);
-    return AcquireBot(role, rc.cls, targetLevel, outMessage, outName);
+    return AcquireBot(role, rc.cls, targetLevel, outMessage, outName, partyTeam);
 }
 
-bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName)
+bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName,
+                                    int partyTeam)
 {
-    return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage, outName);
+    return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage, outName, partyTeam);
+}
+
+int DungeonLead::TestBotTeam(std::string const& name)
+{
+    for (TestBotLease const& l : g_leases)
+        if (l.name == name)
+            return int(l.team);
+    return int(TEAM_NEUTRAL);
 }
 
 bool DungeonLead::TestBotsPending(std::vector<std::string> const& names)

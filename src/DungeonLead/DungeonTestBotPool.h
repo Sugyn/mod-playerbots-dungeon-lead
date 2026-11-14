@@ -57,7 +57,10 @@ namespace DungeonLead
     // happen asynchronously via TestBotPoolTick(); check TestBotPoolStatus() for progress. Returns
     // false (with a reason in outMessage) if no eligible offline character exists or all of them
     // are already leased.
-    bool AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr);
+    // `partyTeam`: the faction of the party's first member (TeamId); its other members are of that
+    // faction only. TEAM_NEUTRAL (2): the first member - the faction with more free characters.
+    bool AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr,
+                        int partyTeam = 2);
 
     // Dps variant: `classId` picks the class explicitly (CLASS_WARRIOR=1 .. CLASS_DRUID=11, same
     // ids the addclass command uses) since "Dps" alone doesn't determine one - useful for building
@@ -66,7 +69,10 @@ namespace DungeonLead
     // spec the way Tank/Healer do) - Randomize()'s own spec choice is left as-is. For Mage,
     // additionally verifies Polymorph (spell 118) is known before reporting Ready; other classes'
     // CC is not independently verified.
-    bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr);
+    bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr,
+                           int partyTeam = 2);
+    // The faction (TeamId) of a leased test bot, TEAM_NEUTRAL (2) when it has no lease.
+    int TestBotTeam(std::string const& name);
 
     // Forms complete 5-bot parties directly out of every currently idle (`Ready` or `Leased`, not
     // already in a group) lease and sends them straight into `lfgId`'s dungeon. Deliberately
