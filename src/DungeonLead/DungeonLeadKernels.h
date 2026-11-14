@@ -1487,6 +1487,196 @@ namespace DungeonLeadKernel
         return distToStop >= kRouteWaypointFallbackMinDistance;
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Drop handling: a ledge above the floor the objective is on
+    // ---------------------------------------------------------------------------------------
+    //
+    // The navmesh has no link from a ledge down to the floor below it, so the path to an objective
+    // down there ends at the edge. A player steps off; a bot never falls on its own (the server
+    // applies no gravity to it), so the leader walks to the edge and jumps down to a landing point
+    // on the floor below, then paths on from there. Only drops the party survives: a client takes
+    // fall damage from 13.5 yd, so with a real player in the party a drop onto ground stays below
+    // that. Water of kDropMinWaterDepth takes any fall; bots take no fall damage (the server only
+    // applies it to a client's own fall), so a party of bots only may also drop further onto ground.
+    constexpr float kDropMinHeight = 2.0f;        // lower is a step the navmesh already covers
+    constexpr float kDropMaxHeight = 12.0f;       // onto ground, with a real player in the party
+    constexpr float kDropMaxHeightNoFallDamage = 40.0f;  // into water, or a party of bots only
+    constexpr float kDropMinWaterDepth = 2.0f;        // a bot is caught by this much water
+    constexpr float kDropMinWaterDepthPlayer = 4.0f;  // a player's client swims before it touches ground
+    constexpr float kDropMaxHorizontal = 6.0f;    // from the edge to the landing point
+    constexpr uint32_t kDropProbeEveryMs = 3000;  // the ledge probe (up to 9 path searches) at most this often
+    constexpr int kDropMaxPathProbes = 4;          // landing candidates per probe judged with path searches
+    constexpr uint32_t kDropNoProgressMs = 15000;  // the walk made no progress this long: any nearby ledge counts
+    constexpr float kDropMinEndGap = 5.0f;        // the path must end at least this far from the objective
+    constexpr float kDropMinGain = 10.0f;         // the landing must bring the objective this much closer
+    constexpr uint8_t kDropMinPartyHealthPct = 50;
+    constexpr uint8_t kDropMaxAttemptsPerStep = 2;
+    constexpr uint32_t kDropJumpMaxMs = 8000;     // to land
+    constexpr float kDropAtPathEnd = 4.0f;        // the leader stands this close to where its path ends
+    constexpr float kDropBelowArrive = 8.0f;      // a path from the landing that ends this close counts as arriving
+    constexpr float kDropLandedZ = 3.0f;          // landed: within this height of the landing point
+    // Members still on the ledge follow the leader down for this long after it landed: within
+    // reach of its jump point, at the ledge's height and with the landing in sight.
+    constexpr uint32_t kDropMemberWindowMs = 120000;
+    constexpr float kDropMemberReach = 10.0f;
+    constexpr float kDropMemberLevel = 3.0f;
+
+    // A leader stuck on a step goes back to the last spot its walk made progress from only when
+    // it cannot path from where it stands: off the navmesh, or with no floor under it (inside the
+    // rock, on a ledge the map does not know). A leader on the navmesh whose objective simply
+    // cannot be reached gains nothing from the teleport; the step fails (or is skipped) at once.
+    inline bool LeaderUnstuckHelps(bool startOffMesh, bool noGround)
+    {
+        return startOffMesh || noGround;
+    }
+
+    // The leader stands off the navmesh: a polygon near it but too far (FARFROMPOLY_START), or no
+    // polygon at all - a path to the objective that finds none (NOPATH) and a one-yard path from
+    // the leader's own spot that fails as well. NOPATH alone may be an objective off the mesh.
+    inline bool LeaderOffMesh(bool farFromPolyStart, bool noPathToObjective, bool selfProbeFails)
+    {
+        return farFromPolyStart || (noPathToObjective && selfProbeFails);
+    }
+
+    // The bearing the next ledge probe starts from: where the last one ran out of path searches
+    // before judging it (a bearing can spend several on walkable steps), otherwise the objective's.
+    inline uint8_t NextDropProbeOffset(bool found, bool outOfProbes, int bearingOutOfProbes)
+    {
+        return (found || !outOfProbes) ? 0 : uint8_t(((bearingOutOfProbes % 12) + 12) % 12);
+    }
+
+    struct DropFacts
+    {
+        bool pathEndsShort = false;     // the path to the objective ends short of it (no link down)
+        float endGap = 0.f;             // from the leader (at the path's end) to the objective
+        float edgeAboveObjective = 0.f; // edge height minus objective height
+        bool landingFound = false;      // a floor point below the edge
+        float fallHeight = 0.f;
+        bool landingInWater = false;    // deep enough water over the floor there (DropWaterIsDeep)
+        bool fallDamageInParty = true;  // someone in the party takes fall damage (a real player or a self-bot)
+        float horizontal = 0.f;
+        bool landingInSight = false;    // nothing solid between the edge and the landing point
+        bool landingOnMesh = false;     // the landing point is on the navmesh
+        float gain = 0.f;               // objective distance from the edge minus from the landing's path end
+        bool belowComplete = false;     // the path from the landing reaches the objective
+        bool connectedBack = false;     // the landing's floor is linked to the edge, or that is not ruled out
+        uint8_t partyMinHealthPct = 100;  // lowest health of the living party members
+        uint8_t attemptsOnStep = 0;
+    };
+
+    enum class DropVerdict : uint8_t
+    {
+        Drop,
+        NotNeeded,      // the path reaches the objective, or the objective is not below the edge
+        OutOfAttempts,
+        PartyHurt,
+        NoLanding,
+        TooHigh,
+        TooFar,
+        NotInSight,
+        OffMesh,
+        Connected,      // the two floors are linked: the walk will find the way down
+        BelowIncomplete,
+        NoGain
+    };
+
+    inline char const* ToString(DropVerdict v)
+    {
+        switch (v)
+        {
+            case DropVerdict::Drop:          return "drop";
+            case DropVerdict::NotNeeded:     return "not_needed";
+            case DropVerdict::OutOfAttempts: return "out_of_attempts";
+            case DropVerdict::PartyHurt:     return "party_hurt";
+            case DropVerdict::NoLanding:     return "no_landing";
+            case DropVerdict::TooHigh:       return "too_high";
+            case DropVerdict::TooFar:        return "too_far";
+            case DropVerdict::NotInSight:    return "not_in_sight";
+            case DropVerdict::OffMesh:       return "off_mesh";
+            case DropVerdict::Connected:     return "connected";
+            case DropVerdict::BelowIncomplete: return "below_incomplete";
+            case DropVerdict::NoGain:        return "no_gain";
+        }
+        return "unknown";
+    }
+
+    inline float DropMaxHeight(bool intoWater, bool fallDamageInParty)
+    {
+        return intoWater || !fallDamageInParty ? kDropMaxHeightNoFallDamage : kDropMaxHeight;
+    }
+
+    inline bool DropWaterIsDeep(float depth, bool fallDamageInParty)
+    {
+        return depth >= (fallDamageInParty ? kDropMinWaterDepthPlayer : kDropMinWaterDepth);
+    }
+
+    // Whether the floor below is ruled out as linked to the edge, from a path searched from the
+    // landing back up to the edge: no path at all, or a partial one that stops below the edge
+    // (the closest the lower floor gets). A complete path is a link; any other partial path may be
+    // a long link Detour ran out of nodes on, which is not ruled out.
+    inline bool DropFloorsSeparate(bool backNoPath, bool backIncomplete, float endToEdge2D, float endBelowEdge)
+    {
+        if (backNoPath)
+            return true;
+        return backIncomplete && endBelowEdge >= kDropMinHeight && endToEdge2D <= kDropMaxHorizontal + 2.0f;
+    }
+
+    // Where the walk stands at the end of what the navmesh offers toward the objective: no path at
+    // all (a hole in the mesh; the path generator then returns a straight shortcut that "ends" at
+    // the objective), a partial path that ends where the leader stands, or a partial path the walk
+    // keeps failing to make progress on.
+    inline bool DropPathEndsShort(bool noPath, bool incomplete, float leaderToPathEnd2D, uint32_t msWithoutProgress)
+    {
+        if (noPath)
+            return true;
+        return incomplete && (leaderToPathEnd2D <= kDropAtPathEnd || msWithoutProgress >= kDropNoProgressMs);
+    }
+
+    inline DropVerdict DecideDrop(DropFacts const& f)
+    {
+        if (!f.pathEndsShort || f.endGap < kDropMinEndGap || f.edgeAboveObjective < kDropMinHeight)
+            return DropVerdict::NotNeeded;
+        if (f.attemptsOnStep >= kDropMaxAttemptsPerStep)
+            return DropVerdict::OutOfAttempts;
+        if (f.partyMinHealthPct < kDropMinPartyHealthPct)
+            return DropVerdict::PartyHurt;
+        if (!f.landingFound || f.fallHeight < kDropMinHeight)
+            return DropVerdict::NoLanding;
+        if (f.fallHeight > DropMaxHeight(f.landingInWater, f.fallDamageInParty))
+            return DropVerdict::TooHigh;
+        if (f.horizontal > kDropMaxHorizontal)
+            return DropVerdict::TooFar;
+        if (!f.landingInSight)
+            return DropVerdict::NotInSight;
+        if (!f.landingOnMesh)
+            return DropVerdict::OffMesh;
+        if (f.connectedBack)
+            return DropVerdict::Connected;
+        if (!f.belowComplete)
+            return DropVerdict::BelowIncomplete;
+        if (f.gain < kDropMinGain)
+            return DropVerdict::NoGain;
+        return DropVerdict::Drop;
+    }
+
+    // Of two landing candidates: a drop wins; otherwise the refusal that got further through the
+    // checks (DecideDrop checks in enum order) is the one worth reporting.
+    inline bool PreferDropCandidate(DropVerdict current, DropVerdict candidate)
+    {
+        if (current == DropVerdict::Drop)
+            return false;
+        return candidate == DropVerdict::Drop || uint8_t(candidate) > uint8_t(current);
+    }
+
+    // A member still above the landing (by more than a step) and within reach of the edge the
+    // leader dropped from, while that drop is recent, follows it down.
+    inline bool MemberFollowsDrop(uint32_t msSinceDrop, float memberAboveLanding, float memberToEdge2D,
+                                  float memberLevelToEdge)
+    {
+        return msSinceDrop <= kDropMemberWindowMs && memberAboveLanding >= kDropMinHeight &&
+               memberToEdge2D <= kDropMemberReach && std::fabs(memberLevelToEdge) <= kDropMemberLevel;
+    }
+
     inline EscalationGate DecideEscalationGate(bool leaderOffGround, uint32_t msDeferred, bool haveLastGood)
     {
         if (!leaderOffGround)

@@ -1937,8 +1937,118 @@ namespace
     }
 }
 
+void TestDropDecision()
+{
+    Check(LeaderUnstuckHelps(true, false), "leader off the navmesh: back to the last good spot");
+    Check(LeaderUnstuckHelps(false, true), "no floor under the leader: back to the last good spot");
+    Check(!LeaderUnstuckHelps(false, false), "leader on the navmesh, objective out of reach: no teleport, the step fails");
+    Check(LeaderOffMesh(true, false, false), "polygon near the leader but too far: off the mesh");
+    Check(LeaderOffMesh(false, true, true), "no polygon at all, and the one-yard probe fails too: off the mesh");
+    Check(!LeaderOffMesh(false, true, false), "no path to an objective off the mesh, leader's own spot fine: on the mesh");
+    Check(!LeaderOffMesh(false, false, false), "path found: on the mesh");
+    Check(NextDropProbeOffset(false, true, 5) == 5, "probe ran out at bearing 5: the next one starts there");
+    Check(NextDropProbeOffset(false, true, 0) == 0, "ran out at the objective's own bearing: start there again");
+    Check(NextDropProbeOffset(true, true, 5) == 0, "a drop found: back to the objective's bearing");
+    Check(NextDropProbeOffset(false, false, 7) == 0, "all bearings judged: back to the objective's bearing");
+    DropFacts f;
+    f.pathEndsShort = true;
+    f.endGap = 30.f;
+    f.edgeAboveObjective = 8.f;
+    f.landingFound = true;
+    f.fallHeight = 7.f;
+    f.horizontal = 3.f;
+    f.landingInSight = true;
+    f.landingOnMesh = true;
+    f.gain = 25.f;
+    f.belowComplete = true;
+    Check(DecideDrop(f) == DropVerdict::Drop, "a short, clear drop toward the objective is taken");
+    DropFacts g = f;
+    g.pathEndsShort = false;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "a path that reaches the objective needs no drop");
+    g = f;
+    g.edgeAboveObjective = 1.f;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "an objective not below the edge needs no drop");
+    g = f;
+    g.endGap = 3.f;
+    Check(DecideDrop(g) == DropVerdict::NotNeeded, "a path ending next to the objective needs no drop");
+    g = f;
+    g.attemptsOnStep = kDropMaxAttemptsPerStep;
+    Check(DecideDrop(g) == DropVerdict::OutOfAttempts, "attempts per step are bounded");
+    g = f;
+    g.partyMinHealthPct = 30;
+    Check(DecideDrop(g) == DropVerdict::PartyHurt, "a hurt party does not drop");
+    g = f;
+    g.landingFound = false;
+    Check(DecideDrop(g) == DropVerdict::NoLanding, "no floor below, no drop");
+    g = f;
+    g.fallHeight = 13.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "a fall that would hurt a player is not taken");
+    g.landingInWater = true;
+    g.fallHeight = 35.f;
+    Check(DecideDrop(g) == DropVerdict::Drop, "deep water takes a long fall, also with a player");
+    g.fallHeight = 41.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "but not an arbitrary one");
+    g = f;
+    g.fallDamageInParty = false;
+    g.fallHeight = 34.f;
+    Check(DecideDrop(g) == DropVerdict::Drop, "a party of bots only takes no fall damage");
+    g.fallHeight = 41.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "bounded for bots too");
+    Check(DropPathEndsShort(true, false, 100.f, 0), "no path at all: the navmesh ends here");
+    Check(DropPathEndsShort(false, true, 3.f, 0), "a partial path that ends where the leader stands");
+    Check(!DropPathEndsShort(false, true, 20.f, 0), "a partial path that still leads on is walked");
+    Check(DropPathEndsShort(false, true, 20.f, kDropNoProgressMs), "unless the walk keeps making no progress on it");
+    Check(!DropPathEndsShort(false, true, 20.f, kDropNoProgressMs - 1), "a short pause in progress is not that");
+    Check(DropMaxHeight(false, true) == kDropMaxHeight && DropMaxHeight(true, true) == kDropMaxHeightNoFallDamage &&
+              DropMaxHeight(false, false) == kDropMaxHeightNoFallDamage,
+          "the height limit: ground with fall damage, or water / bots only");
+    Check(DropWaterIsDeep(2.f, false) && !DropWaterIsDeep(3.f, true) && DropWaterIsDeep(4.f, true),
+          "a player needs deeper water than a bot");
+    Check(DropFloorsSeparate(true, false, 50.f, 0.f), "no path back up: the floors are separate");
+    Check(DropFloorsSeparate(false, true, 3.f, 30.f), "a partial path that stops below the edge: separate");
+    Check(!DropFloorsSeparate(false, true, 40.f, 30.f), "a partial path that stops elsewhere may be a long link");
+    Check(!DropFloorsSeparate(false, true, 3.f, 0.5f), "a partial path that reaches the edge's level is a link");
+    Check(!DropFloorsSeparate(false, false, 0.f, 0.f), "a complete path is a link");
+    Check(PreferDropCandidate(DropVerdict::NoLanding, DropVerdict::TooHigh), "a refusal that got further is kept");
+    Check(!PreferDropCandidate(DropVerdict::Connected, DropVerdict::TooHigh), "not one that stopped earlier");
+    Check(PreferDropCandidate(DropVerdict::NoGain, DropVerdict::Drop), "a drop always wins");
+    Check(!PreferDropCandidate(DropVerdict::Drop, DropVerdict::NoGain), "and is never replaced");
+    g = f;
+    g.fallDamageInParty = false;
+    g.landingInWater = true;
+    g.fallHeight = 39.f;
+    Check(DecideDrop(g) == DropVerdict::Drop, "bots into water within the long limit");
+    g.fallHeight = 45.f;
+    Check(DecideDrop(g) == DropVerdict::TooHigh, "not beyond it");
+    Check(!DropPathEndsShort(false, false, 0.f, 5), "a complete path never ends short");
+    g = f;
+    g.horizontal = 7.f;
+    Check(DecideDrop(g) == DropVerdict::TooFar, "a landing far from the edge is not taken");
+    g = f;
+    g.landingInSight = false;
+    Check(DecideDrop(g) == DropVerdict::NotInSight, "nothing solid may lie between edge and landing");
+    g = f;
+    g.landingOnMesh = false;
+    Check(DecideDrop(g) == DropVerdict::OffMesh, "the landing must be walkable");
+    g = f;
+    g.gain = 5.f;
+    Check(DecideDrop(g) == DropVerdict::NoGain, "a drop that does not bring the objective closer is not taken");
+    g = f;
+    g.connectedBack = true;
+    Check(DecideDrop(g) == DropVerdict::Connected, "linked floors are walked, not jumped");
+    g = f;
+    g.belowComplete = false;
+    Check(DecideDrop(g) == DropVerdict::BelowIncomplete, "the floor below must lead to the objective");
+    Check(MemberFollowsDrop(30000, 6.f, 4.f, 0.5f), "a member at the edge follows a recent drop");
+    Check(!MemberFollowsDrop(30000, 1.f, 4.f, 0.f), "a member already below does not");
+    Check(!MemberFollowsDrop(30000, 6.f, 15.f, 0.f), "a member far from the edge does not");
+    Check(!MemberFollowsDrop(30000, 6.f, 4.f, 8.f), "a member on another floor does not");
+    Check(!MemberFollowsDrop(kDropMemberWindowMs + 1, 6.f, 4.f, 0.f), "an old drop is not followed");
+}
+
 int main()
 {
+    TestDropDecision();
     TestLeadership();
     TestHealer();
     TestReadiness();
