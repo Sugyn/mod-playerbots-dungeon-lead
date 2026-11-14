@@ -889,11 +889,17 @@ namespace
         Check(DecideRecovery(RecoveryReason::LeadershipLost, 500000, 500000, p) == RecoveryStep::Abort, "never an endless loop");
 
         // a session a player started waits for its player, bounded by kPlayerWaitMaxMs
-        Check(RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, true), "player's session: waits for a dead/offline player");
-        Check(RecoveryWaitsForPlayer(RecoveryReason::MasterTooFar, true), "player's session: waits for a player far away");
-        Check(!RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, false), "canary session: no player to wait for");
-        Check(!RecoveryWaitsForPlayer(RecoveryReason::MemberDead, true), "a dead bot is not the player");
-        Check(!RecoveryWaitsForPlayer(RecoveryReason::PersistentWait, true), "a resource wait keeps its windows");
+        MasterFacts gone;  // offline: assigned, not online
+        gone.assigned = true;
+        Check(RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, true, gone), "player's session: waits for a dead/offline player");
+        Check(RecoveryWaitsForPlayer(RecoveryReason::MasterTooFar, true, gone), "player's session: waits for a player far away");
+        Check(!RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, false, gone), "canary session: no player to wait for");
+        Check(!RecoveryWaitsForPlayer(RecoveryReason::MemberDead, true, gone), "a dead bot is not the player");
+        Check(!RecoveryWaitsForPlayer(RecoveryReason::PersistentWait, true, gone), "a resource wait keeps its windows");
+        MasterFacts left = gone;
+        left.online = true;
+        left.inGroup = false;
+        Check(!RecoveryWaitsForPlayer(RecoveryReason::MasterUnavailable, true, left), "a player who left the group: the windows apply");
         Check(DecidePlayerWait(240000) == RecoveryStep::Act, "a player back from the graveyard after 4 min: still waited for");
         Check(DecidePlayerWait(kPlayerWaitMaxMs - 1) == RecoveryStep::Act, "inside the player wait: wait");
         Check(DecidePlayerWait(kPlayerWaitMaxMs) == RecoveryStep::Abort, "the player wait is bounded");
