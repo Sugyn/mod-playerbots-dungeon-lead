@@ -31,6 +31,7 @@
 #include "Timer.h"
 
 #include <algorithm>
+#include <map>
 #include <set>
 #include <sstream>
 #include <vector>
@@ -226,7 +227,7 @@ namespace
 
     // The offline AddClass characters of `classId` (leased ones included: characters leased in this
     // tick are still offline in the database).
-    bool LoadCandidates(uint8 classId, std::vector<Candidate>& candidates, std::string& outMessage)
+    bool LoadCandidatesFromDb(uint8 classId, std::vector<Candidate>& candidates, std::string& outMessage)
     {
         QueryResult accIds = PlayerbotsDatabase.Query("SELECT account_id FROM playerbots_account_type WHERE account_type = 2");
         if (!accIds)
@@ -265,6 +266,37 @@ namespace
         } while (chars->NextRow());
 
         return true;
+    }
+
+    // A campaign start forms up to 50 parties in one tick; each asks for the candidates of 5 classes
+    // twice (its faction, then each member), two synchronous queries each on the world thread. The
+    // answer of one class is reused for kCandidateCacheMs: leases are checked live (IsLeased), and a
+    // character leased in the same tick is still offline in the database anyway.
+    constexpr uint32 kCandidateCacheMs = 1000;
+    struct CandidateCache
+    {
+        uint32 ts = 0;
+        bool ok = false;
+        std::string message;
+        std::vector<Candidate> list;
+    };
+    std::map<uint8, CandidateCache> g_candidateCache;
+
+    bool LoadCandidates(uint8 classId, std::vector<Candidate>& candidates, std::string& outMessage)
+    {
+        CandidateCache& c = g_candidateCache[classId];
+        uint32 const now = getMSTime();
+        if (!c.ts || getMSTimeDiff(c.ts, now) >= kCandidateCacheMs)
+        {
+            c.list.clear();
+            c.message.clear();
+            c.ok = LoadCandidatesFromDb(classId, c.list, c.message);
+            c.ts = now ? now : 1;
+        }
+        candidates = c.list;
+        if (!c.ok)
+            outMessage = c.message;
+        return c.ok;
     }
 
     // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
