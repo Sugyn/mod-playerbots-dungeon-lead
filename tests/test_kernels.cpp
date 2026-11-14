@@ -1794,6 +1794,11 @@ namespace
         Check(!RunBackOwnsGhost(RunBackPhase::Released, true), "inside, the ghost reclaims its corpse on its own");
         Check(!RunBackOwnsGhost(RunBackPhase::Held, false), "a held corpse is not walked");
         Check(Rejoined(30.0f, 40.0f) && !Rejoined(50.0f, 40.0f), "rejoined within the soft range of the leader");
+        Check(FollowWaits(RunBackPhase::Rejoining, true, true), "a walk order with a path: the bot's follow waits");
+        Check(!FollowWaits(RunBackPhase::Rejoining, true, false), "no path: its follow may still bring it closer");
+        Check(FollowWaits(RunBackPhase::Released, false, false), "a ghost walked outside: no follow");
+        Check(!FollowWaits(RunBackPhase::Entered, true, true), "inside after the portal: free");
+        Check(!FollowWaits(RunBackPhase::None, true, true), "not on its way back: free");
     }
 
     void TestLeaderOffGround()

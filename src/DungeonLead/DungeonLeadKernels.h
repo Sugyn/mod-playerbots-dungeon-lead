@@ -2158,6 +2158,15 @@ namespace DungeonLeadKernel
         return "?";
     }
 
+    // A bot's own follow movement waits while the run back walks it: a ghost outside the dungeon, or
+    // a walk order to the leader that found a navmesh path (without one, its follow may still bring
+    // it closer).
+    inline bool FollowWaits(RunBackPhase p, bool onInstanceMap, bool walkHasPath)
+    {
+        return (p == RunBackPhase::Rejoining && walkHasPath) ||
+               (p == RunBackPhase::Released && !onInstanceMap);
+    }
+
     // A rejoining member counts as back with the party within this distance of the leader.
     inline bool Rejoined(float distanceToLeader, float softRange) { return distanceToLeader <= softRange; }
 

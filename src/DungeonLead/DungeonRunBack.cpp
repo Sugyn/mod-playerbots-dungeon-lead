@@ -170,6 +170,9 @@ namespace
     // no polygon at either end or no way at all. `reached`: the way ends at the target's polygon.
     constexpr int kMaxPolys = 512;
     constexpr int kMaxCorners = 256;
+    constexpr float kLegStepYd = 4.0f;
+    constexpr float kMaxLegYd = 200.0f;
+    constexpr size_t kMaxLegPoints = 74;
     bool OwnPath(Player* walker, float x, float y, float z, bool ghost, Movement::PointsArray& out, bool& reached)
     {
         Map* map = walker->GetMap();
@@ -218,10 +221,36 @@ namespace
                                                    &cornerCount, kMaxCorners)) ||
             cornerCount < 2)
             return false;
+        // Corners can be far apart outside: walk between them in short steps with each point's height
+        // from the navmesh polygon under it, so a leg neither cuts through a hill nor floats; and keep
+        // a leg short enough for the movement packets (kMaxLegYd, kMaxLegPoints).
         out.clear();
-        out.push_back(G3D::Vector3(walker->GetPositionX(), walker->GetPositionY(), walker->GetPositionZ()));
-        for (int i = 1; i < cornerCount; ++i)
-            out.push_back(G3D::Vector3(corners[i * 3 + 2], corners[i * 3 + 0], corners[i * 3 + 1]));
+        G3D::Vector3 prev(walker->GetPositionX(), walker->GetPositionY(), walker->GetPositionZ());
+        out.push_back(prev);
+        float legLength = 0.f;
+        for (int i = 1; i < cornerCount && out.size() < kMaxLegPoints && legLength < kMaxLegYd; ++i)
+        {
+            G3D::Vector3 const corner(corners[i * 3 + 2], corners[i * 3 + 0], corners[i * 3 + 1]);
+            float const segment = (corner - prev).length();
+            int const steps = std::max(1, int(std::ceil(segment / kLegStepYd)));
+            for (int s = 1; s <= steps && out.size() < kMaxLegPoints && legLength < kMaxLegYd; ++s)
+            {
+                G3D::Vector3 p = prev + (corner - prev) * (float(s) / steps);
+                float const pt[3] = {p.y, p.z, p.x};
+                dtPolyRef ref = 0;
+                float onPoly[3];
+                float h = 0.f;
+                if (dtStatusSucceed(query->findNearestPoly(pt, nearExt, &filter, &ref, onPoly)) && ref &&
+                    dtStatusSucceed(query->getPolyHeight(ref, onPoly, &h)))
+                    p.z = h;
+                legLength += (p - out.back()).length();
+                out.push_back(p);
+            }
+            prev = corner;
+        }
+        if (out.size() < kMaxLegPoints && legLength < kMaxLegYd)
+            return true;
+        reached = false;  // the leg was cut: the next one goes on from its end
         return true;
     }
 
@@ -328,6 +357,11 @@ namespace
             float const px = ghost->GetPositionX() + dx / len * d, py = ghost->GetPositionY() + dy / len * d;
             float const pz = map->GetHeight(ghost->GetPhaseMask(), px, py, lastZ + kGroundMaxStepZ);
             if (pz <= INVALID_HEIGHT + 1.f || std::fabs(pz - lastZ) > kGroundMaxStepZ)
+                break;
+            // no step through a wall or the rock: the last point must see the next one
+            G3D::Vector3 const& last = points.back();
+            if (!map->isInLineOfSight(last.x, last.y, last.z + 1.5f, px, py, pz + 1.5f, ghost->GetPhaseMask(),
+                                      LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::M2))
                 break;
             points.push_back(G3D::Vector3(px, py, pz));
             lastZ = pz;
@@ -635,13 +669,22 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                     }
                     if (!OnWalkLeg(m))
                     {
-                        e.pathFound = WalkLeg(m, portal->x, portal->y, portal->z, e);
-                        // no navmesh way, or a partial path that brings it no closer: over the ground
+                        // a partial path that brings it no closer: over the ground first; otherwise the
+                        // navmesh, and over the ground where it finds no way
                         bool const stalled = getMSTimeDiff(e.progressTs, now) >= DungeonLeadKernel::kWalkProgressMs / 2;
-                        if ((!e.pathFound || stalled) && GroundLeg(m, portal->x, portal->y))
+                        if (stalled && GroundLeg(m, portal->x, portal->y))
                         {
                             e.pathFound = true;
-                            e.lastPathType |= kGroundLegFlag;
+                            e.lastPathType = kGroundLegFlag;
+                        }
+                        else
+                        {
+                            e.pathFound = WalkLeg(m, portal->x, portal->y, portal->z, e);
+                            if (!e.pathFound && GroundLeg(m, portal->x, portal->y))
+                            {
+                                e.pathFound = true;
+                                e.lastPathType |= kGroundLegFlag;
+                            }
                         }
                     }
                     verdict = Advance(e, dist, now);
@@ -740,7 +783,11 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
             continue;
         }
         if (!OnWalkLeg(m))
+        {
             e.pathFound = WalkLeg(m, leader->GetPositionX(), leader->GetPositionY(), leader->GetPositionZ(), e);
+            gate.walkHasPath = e.pathFound;  // the follow gate learns this pass's answer
+            PublishGate(key, gate, now);
+        }
         WalkFallback const verdict = Advance(e, dist, now);
         if (verdict != WalkFallback::None && RetryDue(e.retryTs, now))
         {
