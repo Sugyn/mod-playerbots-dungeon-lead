@@ -24,6 +24,7 @@
 #include "DungeonTargetManager.h"
 #include "DungeonPartyState.h"
 #include "DungeonRunBack.h"
+#include "DungeonSimPlayer.h"
 
 #include "Corpse.h"
 #include "Creature.h"
@@ -547,8 +548,8 @@ namespace
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
-            if (!member || member == bot)
-                continue;
+            if (!member || member == bot || DungeonLead::IsSimulatedPlayer(member))
+                continue;  // a (simulated) player keeps its own strategies
             PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
             if (!memberAI || !memberAI->GetAiObjectContext())
                 continue;
@@ -1169,6 +1170,11 @@ void DungeonLead::FlushTelemetry(bool force)
 
 bool DungeonLead::AllowTeleport(Player* player, uint32 mapId, float x, float y, float z, uint32 options)
 {
+    if (player && DungeonLead::IsSimulatedPlayer(player))
+    {
+        SimPlayerTeleported(player, mapId, x, y, z);  // recorded; a player's own teleport is never cancelled
+        return true;
+    }
     if (!player || IsRealPlayer(player) || IsSelfBot(player) || !player->IsAlive() || !player->IsInWorld())
         return true;
     if (mapId == player->GetMapId() || !InFiveMan(player))
@@ -1252,7 +1258,8 @@ bool DungeonLead::HasSession(PlayerbotAI* botAI)
 
 bool DungeonLead::IsBotActor(Player* p)
 {
-    return p && !IsRealPlayer(p) && !IsSelfBot(p);
+    // A simulated player (test tool) is a player here, like a real one.
+    return p && !IsRealPlayer(p) && !IsSelfBot(p) && !IsSimulatedPlayer(p);
 }
 
 DungeonLeadKernel::RunContext const& DungeonLead::Context()
@@ -1850,6 +1857,7 @@ void DungeonLead::GuardActiveSessions()
         // Dead party bots - leader included - come back the way players do (DungeonRunBack.cpp):
         // a resurrection in place, or release, a ghost's walk to the portal and the walk to the party.
         DungeonLead::RecoverStrandedMembers(botAI, st);
+        DungeonLead::SimPlayerTick(botAI, st);
         DungeonLead::KeepInstanceValid(botAI);
         DungeonLead::FireAreaTriggers(botAI, st);
         DungeonLead::AssistEvent(botAI, st);
@@ -1898,7 +1906,7 @@ void DungeonLead::GuardActiveSessions()
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
-            if (!member || member == bot)
+            if (!member || member == bot || DungeonLead::IsSimulatedPlayer(member))
                 continue;
             PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
             if (!memberAI || !memberAI->GetAiObjectContext())
@@ -2084,7 +2092,7 @@ bool DungeonLead::StartSession(PlayerbotAI* botAI, Group* group, DungeonLeadSess
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-        if (!member || member == bot)
+        if (!member || member == bot || DungeonLead::IsSimulatedPlayer(member))
             continue;
         PlayerbotAI* memberAI = GET_PLAYERBOT_AI(member);
         if (!memberAI || !memberAI->GetAiObjectContext())

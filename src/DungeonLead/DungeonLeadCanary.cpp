@@ -7,6 +7,7 @@
  */
 
 #include "DungeonLeadCanary.h"
+#include "DungeonSimPlayer.h"
 #include "DungeonLeadConfig.h"
 #include "DungeonLeadActions.h"
 #include "DungeonRouteMgr.h"
@@ -57,7 +58,7 @@ namespace
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
-            if (!member || !GET_PLAYERBOT_AI(member))
+            if (!member || !GET_PLAYERBOT_AI(member) || DungeonLead::IsSimulatedPlayer(member))
                 return true;
         }
         return false;

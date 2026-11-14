@@ -1817,6 +1817,23 @@ namespace
         Check(ValidationRefills(500, 0), "repeat 0: also after many passes");
     }
 
+    void TestSimPlayer()
+    {
+        Check(ChooseSimAction(0, false) == SimAction::Lag, "lowest draws: lag");
+        Check(ChooseSimAction(60, false) == SimAction::Still, "then stand still");
+        Check(ChooseSimAction(110, false) == SimAction::Away, "then away");
+        Check(ChooseSimAction(140, false) == SimAction::Die, "then die");
+        Check(ChooseSimAction(160, false) == SimAction::Logout, "then log out");
+        Check(ChooseSimAction(175, false) == SimAction::Leave, "then leave the group");
+        Check(ChooseSimAction(178, false) == SimAction::Follow, "most draws: play along");
+        Check(ChooseSimAction(0, true) == SimAction::Follow, "no lagging off in a fight");
+        Check(ChooseSimAction(160, true) == SimAction::Follow, "no logout in a fight");
+        Check(ChooseSimAction(140, true) == SimAction::Die, "dying in a fight is fine");
+        Check(SimActionMs(SimAction::Logout, 999) < 120000 && SimActionMs(SimAction::Die, 999) < 120000,
+              "absences stay shorter than the session's bound for a missing player");
+        Check(SimActionMs(SimAction::Lag, 0) == 20000 && SimActionMs(SimAction::Follow, 500) == 0, "durations");
+    }
+
     void TestLeaderOffGround()
     {
         Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
@@ -2101,6 +2118,7 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestSimPlayer();
     TestRunBack();
     TestLivenessWaitsForPlayer();
     TestValidationRefill();

@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Added
+
+- Test tool `AiPlayerbot.DungeonLead.ValidationSimPlayer` (off by default): a validation party's first dps or healer plays a simulated player that the module treats exactly like a real player - the session is a player's session with it as the master, and the module never releases, walks, moves or teleports it - while a seeded script makes it lag behind, stand still, go away, die, log out and back in or leave the group. A `sim_player` telemetry event records each action and any teleport of it during a session.
+
 ## [0.16.0-alpha] - 2026-11-14
 
 ### Added
