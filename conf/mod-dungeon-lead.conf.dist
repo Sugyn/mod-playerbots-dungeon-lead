@@ -226,6 +226,8 @@ AiPlayerbot.DungeonLead.RecoveryTimeoutSeconds = 60
 #    AiPlayerbot.DungeonLead.RecoveryEscalationSeconds
 #        Description: How long the escalation (a bot member brought to the leader - never a real
 #                      player) gets before the run is stopped and reported as failed. Range 10-600.
+#                      A session a player started waits for its player (dead, offline or too far)
+#                      up to 15 minutes instead of these two windows.
 #        Default:     60
 
 AiPlayerbot.DungeonLead.RecoveryEscalationSeconds = 60

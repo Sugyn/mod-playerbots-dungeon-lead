@@ -1335,6 +1335,27 @@ namespace DungeonLeadKernel
         uint32_t EpisodeCapMs() const { return 2u * (actMs + escalateMs); }
     };
 
+    // A session a player started waits for its player - dead (after a wipe the run back from the
+    // graveyard takes minutes), offline (a reconnect) or too far - instead of
+    // ending after the recovery windows. Bounded by kPlayerWaitMaxMs of the same problem, not by
+    // the recovery windows or the episode cap, and not shortened by the module's own wipe recovery
+    // running meanwhile.
+    constexpr uint32_t kPlayerWaitMaxMs = 15u * 60u * 1000u;
+
+    // A player who is online and has left the group is not coming back: the recovery windows apply.
+    inline bool RecoveryWaitsForPlayer(RecoveryReason observed, bool sessionRequestedByPlayer, MasterFacts const& m)
+    {
+        if (m.assigned && m.online && !m.inGroup)
+            return false;
+        return sessionRequestedByPlayer &&
+               (observed == RecoveryReason::MasterUnavailable || observed == RecoveryReason::MasterTooFar);
+    }
+
+    inline RecoveryStep DecidePlayerWait(uint32_t msInReason)
+    {
+        return msInReason < kPlayerWaitMaxMs ? RecoveryStep::Act : RecoveryStep::Abort;
+    }
+
     // The same problem coming back this soon after it cleared is the same episode (a straggler
     // stuck on terrain is "caught up" each time the leader walks back, and behind again as soon as
     // the leader walks on).
@@ -1351,6 +1372,8 @@ namespace DungeonLeadKernel
         uint32_t episodeSince = 0;
         uint64_t subject = 0;
         bool relapse = false;     // the current reason resumed a recently cleared one
+        uint32_t playerWaitSince = 0;  // the player has been away since (0 = not away; PlayerWaitClock)
+        bool playerWaitEpisode = false;  // the last pass waited for the player
         // Last cleared recovery, to recognise a relapse.
         RecoveryReason clearedReason = RecoveryReason::None;
         RecoveryStep clearedStep = RecoveryStep::None;
@@ -1394,6 +1417,8 @@ namespace DungeonLeadKernel
             t.reasonSince = t.episodeSince = 0;
             t.subject = 0;
             t.relapse = false;
+            t.playerWaitSince = 0;
+            t.playerWaitEpisode = false;
             return false;
         }
         // Same reason: the recovery goes on, even if the farthest member changes while it is still
@@ -1452,6 +1477,29 @@ namespace DungeonLeadKernel
         if (step == RecoveryStep::Act && reason == RecoveryReason::PartyFragmented && msStill >= kStuckStragglerMs)
             return RecoveryStep::Escalate;
         return step;
+    }
+
+    // The player wait's own clock: one wait per absence of the player - across MasterUnavailable <->
+    // MasterTooFar (dead, then alive at the graveyard, then on the way back) and across other
+    // reasons in between (a bot drinking meanwhile) - ended only when the player is back (no reason
+    // at all: ObserveRecovery clears it). While it lasts and when it gives way to another reason, the
+    // episode starts afresh: the wait must not use up the episode cap of what comes after it.
+    // Returns the ms waited so far (0 while the current reason is not a wait for the player).
+    inline uint32_t PlayerWaitClock(RecoveryTimers& t, bool waitsForPlayer, uint32_t now)
+    {
+        uint32_t const stamp = now ? now : 1;
+        if (!waitsForPlayer)
+        {
+            if (t.playerWaitEpisode)  // the wait just gave way: a fresh episode for what follows
+                t.episodeSince = stamp;
+            t.playerWaitEpisode = false;
+            return 0;
+        }
+        if (!t.playerWaitSince)
+            t.playerWaitSince = stamp;
+        t.playerWaitEpisode = true;
+        t.episodeSince = stamp;
+        return stamp - t.playerWaitSince;
     }
 
     inline RecoveryStep DecideRecovery(RecoveryReason observed, uint32_t msInReason, uint32_t msInEpisode,

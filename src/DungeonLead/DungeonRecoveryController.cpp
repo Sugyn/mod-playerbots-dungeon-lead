@@ -205,12 +205,21 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
         return true;
     }
 
+    // A session a player started waits for its player (bounded by kPlayerWaitMaxMs of one absence,
+    // not by the recovery windows; see PlayerWaitClock for the episode).
+    bool const waitsForPlayer = DungeonLeadKernel::RecoveryWaitsForPlayer(
+        observed, DungeonLeadKernel::SessionRequestedByPlayer(true, st.origin == DungeonLeadSessionOrigin::AutoCanary),
+        party.facts.master);
+    uint32 const playerWaitMs = DungeonLeadKernel::PlayerWaitClock(st.recovery, waitsForPlayer, now);
+
     DungeonLeadKernel::RecoveryPolicy policy;
     policy.actMs = sDungeonLeadConfig.dungeonLeadRecoveryTimeoutSeconds * IN_MILLISECONDS;
     policy.escalateMs = sDungeonLeadConfig.dungeonLeadRecoveryEscalationSeconds * IN_MILLISECONDS;
     uint32 const msInReason = getMSTimeDiff(st.recovery.reasonSince, now);
     RecoveryStep step = DungeonLeadKernel::DecideRecovery(observed, msInReason,
                                                          getMSTimeDiff(st.recovery.episodeSince, now), policy);
+    if (waitsForPlayer)
+        step = DungeonLeadKernel::DecidePlayerWait(playerWaitMs);
     if (step == RecoveryStep::Abort && st.recovery.step != RecoveryStep::Escalate)
         step = RecoveryStep::Escalate;  // the clock ran on through a fight: still try the escalation once
     // A bot straggler that stands still is stuck: skip the walk back and bring it. The clock runs

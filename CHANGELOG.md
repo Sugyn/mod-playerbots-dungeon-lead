@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Fixed
+
+- A session a player started waits up to 15 minutes for its player who is dead, offline or too far (not for one who left the group), instead of ending after the two recovery windows (two minutes by default, which ran on through the party's own wipe recovery while the player walked back from the graveyard).
+
 ## [0.16.0-alpha] - 2026-11-14
 
 ### Added
