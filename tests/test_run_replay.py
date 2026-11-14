@@ -159,6 +159,19 @@ class AnalyzeTest(unittest.TestCase):
         (c,) = [f for f in analyze_run.failures(m, cres)["findings"] if f["classification"] == "CAMPAIGN"]
         self.assertEqual(c["confidence"], "HIGH")
 
+    def test_campaign_result_repeated_dungeon(self):
+        from tools.run_replay.cli import campaign_result
+        m = {"metadata": {"campaign_id": "verify-test", "dungeon": {"lfg_id": 8}, "leader": "Tank",
+                          "started_at": "2026-01-01T02:01:10.500Z"}}
+        first = {"record": "run_result", "campaign_id": "verify-test", "lfg_id": 8, "tank": "Tank", "pass": 1,
+                 "run_started_at": "2026-01-01T01:00:00Z", "ended": True}
+        second = dict(first, **{"pass": 2, "run_started_at": "2026-01-01T02:01:00Z", "ended": False})
+        other = dict(first, lfg_id=4)
+        self.assertIs(campaign_result(m, [other, first, second]), second)
+        self.assertIs(campaign_result(m, [other, first]), first)
+        old = {k: v for k, v in first.items() if k != "run_started_at"}
+        self.assertIs(campaign_result(m, [old, dict(old, ended=False)]), old)
+
     def test_report_renders(self):
         m = model.reconstruct(synthetic())
         md = report.timeline_md(m)

@@ -287,3 +287,12 @@ AiPlayerbot.DungeonLead.StepWalkLimitSeconds = 600
 #        Default:     "" (off)
 
 AiPlayerbot.DungeonLead.ValidationAutostart = ""
+
+#    AiPlayerbot.DungeonLead.ValidationRepeat
+#        Description: How many times a validation campaign runs its dungeon list. When the queue
+#                      runs empty the list is queued again, so a slot that finishes a run starts
+#                      the next one instead of waiting for the campaign's longest runs. 0 = repeat
+#                      until `.dungeonlead validate stop` or a restart. Range 0-1000.
+#        Default:     1
+
+AiPlayerbot.DungeonLead.ValidationRepeat = 1
