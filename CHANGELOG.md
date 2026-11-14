@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Fixed
+
+- A validation party is of one faction, the one whose free characters make more whole parties; with many parallel parties the pool used to mix factions, and the other faction's members attacked NPCs the run needs (Shadowfang Keep: the prisoner who opens the courtyard door).
+
 ## [0.16.0-alpha] - 2026-11-14
 
 ### Added

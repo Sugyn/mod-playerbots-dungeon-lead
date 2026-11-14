@@ -171,12 +171,19 @@ namespace
                 VLog("dungeon " + std::to_string(slot.lfg) + " level " + std::to_string(level) + " (" + SlotName(i, slot) + ")");
                 slot.bots.clear();
                 std::string name;
-                if (DungeonLead::AcquireTestBot(DungeonLead::TestBotRole::Tank, level, msg, &name))
+                // one faction per party: the one whose free characters make more whole parties; when
+                // neither makes one, the tank takes any faction and everyone else the tank's
+                std::vector<uint8> const dps = {uint8(CLASS_WARRIOR), uint8(CLASS_MAGE), uint8(CLASS_ROGUE)};
+                int team = DungeonLead::ChooseTestPartyTeam(dps);
+                if (DungeonLead::AcquireTestBot(DungeonLead::TestBotRole::Tank, level, msg, &name, team))
+                {
                     slot.bots.push_back(name);
-                if (DungeonLead::AcquireTestBot(DungeonLead::TestBotRole::Healer, level, msg, &name))
+                    team = DungeonLead::TestBotTeam(name);
+                }
+                if (DungeonLead::AcquireTestBot(DungeonLead::TestBotRole::Healer, level, msg, &name, team))
                     slot.bots.push_back(name);
-                for (uint8 cls : {uint8(CLASS_WARRIOR), uint8(CLASS_MAGE), uint8(CLASS_ROGUE)})
-                    if (DungeonLead::AcquireDpsTestBot(cls, level, msg, &name))
+                for (uint8 cls : dps)
+                    if (DungeonLead::AcquireDpsTestBot(cls, level, msg, &name, team))
                         slot.bots.push_back(name);
                 Enter(slot, Phase::Assemble);
                 return;
