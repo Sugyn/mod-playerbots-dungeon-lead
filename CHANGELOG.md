@@ -29,6 +29,10 @@ while the module is in alpha.
 ### Changed
 
 - Wailing Caverns: two waypoints on the lower level lead from the Pythas approach towards Lord Pythas, where the direct path along the upper ledge leaves the navmesh (route update 0001).
+- Wailing Caverns: the first of those two waypoints, which the navmesh does not reach from the Pythas approach, is removed; the lower-path waypoint leads on to Lord Pythas (route update 0002).
+
+### Added
+
 - A `cc_outcome` telemetry event records how each crowd control mark ended: the control effect and its caster, or why the party's crowd control casters did not cast.
 - A session whose leader makes no progress and writes no event for five minutes ends with the reason `session_stalled` and a snapshot of its state, instead of running until an outside time limit. A session that waits for its real player (dead, offline, out of the group, too far or on another map, or marked away) is never ended this way, however long the player is gone.
 - A `walk_blocked` telemetry event reports a travelling leader that stands while its combat flag has no enemy behind it, with the creatures that hold the flag.
