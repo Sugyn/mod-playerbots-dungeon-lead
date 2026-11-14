@@ -167,6 +167,7 @@ namespace
                 return;
             case Phase::Acquire:
             {
+                uint32 const acquireTs = getMSTime();
                 uint32 const level = TargetLevel(slot.lfg);
                 VLog("dungeon " + std::to_string(slot.lfg) + " level " + std::to_string(level) + " (" + SlotName(i, slot) + ")");
                 slot.bots.clear();
@@ -185,6 +186,8 @@ namespace
                 for (uint8 cls : dps)
                     if (DungeonLead::AcquireDpsTestBot(cls, level, msg, &name, team))
                         slot.bots.push_back(name);
+                if (uint32 const ms = GetMSTimeDiffToNow(acquireTs); ms >= 200)
+                    VLog("acquire of " + SlotName(i, slot) + " took " + std::to_string(ms) + " ms");
                 Enter(slot, Phase::Assemble);
                 return;
             }

@@ -330,7 +330,8 @@ namespace
             {
                 if (requireTeam && c.team != partyTeam)
                     continue;
-                if (IsLeased(c.guid))
+                // leased, or online (a cached candidate that has logged in since)
+                if (IsLeased(c.guid) || ObjectAccessor::FindConnectedPlayer(c.guid))
                     continue;
                 if (requireFreshAccount && leasedAccounts.count(c.accountId))
                     continue;
@@ -582,7 +583,7 @@ bool DungeonLead::AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::stri
     return AcquireBot(TestBotRole::Dps, classId, targetLevel, outMessage, outName, partyTeam);
 }
 
-// A few database queries per party (one per class): fine for the test tool's party start.
+// Reads the candidates of each class the party needs (LoadCandidates, cached for a second).
 int DungeonLead::ChooseTestPartyTeam(std::vector<uint8> const& dpsClasses)
 {
     // the classes the party needs and how many of each: tank, healer, its dps
@@ -608,7 +609,7 @@ int DungeonLead::ChooseTestPartyTeam(std::vector<uint8> const& dpsClasses)
         LoadCandidates(cls, candidates, ignored);
         uint32 a = 0, h = 0;
         for (Candidate const& c : candidates)
-            if (!IsLeased(c.guid))
+            if (!IsLeased(c.guid) && !ObjectAccessor::FindConnectedPlayer(c.guid))
                 (c.team == TEAM_ALLIANCE ? a : h)++;
         needs.push_back(count);
         freeAlliance.push_back(a);
