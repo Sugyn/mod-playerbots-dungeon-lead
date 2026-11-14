@@ -8,6 +8,7 @@
 
 #include "DungeonTestBotPool.h"
 #include "DungeonSimPlayer.h"
+#include "LFGMgr.h"
 #include "DungeonLeadActions.h"
 #include "DungeonLeadCanary.h"
 #include "DungeonLeadConfig.h"
@@ -217,6 +218,16 @@ namespace
         uint32 since = 0;
     };
     std::vector<PendingStart> g_pendingStarts;
+
+    // ValidationQueue: parties sent through the dungeon finder; the session starts from the queue
+    // start (QueueAutoStart) once the finder has formed the group and brought it in.
+    struct QueuedParty
+    {
+        ObjectGuid tank;
+        uint32 since = 0;
+    };
+    std::vector<QueuedParty> g_queuedParties;
+    constexpr uint32 kQueuedPartyTimeoutMs = 5 * MINUTE * IN_MILLISECONDS;
 
     // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
     // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
@@ -565,7 +576,19 @@ bool DungeonLead::TestPartyActive(std::string const& tankName, bool& assembling)
         }
     Player* tank = ObjectAccessor::FindPlayer(it->guid);
     PlayerbotAI* botAI = tank ? GET_PLAYERBOT_AI(tank) : nullptr;
-    return botAI && DungeonLead::HasSession(botAI);
+    bool const session = botAI && DungeonLead::HasSession(botAI);
+    for (auto q = g_queuedParties.begin(); q != g_queuedParties.end(); ++q)
+        if (q->tank == it->guid)
+        {
+            if (session || GetMSTimeDiffToNow(q->since) >= kQueuedPartyTimeoutMs)
+            {
+                g_queuedParties.erase(q);
+                break;
+            }
+            assembling = true;
+            return true;
+        }
+    return session;
 }
 
 // Forms the parties directly instead of going through LFG: matchmaking can stall indefinitely and
@@ -672,6 +695,45 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
         std::vector<Candidate*> members{&tank, &heal};
         for (uint32 d = 0; d < 3 && dpsCursor < dps.size(); ++d, ++dpsCursor)
             members.push_back(&dps[dpsCursor]);
+
+        if (sDungeonLeadConfig.dungeonLeadValidationQueue && sDungeonLeadConfig.dungeonLeadValidationSimPlayer)
+        {
+            // Through the dungeon finder, as a player's run starts: every member queues for this one
+            // dungeon in its role; the finder forms the group and brings it in, and the queue start
+            // hands the run to the bot tank.
+            Candidate* sim = sDungeonLeadConfig.dungeonLeadValidationSimPlayer == 2 ? &heal
+                             : members.size() > 2 ? members[2] : nullptr;
+            if (sim)
+            {
+                uint32 const base = sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                        ? sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                        : uint32(time(nullptr));
+                DungeonLead::MarkSimulatedPlayer(sim->bot, base ^ (uint32(sim->bot->GetGUID().GetCounter()) * 2654435761u));
+            }
+            for (Candidate* c : members)
+            {
+                for (uint8 diff = 0; diff < MAX_DIFFICULTY; ++diff)
+                    sInstanceSaveMgr->PlayerUnbindInstance(c->bot->GetGUID(), route->mapId, Difficulty(diff),
+                                                           /*deleteFromDB*/ true, c->bot);
+                uint32 const role = c == &tank ? lfg::PLAYER_ROLE_TANK
+                                    : c == &heal ? lfg::PLAYER_ROLE_HEALER
+                                                 : lfg::PLAYER_ROLE_DAMAGE;
+                if (PlayerbotAI* ai = GET_PLAYERBOT_AI(c->bot))
+                    DungeonLead::QueueBotForLfg(ai, c->bot, lfgId, role);
+                TestBotLease& lease = g_leases[c->leaseIdx];
+                lease.state = TestBotLeaseState::Leased;
+                lease.stateTs = getMSTime();
+                lease.entryMapId = 0;  // the dungeon finder brings it in
+            }
+            QueuedParty q;
+            q.tank = tank.bot->GetGUID();
+            q.since = getMSTime();
+            g_queuedParties.push_back(q);
+            ++started;
+            out << "Party " << (p + 1) << " (tank " << tank.bot->GetName() << "): queued for lfg " << lfgId
+                << (sim ? " with simulated player " + sim->bot->GetName() : std::string());
+            continue;
+        }
 
         Group* group = new Group();
         group->Create(tank.bot);
