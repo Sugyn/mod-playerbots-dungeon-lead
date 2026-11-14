@@ -329,8 +329,37 @@ namespace
         return DungeonLeadKernel::JsonLine().Str("scope", ToString(route.Scope())).Raw("unmodeled", arr).Done();
     }
 
+    // The leader part of a v2 line: the live bot, or (for a leader that has left the world) what the
+    // session last knew of it.
+    struct LeaderEnvelope
+    {
+        uint32 mapId = 0, instanceId = 0;
+        std::string guid, name;
+        float x = 0.f, y = 0.f, z = 0.f, o = 0.f;
+        bool alive = false;
+    };
+
+    std::string BuildV2Line(LeaderEnvelope const& leader, DungeonLeadState& st, std::string const& event,
+                            std::string const* detail, std::string const& payload);
+
     std::string BuildV2Line(Player* bot, DungeonLeadState& st, std::string const& event, std::string const* detail,
                             std::string const& payload)
+    {
+        LeaderEnvelope e;
+        e.mapId = bot->GetMapId();
+        e.instanceId = bot->GetInstanceId();
+        e.guid = std::to_string(bot->GetGUID().GetCounter());
+        e.name = bot->GetName();
+        e.x = bot->GetPositionX();
+        e.y = bot->GetPositionY();
+        e.z = bot->GetPositionZ();
+        e.o = bot->GetOrientation();
+        e.alive = bot->IsAlive();
+        return BuildV2Line(e, st, event, detail, payload);
+    }
+
+    std::string BuildV2Line(LeaderEnvelope const& leader, DungeonLeadState& st, std::string const& event,
+                            std::string const* detail, std::string const& payload)
     {
         using DungeonLeadKernel::JsonLine;
         DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr;
@@ -365,17 +394,17 @@ namespace
             .Open("dungeon")
             .Num("lfg_id", uint32_t(st.lfgId))
             .Str("name", route ? route->name : "")
-            .Num("map_id", uint32_t(bot->GetMapId()))
-            .Num("instance_id", uint32_t(bot->GetInstanceId()))
+            .Num("map_id", uint32_t(leader.mapId))
+            .Num("instance_id", uint32_t(leader.instanceId))
             .Close()
             .Open("leader")
-            .Str("guid", std::to_string(bot->GetGUID().GetCounter()))
-            .Str("name", bot->GetName())
-            .Num("x", bot->GetPositionX())
-            .Num("y", bot->GetPositionY())
-            .Num("z", bot->GetPositionZ())
-            .Num("o", bot->GetOrientation())
-            .Bool("alive", bot->IsAlive())
+            .Str("guid", leader.guid)
+            .Str("name", leader.name)
+            .Num("x", leader.x)
+            .Num("y", leader.y)
+            .Num("z", leader.z)
+            .Num("o", leader.o)
+            .Bool("alive", leader.alive)
             .Close()
             .Str("state", DungeonLeadKernel::ToString(st.state))
             .Num("step", uint32_t(st.stepIndex))
@@ -1629,6 +1658,45 @@ void DungeonLead::RecoverStrandedMembers(PlayerbotAI* botAI, DungeonLeadState& s
     DungeonLead::RunBackMembers(botAI, st);
 }
 
+namespace
+{
+    // The terminal event of a run whose leader left the world (logged out, or out of the world past
+    // the limit): no AI is left to stop the session, so the guard pass writes it - with what the
+    // session last knew of the leader - before the run summary closes the run. Without it the run
+    // has no terminal event and its replay cannot tell it from a cut record.
+    void RecordLeaderDisconnected(ObjectGuid guid, DungeonLeadState& st, std::string const& how, uint32 msGone)
+    {
+        if (st.runSummaryRecorded)
+            return;  // the run already has its terminal result
+        if (st.outcome == DungeonRunOutcome::Running)
+        {
+            st.outcome = DungeonRunOutcome::Failed;
+            st.failureDomain = DungeonFailureDomain::Infrastructure;
+            st.failureReason = DungeonFailureReason::LeaderDisconnected;
+        }
+        LeaderEnvelope e;
+        e.mapId = st.mapId;
+        e.instanceId = st.instanceId;
+        e.guid = std::to_string(guid.GetCounter());
+        e.name = st.tankName;
+        if (st.sampleHave)
+        {
+            e.x = st.sampleX;
+            e.y = st.sampleY;
+            e.z = st.sampleZ;
+        }
+        std::string const detail = how + " state=" + DungeonLeadKernel::ToString(st.state);
+        g_telemetry.Push(DungeonLeadKernel::TelemetryFile::EventsV2,
+                         BuildV2Line(e, st, "leader_disconnected", &detail,
+                                     DungeonLeadKernel::JsonLine()
+                                         .Str("how", how)
+                                         .Str("last_state", DungeonLeadKernel::ToString(st.state))
+                                         .Num("ms_gone", msGone)
+                                         .Bool("position_known", st.sampleHave)
+                                         .Done()));
+    }
+}
+
 void DungeonLead::GuardActiveSessions()
 {
     // Called every world tick from PlayerbotsWorldScript::OnUpdate - throttle internally so the
@@ -1669,7 +1737,7 @@ void DungeonLead::GuardActiveSessions()
         // it.
         if (!bot)
         {
-            DungeonLeadState const& goneSt = sDungeonRouteMgr.State(guid);
+            DungeonLeadState& goneSt = sDungeonRouteMgr.State(guid);
             if (goneSt.state == DungeonLeadKernel::LeadState::Stopping)
             {
                 // run summary was already written when Stop() ran - only the handback was pending
@@ -1685,6 +1753,7 @@ void DungeonLead::GuardActiveSessions()
             // but its followers are not - restore whichever of them are still resolvable before
             // the snapshots disappear with ResetState() below.
             RestoreSessionFollowers(goneSt.memberSnapshots, guid);
+            RecordLeaderDisconnected(guid, goneSt, "hard_disconnect", 0);
             DungeonLead::RecordRunSummary(guid, goneSt.tankName, "hard_disconnect");
             sDungeonRouteMgr.ResetState(guid);
             continue;
@@ -1713,6 +1782,7 @@ void DungeonLead::GuardActiveSessions()
             if (absentSt.state != DungeonLeadKernel::LeadState::Stopping)
             {
                 RestoreSessionFollowers(absentSt.memberSnapshots, guid);
+                RecordLeaderDisconnected(guid, absentSt, "leader_not_in_world", absentMs);
                 DungeonLead::RecordRunSummary(guid, absentSt.tankName, "leader_not_in_world");
             }
             sDungeonRouteMgr.ResetState(guid);

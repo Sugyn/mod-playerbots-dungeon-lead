@@ -25,6 +25,7 @@ while the module is in alpha.
 - When the navmesh has no path onward, the leader no longer walks back to the route stop it just came from (it looped there, e.g. at Roogug in Razorfen Kraul); it searches forward instead.
 - A leader held in combat by a creature far away (for example a boss behind a closed door) no longer stands still on its route: the walk, doors, pulls and event help follow the same combat rule as the session's decisions.
 - A party member that a boss keeps on its threat list from the far end of the instance (after a wipe, the boss neither comes nor leaves combat) no longer keeps the party waiting "in combat": an attacker or target more than 60 yards away does not count as a fight, so after 20 seconds the party walks on and marks the next pack.
+- A run whose leader bot leaves the world (logs out, or stays out of the world) now ends with a `leader_disconnected` terminal event and the failure reason `leader_disconnected`, so its replay shows a run ended by the disconnect (unhealthy: `leader_disconnected`) instead of a cut record.
 
 ### Changed
 

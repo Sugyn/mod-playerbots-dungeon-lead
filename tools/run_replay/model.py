@@ -667,7 +667,8 @@ class _Builder:
         last = self.events[-1]
         oc = last.get("outcome") or {}
         terminal = next((e for e in reversed(self.events)
-                         if e["event_type"] in ("stop", "canary_stop", "test_result", "route_complete")), None)
+                         if e["event_type"] in ("stop", "canary_stop", "test_result", "route_complete",
+                                                "leader_disconnected")), None)
         return {
             "outcome": oc.get("outcome"),
             "failure_domain": oc.get("failure_domain"),
@@ -693,6 +694,8 @@ class _Builder:
                 self.note(e, "route" if t != "stop" else "run", f"{t}: {p.get('detail', '')}")
             elif t == "objective_absent":
                 self.note(e, "route", f"objective_absent: {p.get('name')} is not in the instance - passed")
+            elif t == "leader_disconnected":
+                self.note(e, "run", f"Leader left the world ({p.get('how')}) in {p.get('last_state')} - run ended")
         for f in fights:
             what = f["objective"] or (f"on the way to {f['on_the_way_to']}" if f["on_the_way_to"] else "unplanned fight")
             adds = f" ({f['add_count']} adds)" if f["add_count"] else ""

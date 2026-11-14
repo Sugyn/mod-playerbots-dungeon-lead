@@ -125,7 +125,10 @@ enum class DungeonFailureReason : uint8
     // step-advance skip loop (DungeonLeadNextAction::Execute).
     RouteDataInvalid,
     // No event and no leader movement for DungeonLeadKernel::kSessionStallMs (liveness rule).
-    SessionStalled
+    SessionStalled,
+    // The leader bot left the world mid-run (logged out, or out of the world past the limit):
+    // the session is closed out from the guard pass, with no AI left to stop it.
+    LeaderDisconnected
 };
 
 char const* ToString(DungeonRunOutcome v);
