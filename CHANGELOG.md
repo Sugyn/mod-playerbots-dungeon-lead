@@ -6,6 +6,10 @@ while the module is in alpha.
 
 ## [Unreleased]
 
+### Changed
+
+- A dead party bot held for a resurrection is brought back sooner: once the fight is over, the leader tells the party's resurrecter to cast on it (every few seconds until it is back or released), instead of waiting until the healer gets to it on its own.
+
 ## [0.16.0-alpha] - 2026-11-14
 
 ### Added

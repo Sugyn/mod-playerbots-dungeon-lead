@@ -75,6 +75,18 @@ namespace
         return uint32(probe.GetPathType());
     }
 
+    // The resurrection action of a class in mod-playerbots' action context (its own target: the dead
+    // party member to resurrect).
+    char const* ResurrectionAction(Player* p)
+    {
+        switch (p->getClass())
+        {
+            case CLASS_PALADIN: return "redemption";
+            case CLASS_SHAMAN:  return "ancestral spirit";
+            default:            return "resurrection";
+        }
+    }
+
     bool CanResurrect(Player* p)
     {
         for (uint32 id : kResurrectionSpells)
@@ -638,6 +650,7 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                 uint32 const ooc = st.partyOutOfCombatSince ? getMSTimeDiff(st.partyOutOfCombatSince, now) : 0;
                 rez.msOutOfCombat = std::min(ooc, msDead);  // the cast window starts at the death at the earliest
                 std::string resurrecter;
+                Player* rezzer = nullptr;
                 if (onMap)
                     for (GroupReference* r2 = group->GetFirstMember(); r2; r2 = r2->next())
                     {
@@ -647,6 +660,7 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                         {
                             rez.resurrecterAlive = true;
                             resurrecter = p->GetName();
+                            rezzer = p;
                             break;
                         }
                     }
@@ -657,6 +671,17 @@ void DungeonLead::RunBackMembers(PlayerbotAI* leaderAI, DungeonLeadState& st)
                         e.phase = RunBackPhase::Held;
                         RunBackEvent(leaderAI, m, e, "held", DungeonLeadKernel::JsonLine().Str("resurrecter", resurrecter));
                     }
+                    // the fight is over: the leader tells the resurrecter to bring it back now
+                    bool const casting = rezzer && rezzer->IsNonMeleeSpellCast(false);
+                    if (rezzer && DungeonLeadKernel::RezOrderDue(partyInCombat, true, casting, e.rezOrderTs != 0,
+                                                                 e.rezOrderTs ? getMSTimeDiff(e.rezOrderTs, now) : 0))
+                        if (PlayerbotAI* rezAI = GET_PLAYERBOT_AI(rezzer))
+                        {
+                            if (!e.rezOrderTs)
+                                RunBackEvent(leaderAI, m, e, "rez_order", DungeonLeadKernel::JsonLine().Str("resurrecter", resurrecter));
+                            e.rezOrderTs = now;
+                            rezAI->DoSpecificAction(ResurrectionAction(rezzer), Event(), /*silent*/ true);
+                        }
                 }
                 else
                 {

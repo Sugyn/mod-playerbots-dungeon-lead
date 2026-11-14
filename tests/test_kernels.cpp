@@ -1773,6 +1773,13 @@ namespace
         rez.partyInCombat = true;
         Check(!HoldRelease(rez), "nobody to resurrect: release at once");
 
+        Check(RezOrderDue(false, true, false, false, 0), "out of combat: order the resurrecter now");
+        Check(!RezOrderDue(true, true, false, false, 0), "not during a fight");
+        Check(!RezOrderDue(false, true, true, false, 0), "not over a cast already running");
+        Check(!RezOrderDue(false, false, false, false, 0), "nobody to order");
+        Check(!RezOrderDue(false, true, false, true, kRezOrderGapMs - 1), "not again within the gap");
+        Check(RezOrderDue(false, true, false, true, kRezOrderGapMs), "again after the gap");
+
         Check(WalkLimitMs(10.0f, 7.0f, kRunBackMaxMs) == kRunBackMinMs, "a short walk gets the minimum limit");
         Check(WalkLimitMs(5000.0f, 7.0f, kRunBackMaxMs) == kRunBackMaxMs, "a long walk is capped");
         uint32_t const mid = WalkLimitMs(700.0f, 7.0f, kRunBackMaxMs);
