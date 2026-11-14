@@ -34,6 +34,9 @@
 #include "GridDefines.h"
 #include "Map.h"
 #include "MapCollisionData.h"
+#include "MapDefines.h"
+#include "DetourNavMesh.h"
+#include "DetourNavMeshQuery.h"
 
 #include <algorithm>
 #include <cmath>
@@ -62,6 +65,7 @@ namespace
     // Marks a short leg / a leg over the ground in the `path_type` diagnostics.
     constexpr uint32 kAheadLegFlag = 0x10000;
     constexpr uint32 kGroundLegFlag = 0x20000;
+    constexpr uint32 kOwnPathFlag = 0x40000;
 
     // Whether a path search can start where `u` stands: a one-yard probe from it (diagnostics).
     uint32 ProbeType(Unit* u)
@@ -158,6 +162,69 @@ namespace
         return best;
     }
 
+    // The run back's own path search on the map's navmesh. The core's search for bots leaves out
+    // steep ground (and lava), so some ways a player walks - down into a cleft, into a mine - do not
+    // exist for a bot; a party member walking back may use them: steep ground for everyone, lava
+    // and slime for a ghost only (a ghost takes no damage). Coordinates in Detour order (y, z, x).
+    // Fills `out` with the corner points of the way (to the target, or as far as it goes); false =
+    // no polygon at either end or no way at all. `reached`: the way ends at the target's polygon.
+    constexpr int kMaxPolys = 512;
+    constexpr int kMaxCorners = 256;
+    bool OwnPath(Player* walker, float x, float y, float z, bool ghost, Movement::PointsArray& out, bool& reached)
+    {
+        Map* map = walker->GetMap();
+        if (!map)
+            return false;
+        MMapData& mmap = map->GetMapCollisionData().GetMMapData();
+        dtNavMesh const* mesh = mmap.GetNavMesh();
+        dtNavMeshQuery const* query = mmap.GetNavMeshQuery();
+        if (!mesh || !query)
+            return false;
+        dtQueryFilter filter;
+        uint16 include = NAV_GROUND | NAV_GROUND_STEEP | NAV_WATER;
+        if (ghost)
+            include |= NAV_MAGMA | NAV_SLIME;
+        filter.setIncludeFlags(include);
+        filter.setExcludeFlags(ghost ? 0 : (NAV_MAGMA | NAV_SLIME));
+
+        float const start[3] = {walker->GetPositionY(), walker->GetPositionZ(), walker->GetPositionX()};
+        float const end[3] = {y, z, x};
+        float const nearExt[3] = {3.0f, 5.0f, 3.0f};
+        float const farExt[3] = {10.0f, 20.0f, 10.0f};
+        dtPolyRef startRef = 0, endRef = 0;
+        float startPt[3], endPt[3];
+        query->findNearestPoly(start, nearExt, &filter, &startRef, startPt);
+        if (!startRef)
+            query->findNearestPoly(start, farExt, &filter, &startRef, startPt);
+        query->findNearestPoly(end, nearExt, &filter, &endRef, endPt);
+        if (!endRef)
+            query->findNearestPoly(end, farExt, &filter, &endRef, endPt);
+        if (!startRef || !endRef)
+            return false;
+
+        dtPolyRef polys[kMaxPolys];
+        int polyCount = 0;
+        if (dtStatusFailed(query->findPath(startRef, endRef, startPt, endPt, &filter, polys, &polyCount, kMaxPolys)) ||
+            polyCount <= 0)
+            return false;
+        reached = polys[polyCount - 1] == endRef;
+        float target[3] = {endPt[0], endPt[1], endPt[2]};
+        if (!reached && dtStatusFailed(query->closestPointOnPoly(polys[polyCount - 1], endPt, target, nullptr)))
+            return false;
+
+        float corners[kMaxCorners * 3];
+        int cornerCount = 0;
+        if (dtStatusFailed(query->findStraightPath(startPt, target, polys, polyCount, corners, nullptr, nullptr,
+                                                   &cornerCount, kMaxCorners)) ||
+            cornerCount < 2)
+            return false;
+        out.clear();
+        out.push_back(G3D::Vector3(walker->GetPositionX(), walker->GetPositionY(), walker->GetPositionZ()));
+        for (int i = 1; i < cornerCount; ++i)
+            out.push_back(G3D::Vector3(corners[i * 3 + 2], corners[i * 3 + 0], corners[i * 3 + 1]));
+        return true;
+    }
+
     // One leg of a walk along the navmesh: the computed points, not a straight line. A long way
     // comes back as a partial path; the next leg starts when this one ends. False = no path at all.
     // Outside a dungeon only the navmesh tiles of loaded grids exist: the target's tile is loaded
@@ -169,6 +236,24 @@ namespace
         {
             GridCoord const gc = Acore::ComputeGridCoord(x, y);
             map->GetMapCollisionData().LoadMMapTile(gc.x_coord, gc.y_coord);
+        }
+        // The run back's own search first (steep ground included); the core's search below is the
+        // fallback when it finds nothing.
+        {
+            Movement::PointsArray own;
+            bool reached = false;
+            if (OwnPath(walker, x, y, z, walker->HasPlayerFlag(PLAYER_FLAGS_GHOST), own, reached))
+            {
+                G3D::Vector3 const& last = own.back();
+                if (walker->GetExactDist(last.x, last.y, last.z) >= 1.5f)
+                {
+                    e.lastPathType = reached ? kOwnPathFlag : (kOwnPathFlag | PATHFIND_INCOMPLETE);
+                    ++e.legs;
+                    walker->GetMotionMaster()->Clear();
+                    walker->GetMotionMaster()->MoveSplinePath(&own);
+                    return true;
+                }
+            }
         }
         PathGenerator path(walker);
         path.CalculatePath(x, y, z);
