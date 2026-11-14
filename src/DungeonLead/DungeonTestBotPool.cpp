@@ -7,6 +7,7 @@
  */
 
 #include "DungeonTestBotPool.h"
+#include "DungeonSimPlayer.h"
 #include "DungeonLeadActions.h"
 #include "DungeonLeadCanary.h"
 #include "DungeonLeadConfig.h"
@@ -210,6 +211,7 @@ namespace
     {
         ObjectGuid tank;
         std::vector<ObjectGuid> members;  // tank included
+        ObjectGuid sim;                   // the simulated player of this party (ValidationSimPlayer), if any
         uint32 mapId = 0;
         uint32 lfgId = 0;
         uint32 since = 0;
@@ -498,9 +500,19 @@ void DungeonLead::TestBotPoolTick()
         {
             PlayerbotAI* tankAI = GET_PLAYERBOT_AI(tank);
             Group* group = tank->GetGroup();
+            // With a simulated player the session is the one a player starts: origin manual, the
+            // player is the master the party waits for.
+            Player* sim = it->sim.IsEmpty() ? nullptr : ObjectAccessor::FindPlayer(it->sim);
+            if (sim && tankAI)
+            {
+                tankAI->SetMaster(sim);
+                if (PlayerbotAI* simAI = GET_PLAYERBOT_AI(sim))
+                    simAI->SetMaster(tank);
+            }
             bool const ok = tankAI && group &&
-                            DungeonLead::StartSession(tankAI, group, DungeonLeadSessionOrigin::AutoCanary,
-                                                      /*master*/ nullptr, /*testMode*/ true);
+                            DungeonLead::StartSession(tankAI, group,
+                                                      sim ? DungeonLeadSessionOrigin::Manual : DungeonLeadSessionOrigin::AutoCanary,
+                                                      sim, /*testMode*/ true);
             LOG_INFO("playerbots.dungeonlead",
                      "[DungeonLead][TestBotPool] party of {} assembled in map {} instance {} after {} ms - StartSession={}",
                      tank->GetName(), it->mapId, tank->GetInstanceId(), GetMSTimeDiffToNow(it->since), ok);
@@ -712,6 +724,19 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
         // a requested teleport is not an arrival (see PendingStart).
         PendingStart pending;
         pending.tank = tank.bot->GetGUID();
+        // ValidationSimPlayer (test tool): the healer (2) or the first dps (1) plays a player.
+        uint32 const simRole = sDungeonLeadConfig.dungeonLeadValidationSimPlayer;
+        if (simRole && members.size() > 2)
+        {
+            Candidate* sim = simRole == 2 ? &heal : members[2];
+            uint32 const base = sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                    ? sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                    : uint32(time(nullptr));
+            uint32 const seed = base ^ (uint32(sim->bot->GetGUID().GetCounter()) * 2654435761u);
+            DungeonLead::MarkSimulatedPlayer(sim->bot, seed);
+            pending.sim = sim->bot->GetGUID();
+            out << " [simulated player " << sim->bot->GetName() << " seed " << seed << "]";
+        }
         for (Candidate* c : members)
             pending.members.push_back(c->bot->GetGUID());
         pending.mapId = route->mapId;
@@ -769,6 +794,17 @@ std::string DungeonLead::ReleaseTestBot(std::string const& botName)
         }
         sRandomPlayerbotMgr.LogoutPlayerBot(it->guid);
     }
+
+    // A simulated player goes back to being a test bot.
+    if (Player* bot = ObjectAccessor::FindPlayer(it->guid))
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
+            if (DungeonLead::IsSimulatedPlayer(bot))
+            {
+                botAI->ChangeStrategy("-dungeon lead run back", BOT_STATE_DEAD);
+                botAI->ChangeStrategy("-stay", BOT_STATE_NON_COMBAT);
+                bot->RemovePlayerFlag(PLAYER_FLAGS_AFK);
+            }
+    DungeonLead::UnmarkSimulatedPlayer(it->guid.GetRawValue());
 
     // A party this bot was assembling for can no longer start.
     ObjectGuid const released = it->guid;

@@ -112,6 +112,7 @@ Most often changed:
 | `AiPlayerbot.DungeonLead.DebugDefault` | 0 | 1 = `startdungeon debug` on from the start |
 | `AiPlayerbot.DungeonLead.CanaryEnabled` | 0 | AutoBot Canary: take over bot-only LFG groups of allowed dungeons |
 | `AiPlayerbot.DungeonLead.RunBackOnFoot` | 1 | dead and straggling party bots come back on foot; 0 = put back by teleport as before (read at server start) |
+| `AiPlayerbot.DungeonLead.ValidationSimPlayer` | 0 | test tool: 1/2 = a validation party's first dps / healer plays a simulated player (`ValidationSimPlayerSeed`) |
 | `AiPlayerbot.DungeonLead.ValidationAutostart` | "" | LFG ids of a validation campaign started 2 min after server start |
 | `AiPlayerbot.DungeonLead.ValidationRepeat` | 1 | passes over a validation campaign's dungeon list; 0 = until stopped |
 

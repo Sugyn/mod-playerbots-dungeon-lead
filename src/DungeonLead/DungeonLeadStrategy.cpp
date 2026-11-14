@@ -16,6 +16,7 @@
 #include "Creature.h"
 #include "DungeonPartyState.h"
 #include "DungeonRunBack.h"
+#include "DungeonSimPlayer.h"
 #include "Playerbots.h"
 
 void DungeonLeadStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
@@ -110,6 +111,9 @@ float DungeonLeadRunBackMultiplier::GetValue(Action* action)
     bool const follow = name == "follow";
     if (!release && !corpseRun && !follow)
         return 1.0f;
+    // A simulated player (test tool) releases when its script says so, as a player decides.
+    if ((release || corpseRun) && DungeonLead::SimPlayerHoldsRelease(botAI->GetBot()))
+        return 0.0f;
     DungeonLead::RunBackGate const gate = DungeonLead::RunBackGateFor(botAI->GetBot());
     if (!gate.inSession)
         return 1.0f;
