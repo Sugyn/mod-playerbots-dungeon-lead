@@ -10,6 +10,7 @@
 #define PLAYERBOTS_DUNGEONTESTBOTPOOL_H
 
 #include "Common.h"
+#include "SharedDefines.h"
 
 #include <string>
 #include <vector>
@@ -57,10 +58,10 @@ namespace DungeonLead
     // happen asynchronously via TestBotPoolTick(); check TestBotPoolStatus() for progress. Returns
     // false (with a reason in outMessage) if no eligible offline character exists or all of them
     // are already leased.
-    // `partyTeam`: the faction of the party's first member (TeamId); its other members are of that
-    // faction only. TEAM_NEUTRAL (2): the first member - the faction with more free characters.
+    // `partyTeam`: the party's faction (TeamId, see ChooseTestPartyTeam) - only characters of that
+    // faction are taken. TEAM_NEUTRAL: any faction.
     bool AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr,
-                        int partyTeam = 2);
+                        int partyTeam = TEAM_NEUTRAL);
 
     // Dps variant: `classId` picks the class explicitly (CLASS_WARRIOR=1 .. CLASS_DRUID=11, same
     // ids the addclass command uses) since "Dps" alone doesn't determine one - useful for building
@@ -70,8 +71,12 @@ namespace DungeonLead
     // additionally verifies Polymorph (spell 118) is known before reporting Ready; other classes'
     // CC is not independently verified.
     bool AcquireDpsTestBot(uint8 classId, uint32 targetLevel, std::string& outMessage, std::string* outName = nullptr,
-                           int partyTeam = 2);
-    // The faction (TeamId) of a leased test bot, TEAM_NEUTRAL (2) when it has no lease.
+                           int partyTeam = TEAM_NEUTRAL);
+    // The faction (TeamId) for a new validation party of a tank, a healer and `dpsClasses`: the one
+    // whose free characters make more whole parties (the scarcest class decides), TEAM_NEUTRAL when
+    // neither makes one.
+    int ChooseTestPartyTeam(std::vector<uint8> const& dpsClasses);
+    // The faction (TeamId) of a leased test bot, TEAM_NEUTRAL when it has no lease.
     int TestBotTeam(std::string const& name);
 
     // Forms complete 5-bot parties directly out of every currently idle (`Ready` or `Leased`, not
