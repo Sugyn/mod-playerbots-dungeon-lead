@@ -2386,6 +2386,13 @@ namespace DungeonLeadKernel
     {
         return p == RunBackPhase::Released && !onInstanceMap;
     }
+
+    // A validation party is of one faction: its first member takes the faction with more characters
+    // of its class still free (true = Alliance), so both factions' pools are used.
+    inline bool ChoosePartyTeam(uint32_t freeAlliance, uint32_t freeHorde)
+    {
+        return freeAlliance >= freeHorde;
+    }
 }
 
 #endif

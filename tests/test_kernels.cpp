@@ -1817,6 +1817,13 @@ namespace
         Check(ValidationRefills(500, 0), "repeat 0: also after many passes");
     }
 
+    void TestPartyTeam()
+    {
+        Check(ChoosePartyTeam(10, 3), "more free Alliance characters: Alliance");
+        Check(!ChoosePartyTeam(3, 10), "more free Horde characters: Horde");
+        Check(ChoosePartyTeam(5, 5), "a tie: Alliance");
+    }
+
     void TestLeaderOffGround()
     {
         Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
@@ -2101,6 +2108,7 @@ int main()
     TestMoonRelease();
     TestMasterGate();
     TestLeaderOffGround();
+    TestPartyTeam();
     TestRunBack();
     TestLivenessWaitsForPlayer();
     TestValidationRefill();
