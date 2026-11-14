@@ -24,8 +24,44 @@ jobs:
       - name: Kernel and replay tests
         run: bash tools/run_tests.sh
 
+  changes:
+    name: Detect build-relevant changes
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        # The compile job runs only for changes under src/, conf/, CMake files or this workflow.
+        # It is skipped (not left out) otherwise, so it still reports a result to branch protection.
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          base="$PUSH_BEFORE"
+          if [ "$EVENT" = "pull_request" ]; then base="$PR_BASE"; fi
+          if [ "$EVENT" = "workflow_dispatch" ] || [ -z "$base" ] \
+             || [ "$base" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$base" "$HEAD")
+          echo "$files"
+          if echo "$files" | grep -qE '^(src/|conf/|\.github/workflows/ci\.yml$)|(^|/)CMakeLists\.txt$|\.cmake$'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
   compile:
     name: Compile against pinned revisions
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
