@@ -262,6 +262,23 @@ namespace DungeonLeadKernel
         int offender = -1;  // index into PartyFacts::members for MemberDead/MemberLost/Fragmented/PartySpread
     };
 
+    // Whether the leader's master is someone the party waits for: a real player (or a player's
+    // self-bot) who asked for the session. mod-playerbots can make another bot of the group a
+    // bot's master (it picks a new master when it thinks the old one left); that bot is party,
+    // not master, and a session nobody asked for (validation, canary) has no master at all.
+    inline bool MasterGatesParty(bool sessionRequestedByPlayer, bool masterIsBot)
+    {
+        return sessionRequestedByPlayer && !masterIsBot;
+    }
+
+    // Only a session the AutoBot Canary started on its own has nobody to wait for; every other
+    // origin (the chat command and any later way a player starts a run) keeps its real master.
+    // Readiness evaluated outside a session counts as requested by a player.
+    inline bool SessionRequestedByPlayer(bool hasSession, bool autoCanary)
+    {
+        return !hasSession || !autoCanary;
+    }
+
     inline bool MasterUnavailable(PartyFacts const& f)
     {
         MasterFacts const& m = f.master;
@@ -769,6 +786,21 @@ namespace DungeonLeadKernel
         return r;
     }
 
+    // A boss with several spawn points (one alive per instance): arrived at one where nothing of it
+    // is seen, alive or dead, the walk moves on to the next point instead of waiting there.
+    inline bool NextSpawnSpot(uint32_t foundAtSpot, size_t spotIndex, size_t spotCount)
+    {
+        return foundAtSpot == 0 && spotIndex + 1 < spotCount;
+    }
+
+    // An optional named mob none of whose spawn points has a living creature in the instance is
+    // skipped at once (the instance holds all its creatures from the start). A mandatory one is
+    // never skipped this way; nor a mob whose spawn points are unknown.
+    inline bool SkipAbsentOptional(bool optional, bool spawnPointsKnown, bool aliveInInstance)
+    {
+        return optional && spawnPointsKnown && !aliveInInstance;
+    }
+
     inline PackState DecidePackState(PackState prev, PackObservation const& o)
     {
         if (prev == PackState::Cleared || prev == PackState::Skipped)
@@ -783,6 +815,19 @@ namespace DungeonLeadKernel
             return PackState::Cleared;  // only corpses left
         // Nothing in range: an engaged pack may just have been pulled out of probe range.
         return prev == PackState::Engaged ? PackState::Engaged : PackState::Unknown;
+    }
+
+    // A route creature that died away from its spot (it ran for help into another fight, or joined
+    // one as an add) leaves nothing at the spot once its corpse is gone, and the step would wait
+    // for a target that no longer exists. A remembered kill of an expected-entry unit spawned at
+    // the pack's spot settles it - only when nothing alive of the pack was seen, the pack is not
+    // being fought, and the leader is close enough for the probe to have seen living members, so
+    // a partly killed pack is never skipped.
+    constexpr float kRememberedKillTrustRange = 100.0f;
+
+    inline bool RememberedKillClears(bool killedAtSpot, bool packEngaged, uint32_t aliveSeen, float leaderDistToPack)
+    {
+        return killedAtSpot && !packEngaged && aliveSeen == 0 && leaderDistToPack <= kRememberedKillTrustRange;
     }
 
     // ---------------------------------------------------------------------------------------
@@ -995,6 +1040,14 @@ namespace DungeonLeadKernel
     // A new CC target must be (nearly) untouched: crowd-controlling a mob the party has already
     // half killed only stops the party from finishing it.
     constexpr uint8_t kCcMinHealthPct = 70;
+
+    // Whether a moon that has not been crowd controlled is taken off now. The absolute ceiling
+    // always ends it; the shorter grace window does not while a party bot is casting a crowd
+    // control spell at the target - releasing then turns a landing CC into a kill target.
+    inline bool ReleaseUnlandedMoon(bool graceExpired, bool absoluteExpired, bool ccCastInProgress)
+    {
+        return absoluteExpired || (graceExpired && !ccCastInProgress);
+    }
 
     struct TargetPlan
     {
@@ -1333,6 +1386,24 @@ namespace DungeonLeadKernel
     // stands normally must not defer it forever).
     constexpr uint32_t kEscalationDeferMaxMs = 30000;
     enum class EscalationGate : uint8_t { Escalate, Defer, LeaderToLastGood };
+
+    // Whether the leader is off the ground (inside the rock). The map height lookup has holes - it
+    // finds no ground at all in some tunnels - so a leader that stands on the navmesh is on the
+    // ground whatever the height lookup says.
+    inline bool LeaderOffGround(bool heightSaysOff, bool onNavmesh)
+    {
+        return heightSaysOff && !onNavmesh;
+    }
+
+    // The walk's "no path" fallback to an earlier route stop: only a stop at least this far away.
+    // Next to the stop the walk came from, going back there loops (the path onward is missing, not
+    // the way back); the forward probe search runs instead.
+    constexpr float kRouteWaypointFallbackMinDistance = 40.0f;
+
+    inline bool RouteWaypointFallbackUsable(float distToStop)
+    {
+        return distToStop >= kRouteWaypointFallbackMinDistance;
+    }
 
     inline EscalationGate DecideEscalationGate(bool leaderOffGround, uint32_t msDeferred, bool haveLastGood)
     {

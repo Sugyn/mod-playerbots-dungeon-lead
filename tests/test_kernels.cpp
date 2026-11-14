@@ -509,6 +509,11 @@ namespace
         Check(DecidePackState(PackState::Engaged, Seen(0, 0, 0)) == PackState::Engaged,
               "engaged pack pulled out of probe range stays Engaged");
         Check(DecidePackState(PackState::Available, Seen(0, 0, 0)) == PackState::Unknown, "available pack gone -> Unknown");
+        Check(RememberedKillClears(true, false, 0, 40.0f), "killed away from its spot, nothing alive there, near -> done");
+        Check(!RememberedKillClears(true, false, 1, 40.0f), "a remembered kill never clears a pack with a living member");
+        Check(!RememberedKillClears(true, true, 0, 40.0f), "a pack being fought is not settled by memory");
+        Check(!RememberedKillClears(true, false, 0, 140.0f), "too far for the probe to have seen the living members");
+        Check(!RememberedKillClears(false, false, 0, 10.0f), "no remembered kill at the spot");
         PackObservation remembered = Seen(0, 0, 0);
         remembered.rememberedKilled = true;
         Check(DecidePackState(PackState::Unknown, remembered) == PackState::Cleared, "instance kill memory -> Cleared");
@@ -1635,6 +1640,50 @@ namespace
         Check(w.Summarize().count == 0, "reset starts a new window");
     }
 
+    void TestMoonRelease()
+    {
+        Check(!ReleaseUnlandedMoon(false, false, false), "inside the grace window the moon stays");
+        Check(ReleaseUnlandedMoon(true, false, false), "grace over, nobody casting: release");
+        Check(!ReleaseUnlandedMoon(true, false, true), "grace over but a CC cast is on the way: keep");
+        Check(ReleaseUnlandedMoon(true, true, true), "the absolute ceiling ends it even mid-cast");
+        Check(ReleaseUnlandedMoon(false, true, false), "the absolute ceiling alone ends it");
+    }
+
+    void TestMasterGate()
+    {
+        Check(MasterGatesParty(true, false), "a player who asked for the session is waited for");
+        Check(!MasterGatesParty(true, true), "a bot that mod-playerbots made master is not");
+        Check(!MasterGatesParty(false, false), "a session nobody asked for has no master");
+        Check(SessionRequestedByPlayer(false, false), "readiness outside a session waits for the player");
+        Check(SessionRequestedByPlayer(true, false), "a session a player started keeps its master");
+        Check(!SessionRequestedByPlayer(true, true), "an AutoBot Canary session has no master");
+    }
+
+    void TestLeaderOffGround()
+    {
+        Check(!LeaderOffGround(false, false), "height lookup finds the ground under the leader");
+        Check(!LeaderOffGround(true, true), "no height in a tunnel, but on the navmesh: on the ground");
+        Check(LeaderOffGround(true, false), "no height and off the navmesh: inside the rock");
+    }
+
+    void TestSpawnSpots()
+    {
+        Check(NextSpawnSpot(0, 0, 4), "nothing at the first of four points: go on");
+        Check(!NextSpawnSpot(1, 0, 4), "found there (alive or a corpse): stay");
+        Check(!NextSpawnSpot(0, 3, 4), "the last point: no further point, the normal timeout applies");
+        Check(!NextSpawnSpot(0, 0, 0), "a single-spawn boss has no points to walk");
+        Check(SkipAbsentOptional(true, true, false), "an optional rare that did not spawn is skipped at once");
+        Check(!SkipAbsentOptional(true, true, true), "alive somewhere in the instance: go for it");
+        Check(!SkipAbsentOptional(false, true, false), "a boss is never skipped this way");
+        Check(!SkipAbsentOptional(true, false, false), "spawn points unknown (a trash entry): the normal walk");
+    }
+
+    void TestRouteWaypointFallback()
+    {
+        Check(!RouteWaypointFallbackUsable(20.0f), "the stop the walk just came from is not a fallback");
+        Check(RouteWaypointFallbackUsable(120.0f), "an earlier stop far away (after a wipe) is");
+    }
+
     // Step walk limit: consecutive walk ticks add up, a gap (fight, wait, pause) does not; an
     // oscillation of 16 s walks every 18 s reaches 600 s in ~11 minutes.
     // Only "on" strategies the class can create are owned (warriors have no "cc").
@@ -1781,6 +1830,11 @@ int main()
     TestEventCreature();
     TestDurationWindow();
     TestStepWalkAndAvailability();
+    TestMoonRelease();
+    TestMasterGate();
+    TestLeaderOffGround();
+    TestSpawnSpots();
+    TestRouteWaypointFallback();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

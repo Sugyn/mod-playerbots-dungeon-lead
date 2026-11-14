@@ -33,6 +33,16 @@ struct DungeonRouteStep
     // Door rows: the world gameobject spawn at (x, y, z), resolved once at load; 0 = none found.
     // Lets a door that is gone be told apart from bad data (WalkDoorStep).
     uint32 doorSpawnId = 0;
+    // Spawn points of the row's creature, the row's own first and the rest nearest first, resolved
+    // once at load: for a boss with several (a pooled spawn, one alive per instance), and for an
+    // optional named mob with at most a few (to tell whether it is in the instance at all).
+    // Empty otherwise.
+    struct SpawnSpot
+    {
+        uint32 spawnId;
+        float x, y, z;
+    };
+    std::vector<SpawnSpot> spawnSpots;
 
     bool HasPosition() const { return entry != 0 && !(x == 0.f && y == 0.f && z == 0.f); }
     bool IsWalkable() const
@@ -233,6 +243,7 @@ struct DungeonLeadState
     bool farFromMasterTold = false;  // one-shot "We're waiting for you!" until the player catches up
     std::string spreadOffenderTold;  // name of the last bot we pinged about for a too-spread group, "" if none
     int32 announcedStep = -1;        // one-shot "heading to X" per step, not spammed every tick
+    uint8 spotIndex = 0;             // which of the step's spawnSpots the walk is on (0 = the row's)
     bool arrivedTold = false;        // one-shot "reached X" - doesn't by itself advance the route
     uint32 arrivedTs = 0;            // when arrivedTold was set; used to give up if nothing is ever found there
     uint32 packId = 0;               // DungeonPack::id of the pack being worked on (0 = none)
@@ -521,6 +532,12 @@ public:
     // for as long as the process runs. Harmless to call for an instance id that was never marked.
     void ClearInstance(uint32 instanceId);
 
+    // Deaths of route creatures in the party's fights, by spawn (home) position, per instance -
+    // a unit that died away from its spot still settles its step (DungeonLeadKernel::
+    // RememberedKillClears). Bounded per instance.
+    void RememberKill(uint32 instanceId, uint32 entry, float x, float y, float z);
+    bool KilledNear(uint32 instanceId, uint32 entry, float x, float y, float z, float radius);
+
 private:
     void EnsureLoaded();
 
@@ -531,6 +548,12 @@ private:
     uint32 routeRows = 0;
     std::unordered_map<ObjectGuid, DungeonLeadState> states;
     std::unordered_map<uint32, std::unordered_set<uint32>> killedByInstance;
+    struct RememberedKill
+    {
+        uint32 entry;
+        float x, y, z;
+    };
+    std::unordered_map<uint32, std::vector<RememberedKill>> killsByInstance;
     std::unordered_map<uint32, Entrance> entranceByLfg;
 };
 

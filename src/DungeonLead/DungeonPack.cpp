@@ -21,12 +21,10 @@ namespace
     // How far from the bot the grid search reaches, and how far from the pack position a creature
     // may stand and still count as part of it - the same 150 yd the route walk uses.
     constexpr float kPackProbeRange = 150.0f;
-    // A unit spawned this close to the pack's spot is part of it (plus the nearest one, see
-    // DungeonLeadKernel::ResolvePack); farther ones with the same entry belong to another group.
-    constexpr float kPackMemberRadius = 12.0f;
+    constexpr float kPackMemberRadius = DungeonPacks::kMemberRadius;
 }
 
-DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)
+DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex, uint32_t spotIndex)
 {
     DungeonPack pack;
     if (stepIndex >= route.steps.size())
@@ -44,6 +42,12 @@ DungeonPack DungeonPacks::ForStep(DungeonRoute const& route, uint32_t stepIndex)
     pack.x = step.x;
     pack.y = step.y;
     pack.z = step.z;
+    if (spotIndex < step.spawnSpots.size())
+    {
+        pack.x = step.spawnSpots[spotIndex].x;
+        pack.y = step.spawnSpots[spotIndex].y;
+        pack.z = step.spawnSpots[spotIndex].z;
+    }
     pack.probeRadius = kPackProbeRange;
     pack.bossPack = type == DungeonRouteNodeType::Boss;
     pack.optional = !step.IsMandatory();

@@ -765,6 +765,14 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
             // "not found". Bosses only (EntryKillMemoryEligible) - trash steps share entries across
             // packs.
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
+            {
+                // Any route creature, by its spawn spot (the static spawn data - the home position
+                // moves with patrols and pulls): a step whose unit died away from it still knows it
+                // is done (TrackPack). A summoned unit has no spawn spot.
+                CreatureData const* spawn = c->GetSpawnId() ? sObjectMgr->GetCreatureData(c->GetSpawnId()) : nullptr;
+                if (spawn && std::any_of(route->steps.begin(), route->steps.end(),
+                                         [&](DungeonRouteStep const& s) { return s.entry == c->GetEntry(); }))
+                    sDungeonRouteMgr.RememberKill(st.instanceId, c->GetEntry(), spawn->posX, spawn->posY, spawn->posZ);
                 for (uint32 i = 0; i < route->steps.size(); ++i)
                     if (EntryKillMemoryEligible(route->steps[i].NodeType()) && route->steps[i].entry == c->GetEntry() &&
                         !sDungeonRouteMgr.IsStepKilled(st.instanceId, c->GetEntry()))
@@ -774,6 +782,7 @@ void DungeonLead::ObserveCombatEvidence(PlayerbotAI* botAI, DungeonLeadState& st
                                       JsonLine().Str("name", route->steps[i].boss).Num("step", i)
                                           .Num("entry", uint32_t(c->GetEntry())).Bool("current_step", i == st.stepIndex).Done());
                     }
+            }
         }
     }
     if (attackers.empty() && !partyInCombat && !st.fightUnits.empty())
@@ -1169,6 +1178,30 @@ Creature* DungeonLead::FindBossNear(PlayerbotAI* botAI, float range)
     return best;
 }
 
+namespace
+{
+    // A party bot is casting a crowd control spell (one that applies the aura types
+    // Unit::HasBreakableByDamageCrowdControlAura() looks for) at `target` right now.
+    bool CcCastInProgress(Group* group, Creature* target)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* m = ref->GetSource();
+            if (!m || !m->IsInWorld() || !m->IsAlive() || m->GetMap() != target->GetMap() || !DungeonLead::IsBotActor(m))
+                continue;
+            Spell const* spell = m->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+            if (!spell || spell->m_targets.GetUnitTargetGUID() != target->GetGUID())
+                continue;
+            SpellInfo const* info = spell->m_spellInfo;
+            if (info->HasAura(SPELL_AURA_MOD_CONFUSE) || info->HasAura(SPELL_AURA_MOD_FEAR) ||
+                info->HasAura(SPELL_AURA_MOD_STUN) || info->HasAura(SPELL_AURA_MOD_ROOT) ||
+                info->HasAura(SPELL_AURA_TRANSFORM))
+                return true;
+        }
+        return false;
+    }
+}
+
 void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
@@ -1206,6 +1239,7 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         {
             LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC landed on {}", bot->GetName(), c->GetName());
             DungeonLead::RecordEvent(botAI, "cc_landed", c->GetName());
+            DungeonTargetManager::RecordCcOutcome(botAI, c, "landed", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
             st.ccLandedTold = true;
         }
         st.ccMarkedTs = getMSTime();
@@ -1219,11 +1253,14 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
     // never aggros onto anyone (picked by proximity to the boss, not confirmed to actually be part
     // of the pull) would hold the grace window open forever under the combat-aware wait below,
     // permanently excluding it from normal DPS targeting.
-    if (GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS)
+    bool const absoluteExpired =
+        GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs) >= sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds * IN_MILLISECONDS;
+    if (absoluteExpired)
     {
         LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed within the absolute ceiling ({}s since marked), releasing mark",
                  bot->GetName(), c->GetName(), sDungeonLeadConfig.dungeonLeadCcAbsoluteTimeoutSeconds);
         DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
+        DungeonTargetManager::RecordCcOutcome(botAI, c, "released_absolute", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
         if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
             group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
         st.ccFailed.push_back(st.ccGuid);
@@ -1247,13 +1284,16 @@ void DungeonLead::CheckCcMark(PlayerbotAI* botAI)
         return;
     }
 
-    if (getMSTime() - st.ccMarkedTs < sDungeonLeadConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS)
-        return;  // still within the grace window, give the CC class a chance to act
+    bool const graceExpired =
+        getMSTime() - st.ccMarkedTs >= sDungeonLeadConfig.dungeonLeadCcTimeoutSeconds * IN_MILLISECONDS;
+    if (!DungeonLeadKernel::ReleaseUnlandedMoon(graceExpired, absoluteExpired, CcCastInProgress(group, c)))
+        return;  // still within the grace window, or a CC cast at it is under way
 
     // nobody managed to land CC on it (no CC-capable class in the group, spell unusable on this
     // creature, on cooldown, ...): stop excluding it from normal DPS targeting
     LOG_INFO("playerbots.dungeonlead", "[DungeonLead] {} CC on {} never landed, releasing mark", bot->GetName(), c->GetName());
     DungeonLead::RecordEvent(botAI, "cc_released", c->GetName());
+    DungeonTargetManager::RecordCcOutcome(botAI, c, "released_timeout", GetMSTimeDiffToNow(st.ccMarkedAbsoluteTs));
     if (group->GetTargetIcon(RtiTargetValue::moonIndex) == st.ccGuid)
         group->SetTargetIcon(RtiTargetValue::moonIndex, bot->GetGUID(), ObjectGuid::Empty);
     st.ccFailed.push_back(st.ccGuid);
@@ -1648,6 +1688,10 @@ void DungeonLead::GuardActiveSessions()
 
         // Death, wipe recovery and its give-up live in the brain (WipeRecovery state).
         DungeonPartySnapshot const party = DungeonPartyState::Evaluate(botAI);
+        // The moon's lifecycle runs here, every pass: as an action of the leader's own AI it
+        // competes with the tank's combat actions and in a fight rarely gets a turn, so landings
+        // went unseen and releases came late or early.
+        DungeonLead::CheckCcMark(botAI);
         DungeonTargetManager::Update(botAI);
         DungeonPullController::Update(botAI, party);
         // The pull controller can end the session (out of attempts -> FailObjective -> Stop). The
@@ -2390,6 +2434,26 @@ DungeonPackSighting DungeonLead::TrackPack(PlayerbotAI* botAI, DungeonLeadState&
     DungeonPackSighting sighting =
         DungeonPacks::Observe(botAI->GetBot(), pack, st.instanceId, samePack ? st.packLocked : noLock);
     DungeonLeadKernel::PackState const prev = samePack ? st.packState : DungeonLeadKernel::PackState::Unknown;
+    if (!sighting.observation.rememberedKilled && prev != DungeonLeadKernel::PackState::Cleared &&
+        prev != DungeonLeadKernel::PackState::Skipped)
+    {
+        bool killedAtSpot = false;
+        for (uint32 entry : pack.expectedEntries)
+            killedAtSpot = killedAtSpot ||
+                           sDungeonRouteMgr.KilledNear(st.instanceId, entry, pack.x, pack.y, pack.z, DungeonPacks::kMemberRadius);
+        if (DungeonLeadKernel::RememberedKillClears(killedAtSpot, prev == DungeonLeadKernel::PackState::Engaged,
+                                                    sighting.observation.alive,
+                                                    botAI->GetBot()->GetExactDist(pack.x, pack.y, pack.z)))
+        {
+            sighting.observation.rememberedKilled = true;
+            DungeonLead::RecordEventV2(botAI, "pack_killed_elsewhere",
+                                       DungeonLeadKernel::JsonLine()
+                                           .Num("pack_id", uint32_t(pack.id))
+                                           .Str("name", pack.name)
+                                           .Num("entry", uint32_t(pack.expectedEntries.empty() ? 0 : pack.expectedEntries.front()))
+                                           .Done());
+        }
+    }
     SetPackState(botAI, st, pack, DungeonLeadKernel::DecidePackState(prev, sighting.observation));
 
     // Once the pack itself is fighting, its membership is fixed - a neighbouring group with the
@@ -2504,6 +2568,7 @@ void DungeonLead::ResetStepState(DungeonLeadState& st)
     st.anchorSet = false;
     st.targetPrimary = st.targetSecondary = st.targetCc = ObjectGuid::Empty;
     st.arrivedTold = false;
+    st.spotIndex = 0;
     st.bestDist = 0.f;
     st.stuckTs = 0;
     st.stuckAttempts = 0;
@@ -2543,7 +2608,7 @@ bool DungeonLead::FailObjective(PlayerbotAI* botAI, DungeonLeadState& st, Dungeo
         {
             if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
             {
-                DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+                DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
                 if (pack.Exists())
                     SetPackState(botAI, st, pack, DungeonLeadKernel::PackState::Skipped);
             }
@@ -2872,9 +2937,41 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
     if (step.kind == DungeonRouteKind::Talk)
         return WalkTalkStep(st, dest, step);
 
+    // A boss with several spawn points: go to the one whose spawn is alive in this instance, when
+    // the map has it loaded; otherwise the walk visits the points nearest first (below).
+    bool spawnLive = false;
+    if (!step.spawnSpots.empty())
+    {
+        Map::CreatureBySpawnIdContainer& store = bot->GetMap()->GetCreatureBySpawnIdStore();
+        for (uint32 i = 0; i < step.spawnSpots.size(); ++i)
+        {
+            auto const range = store.equal_range(step.spawnSpots[i].spawnId);
+            bool const live = std::any_of(range.first, range.second,
+                                          [](auto const& kv) { return kv.second && kv.second->IsAlive(); });
+            spawnLive = spawnLive || live;
+            if (live && i != st.spotIndex)
+            {
+                st.spotIndex = uint8(i);
+                st.arrivedTold = false;
+                DungeonLead::RecordEventV2(botAI, "spawn_spot",
+                              DungeonLeadKernel::JsonLine()
+                                  .Str("name", step.boss)
+                                  .Num("step", uint32_t(st.stepIndex))
+                                  .Num("spot", uint32_t(i))
+                                  .Num("spots", uint32_t(step.spawnSpots.size()))
+                                  .Str("how", "live")
+                                  .Done());
+                break;
+            }
+        }
+    }
+    if (st.spotIndex < step.spawnSpots.size())
+        dest = WorldPosition(bot->GetMapId(), step.spawnSpots[st.spotIndex].x, step.spawnSpots[st.spotIndex].y,
+                             step.spawnSpots[st.spotIndex].z, 0.f);
+
     // Pack nodes (pull/boss/interaction) advance only once their pack is Cleared (or Skipped
     // below) - never just because the tank reached the coordinate. Travel nodes have no pack.
-    DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex);
+    DungeonPack const pack = DungeonPacks::ForStep(*route, st.stepIndex, st.spotIndex);
     DungeonPackSighting sighting;
     if (pack.Exists())
     {
@@ -2897,6 +2994,23 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         return true;
     }
 
+    // An optional named mob that is not alive anywhere in this instance (a rare that did not spawn,
+    // or one that died out of the party's sight): nothing to walk to or wait for. Instances load all
+    // their grids, so the spawn store holds every creature the instance has.
+    if (DungeonLeadKernel::SkipAbsentOptional(!step.IsMandatory(), !step.spawnSpots.empty(), spawnLive))
+    {
+        DungeonLead::RecordEventV2(botAI, "objective_absent",
+                                   DungeonLeadKernel::JsonLine()
+                                       .Str("name", step.boss)
+                                       .Num("step", uint32_t(st.stepIndex))
+                                       .Num("entry", uint32_t(step.entry))
+                                       .Num("spots", uint32_t(step.spawnSpots.size()))
+                                       .Done());
+        DungeonLead::FailObjective(botAI, st, step, DungeonFailureDomain::Encounter, DungeonFailureReason::ObjectiveTimeout,
+                                   "absent");
+        return true;
+    }
+
     float dist = bot->GetExactDist(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
     if (dist <= sDungeonLeadConfig.dungeonLeadArriveDistance)
     {
@@ -2915,6 +3029,20 @@ bool DungeonLeadNextAction::Execute(Event /*event*/)
         // above confirms an actual kill on a later tick. The one exception: if nothing at all shows
         // up here (not even a corpse) after a while, there is nothing left to confirm a kill on, so
         // give up and move on rather than parking here forever.
+        if (DungeonLeadKernel::NextSpawnSpot(sighting.observation.found, st.spotIndex, step.spawnSpots.size()))
+        {
+            ++st.spotIndex;
+            st.arrivedTold = false;
+            DungeonLead::RecordEventV2(botAI, "spawn_spot",
+                          DungeonLeadKernel::JsonLine()
+                              .Str("name", step.boss)
+                              .Num("step", uint32_t(st.stepIndex))
+                              .Num("spot", uint32_t(st.spotIndex))
+                              .Num("spots", uint32_t(step.spawnSpots.size()))
+                              .Str("how", "next")
+                              .Done());
+            return true;
+        }
         if (!st.arrivedTold)
         {
             st.arrivedTold = true;
@@ -3805,8 +3933,9 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
 
     // No usable path to the step at all - typically far away, e.g. walking back from the entrance
     // after a wipe. Walk the route's own earlier stops instead: the latest one a path reaches (and
-    // that is not where the leader stands) brings it closest along the route; from there the next
-    // stretch opens up. Not more often than every 3 s.
+    // that is not near where the leader stands - a stop the walk just came from leads back into the
+    // same dead end) brings it closest along the route; from there the next stretch opens up. Not
+    // more often than every 3 s.
     if (DungeonRoute const* route = st.lfgId ? sDungeonRouteMgr.GetByLfgId(st.lfgId) : nullptr)
     {
         if (!st.routeWaypointTs || GetMSTimeDiffToNow(st.routeWaypointTs) >= 3000)
@@ -3815,7 +3944,8 @@ bool DungeonLeadNextAction::MoveRouteTo(DungeonLeadState& st, WorldPosition cons
             for (int j = int(std::min<size_t>(st.stepIndex, route->steps.size())) - 1; j >= 0; --j)
             {
                 DungeonRouteStep const& w = route->steps[j];
-                if (!w.HasPosition() || bot->GetExactDist(w.x, w.y, w.z) < 10.0f)
+                if (!w.HasPosition() ||
+                    !DungeonLeadKernel::RouteWaypointFallbackUsable(bot->GetExactDist(w.x, w.y, w.z)))
                     continue;
                 PathGenerator wp(bot);
                 wp.CalculatePath(w.x, w.y, w.z);
