@@ -251,13 +251,20 @@ void DungeonLead::SimPlayerTeleported(Player* player, uint32_t mapId, float x, f
     PlayerbotAI* leaderAI = leader ? GET_PLAYERBOT_AI(leader) : nullptr;
     if (!leaderAI || !DungeonLead::IsOn(leaderAI))
         return;  // outside a session: entering or leaving the dungeon
-    LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] simulated player {} teleported during a session: map {} -> {}",
-              player->GetName(), player->GetMapId(), mapId);
+    // Accepting a resurrection moves a player to where it was cast (the core teleports before it
+    // revives, as for a client's accept) - the player's own step, not the module's.
+    bool const byResurrection = !player->IsAlive() && player->isResurrectRequested();
+    if (byResurrection)
+        LOG_INFO("playerbots.dungeonlead", "[DungeonLead] simulated player {} accepted a resurrection: map {} -> {}",
+                 player->GetName(), player->GetMapId(), mapId);
+    else
+        LOG_ERROR("playerbots.dungeonlead", "[DungeonLead] simulated player {} teleported during a session: map {} -> {}",
+                  player->GetName(), player->GetMapId(), mapId);
     DungeonLead::RecordEvent(leaderAI, "sim_player", player->GetName() + " teleported",
                              DungeonLeadKernel::JsonLine()
                                  .Str("who", player->GetName())
                                  .Str("action", "teleported")
-                                 .Str("phase", "observed")
+                                 .Str("phase", byResurrection ? "resurrection" : "observed")
                                  .Num("from_map", player->GetMapId())
                                  .Num("to_map", mapId)
                                  .Num("to_x", x)
