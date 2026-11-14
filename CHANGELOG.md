@@ -8,7 +8,7 @@ while the module is in alpha.
 
 ### Changed
 
-- `AiPlayerbot.DungeonLead.ValidationParallel` accepts up to 30 parallel validation parties (was 10).
+- `AiPlayerbot.DungeonLead.ValidationParallel` accepts up to 50 parallel validation parties (was 10). The test bot pool needs 2 warriors, 1 priest, 1 mage and 1 rogue per party.
 
 ### Fixed
 
