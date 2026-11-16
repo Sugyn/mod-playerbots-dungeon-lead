@@ -904,26 +904,72 @@ namespace
         {
             RecoveryTimers w;
             ObserveRecovery(w, RecoveryReason::MasterUnavailable, 1000);
-            Check(PlayerWaitClock(w, true, 1000) == 0, "player wait starts");
+            Check(PlayerWaitClock(w, true, false, 1000) == 0, "player wait starts");
             ObserveRecovery(w, RecoveryReason::MasterTooFar, 301000);
-            Check(PlayerWaitClock(w, true, 301000) == 300000, "dead, then alive far away: the same wait goes on");
-            Check(DecidePlayerWait(PlayerWaitClock(w, true, 1000 + kPlayerWaitMaxMs)) == RecoveryStep::Abort,
+            Check(PlayerWaitClock(w, true, false, 301000) == 300000, "dead, then alive far away: the same wait goes on");
+            Check(DecidePlayerWait(PlayerWaitClock(w, true, false, 1000 + kPlayerWaitMaxMs)) == RecoveryStep::Abort,
                   "switching reasons does not restart the wait");
             RecoveryTimers v;
             ObserveRecovery(v, RecoveryReason::MasterUnavailable, 1000);
-            PlayerWaitClock(v, true, 1000);
-            PlayerWaitClock(v, true, 301000);
+            PlayerWaitClock(v, true, false, 1000);
+            PlayerWaitClock(v, true, false, 301000);
             ObserveRecovery(v, RecoveryReason::PersistentWait, 302000);
-            PlayerWaitClock(v, false, 302000);
+            PlayerWaitClock(v, false, false, 302000);
             Check(DecideRecovery(v.reason, 302000 - v.reasonSince, 302000 - v.episodeSince, p) == RecoveryStep::Act,
                   "after a 5 min player wait a drink wait gets its own windows, not an exhausted episode");
             ObserveRecovery(v, RecoveryReason::MasterTooFar, 400000);
-            Check(PlayerWaitClock(v, true, 400000) == 399000,
+            Check(PlayerWaitClock(v, true, false, 400000) == 399000,
                   "a wait broken by another reason goes on: one bound per absence");
             ObserveRecovery(v, RecoveryReason::None, 403000);
             Check(v.playerWaitSince == 0, "the player back: the wait clock ends");
             ObserveRecovery(v, RecoveryReason::MasterUnavailable, 500000);
-            Check(PlayerWaitClock(v, true, 500000) == 0, "a new absence: a new wait");
+            Check(PlayerWaitClock(v, true, false, 500000) == 0, "a new absence: a new wait");
+        }
+        // the wait gives way: the following reason's windows start then, not at the start of the absence
+        {
+            RecoveryTimers w;
+            ObserveRecovery(w, RecoveryReason::MasterUnavailable, 1000);
+            PlayerWaitClock(w, true, false, 1000);
+            PlayerWaitClock(w, true, false, 151000);
+            // online again, not yet back in the group: the same reason, now under the windows
+            PlayerWaitClock(w, false, false, 152000);
+            Check(DecideRecovery(w.reason, 152000 - w.reasonSince, 152000 - w.episodeSince, p) == RecoveryStep::Act,
+                  "after a 150 s logout the player outside the group gets the full windows, not an abort");
+            Check(DecideRecovery(w.reason, 152000 + p.actMs + p.escalateMs - w.reasonSince,
+                                 152000 + p.actMs + p.escalateMs - w.episodeSince, p) == RecoveryStep::Abort,
+                  "a player who stays out of the group: the windows still end the session");
+        }
+        // the player present for a minute while a bot recovery keeps the episode open: the next absence is a new wait
+        {
+            RecoveryTimers w;
+            MasterFacts here;
+            here.assigned = here.online = here.alive = here.inGroup = here.sameMap = true;
+            Check(PlayerPresent(here), "online, alive, in the group, on the map: present");
+            MasterFacts dead = here;
+            dead.alive = false;
+            Check(!PlayerPresent(dead), "a dead player is not present");
+            ObserveRecovery(w, RecoveryReason::MasterTooFar, 1000);
+            PlayerWaitClock(w, true, false, 1000);
+            ObserveRecovery(w, RecoveryReason::PartyFragmented, 61000);
+            PlayerWaitClock(w, false, true, 61000);
+            PlayerWaitClock(w, false, true, 100000);
+            Check(w.playerWaitSince == 1000, "present for less than a minute: still the same absence");
+            PlayerWaitClock(w, false, false, 110000);
+            PlayerWaitClock(w, false, true, 120000);
+            PlayerWaitClock(w, false, true, 179000);
+            Check(w.playerWaitSince == 1000, "presence broken: the minute starts again");
+            PlayerWaitClock(w, false, true, 180000);
+            Check(w.playerWaitSince == 0, "present for a minute: the wait ends");
+            ObserveRecovery(w, RecoveryReason::MasterUnavailable, 1000000);
+            Check(PlayerWaitClock(w, true, false, 1000000) == 0, "the next absence 16 min later: a new wait, not an abort");
+            RecoveryTimers v;
+            ObserveRecovery(v, RecoveryReason::MasterUnavailable, 1000);
+            PlayerWaitClock(v, true, false, 1000);
+            ObserveRecovery(v, RecoveryReason::PersistentWait, 100000);
+            PlayerWaitClock(v, false, false, 100000);
+            PlayerWaitClock(v, false, false, 300000);
+            ObserveRecovery(v, RecoveryReason::MasterUnavailable, 400000);
+            Check(PlayerWaitClock(v, true, false, 400000) == 399000, "another reason while the player is still away: the same wait");
         }
         Check(DecidePlayerWait(240000) == RecoveryStep::Act, "a player back from the graveyard after 4 min: still waited for");
         Check(DecidePlayerWait(kPlayerWaitMaxMs - 1) == RecoveryStep::Act, "inside the player wait: wait");

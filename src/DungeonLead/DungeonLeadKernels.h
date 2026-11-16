@@ -1374,6 +1374,7 @@ namespace DungeonLeadKernel
         bool relapse = false;     // the current reason resumed a recently cleared one
         uint32_t playerWaitSince = 0;  // the player has been away since (0 = not away; PlayerWaitClock)
         bool playerWaitEpisode = false;  // the last pass waited for the player
+        uint32_t playerBackSince = 0;    // the player has been present since (0 = not present)
         // Last cleared recovery, to recognise a relapse.
         RecoveryReason clearedReason = RecoveryReason::None;
         RecoveryStep clearedStep = RecoveryStep::None;
@@ -1419,6 +1420,7 @@ namespace DungeonLeadKernel
             t.relapse = false;
             t.playerWaitSince = 0;
             t.playerWaitEpisode = false;
+            t.playerBackSince = 0;
             return false;
         }
         // Same reason: the recovery goes on, even if the farthest member changes while it is still
@@ -1479,22 +1481,41 @@ namespace DungeonLeadKernel
         return step;
     }
 
+    // A player present this long (online, alive, in the group, on the leader's map) is back, even
+    // while another recovery keeps the episode open (a bot that keeps falling behind): the next
+    // absence is a new wait.
+    constexpr uint32_t kPlayerBackMs = 60000;
+
+    inline bool PlayerPresent(MasterFacts const& m)
+    {
+        return m.assigned && m.online && m.alive && m.inGroup && m.sameMap;
+    }
+
     // The player wait's own clock: one wait per absence of the player - across MasterUnavailable <->
     // MasterTooFar (dead, then alive at the graveyard, then on the way back) and across other
-    // reasons in between (a bot drinking meanwhile) - ended only when the player is back (no reason
-    // at all: ObserveRecovery clears it). While it lasts and when it gives way to another reason, the
-    // episode starts afresh: the wait must not use up the episode cap of what comes after it.
+    // reasons in between (a bot drinking meanwhile) - ended when the player is back: no reason at
+    // all (ObserveRecovery clears it), or the player present for kPlayerBackMs. When the wait gives
+    // way to anything else, that reason's windows and the episode start afresh: the wait must not
+    // use up the windows of what comes after it (a player online again but not yet back in the
+    // group, or one who left it, gets the full windows from that moment).
     // Returns the ms waited so far (0 while the current reason is not a wait for the player).
-    inline uint32_t PlayerWaitClock(RecoveryTimers& t, bool waitsForPlayer, uint32_t now)
+    inline uint32_t PlayerWaitClock(RecoveryTimers& t, bool waitsForPlayer, bool playerPresent, uint32_t now)
     {
         uint32_t const stamp = now ? now : 1;
         if (!waitsForPlayer)
         {
-            if (t.playerWaitEpisode)  // the wait just gave way: a fresh episode for what follows
-                t.episodeSince = stamp;
+            if (t.playerWaitEpisode)  // the wait just gave way: fresh windows for what follows
+                t.reasonSince = t.episodeSince = stamp;
             t.playerWaitEpisode = false;
+            if (!playerPresent)
+                t.playerBackSince = 0;
+            else if (!t.playerBackSince)
+                t.playerBackSince = stamp;
+            else if (stamp - t.playerBackSince >= kPlayerBackMs)
+                t.playerWaitSince = 0;
             return 0;
         }
+        t.playerBackSince = 0;
         if (!t.playerWaitSince)
             t.playerWaitSince = stamp;
         t.playerWaitEpisode = true;
