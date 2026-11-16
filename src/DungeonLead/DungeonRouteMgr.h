@@ -352,6 +352,7 @@ struct DungeonLeadState
     std::map<uint64, uint8> stragglerBrought;  // times each bot was brought to the leader (recovery escalation)
     std::map<uint64, DungeonRunBackEntry> runBack;  // party bots on their way back, by guid
     uint32 partyOutOfCombatSince = 0;               // the party's last fight ended (0 = in a fight)
+    uint32 teleportReturnTs = 0;                    // last return of a dead bot by teleport (RunBackOnFoot = 0)
     ObjectGuid stragglerGuid;          // the straggler whose stillness is timed (recovery, PartyFragmented)
     uint32 stragglerStillSince = 0;    // since when it has not moved (0 = moving / not timed)
     uint32 stragglerSeenTs = 0;        // last recovery pass that saw it as the offender

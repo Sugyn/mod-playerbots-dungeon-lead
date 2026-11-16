@@ -184,7 +184,8 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
         return it != st.stragglerBrought.end() && it->second >= DungeonLeadKernel::kMaxStragglerBrought;
     };
     bool const giveUpStraggler = observed == RecoveryReason::PartyFragmented && who && IsBotMember(who) && broughtOften(who);
-    if (observed == RecoveryReason::PartyFragmented && who && IsBotMember(who) && who->IsAlive() && !giveUpStraggler)
+    if (sDungeonLeadConfig.dungeonLeadRunBackOnFoot && observed == RecoveryReason::PartyFragmented && who &&
+        IsBotMember(who) && who->IsAlive() && !giveUpStraggler)
     {
         DungeonLead::OrderStragglerWalk(botAI, st, who);
         if (Group* group = bot->GetGroup())

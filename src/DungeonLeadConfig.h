@@ -85,6 +85,7 @@ public:
     uint32 dungeonLeadEventWaitSeconds;
     uint32 dungeonLeadValidationParallel;
     uint32 dungeonLeadValidationRepeat;
+    bool dungeonLeadRunBackOnFoot;
 
 private:
     static uint32 Bounded(char const* key, uint32 def, uint32 lo, uint32 hi)
@@ -163,6 +164,7 @@ private:
         dungeonLeadEventWaitSeconds = Bounded("AiPlayerbot.DungeonLead.EventWaitSeconds", 600, 60, 1800);
         dungeonLeadValidationParallel = Bounded("AiPlayerbot.DungeonLead.ValidationParallel", 3, 1, 50);
         dungeonLeadValidationRepeat = Bounded("AiPlayerbot.DungeonLead.ValidationRepeat", 1, 0, 1000);
+        dungeonLeadRunBackOnFoot = Bounded("AiPlayerbot.DungeonLead.RunBackOnFoot", 1, 0, 1) != 0;
         dungeonLeadValidationAutostart =
             sConfigMgr->GetOption<std::string>("AiPlayerbot.DungeonLead.ValidationAutostart", "");
         dungeonLeadStepWalkLimitSeconds = Bounded("AiPlayerbot.DungeonLead.StepWalkLimitSeconds", 600, 60, 3600);
