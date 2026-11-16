@@ -1375,6 +1375,7 @@ namespace DungeonLeadKernel
         uint32_t playerWaitSince = 0;  // the player has been away since (0 = not away; PlayerWaitClock)
         bool playerWaitEpisode = false;  // the last pass waited for the player
         uint32_t playerBackSince = 0;    // the player has been present since (0 = not present)
+        uint32_t playerBackSeen = 0;     // last pass that saw the player present
         // Last cleared recovery, to recognise a relapse.
         RecoveryReason clearedReason = RecoveryReason::None;
         RecoveryStep clearedStep = RecoveryStep::None;
@@ -1420,7 +1421,7 @@ namespace DungeonLeadKernel
             t.relapse = false;
             t.playerWaitSince = 0;
             t.playerWaitEpisode = false;
-            t.playerBackSince = 0;
+            t.playerBackSince = t.playerBackSeen = 0;
             return false;
         }
         // Same reason: the recovery goes on, even if the farthest member changes while it is still
@@ -1481,14 +1482,16 @@ namespace DungeonLeadKernel
         return step;
     }
 
-    // A player present this long (online, alive, in the group, on the leader's map) is back, even
-    // while another recovery keeps the episode open (a bot that keeps falling behind): the next
-    // absence is a new wait.
+    // A player back with the party this long (online, alive, in the group, within the leash) is
+    // back, even while another recovery keeps the episode open (a bot that keeps falling behind):
+    // the next absence is a new wait. The minute counts only passes that saw the player: a gap of
+    // more than kPlayerBackGapMs between them (a fight, a pause) starts it again.
     constexpr uint32_t kPlayerBackMs = 60000;
+    constexpr uint32_t kPlayerBackGapMs = 10000;
 
-    inline bool PlayerPresent(MasterFacts const& m)
+    inline bool PlayerPresent(PartyFacts const& f, ReadinessPolicy const& p)
     {
-        return m.assigned && m.online && m.alive && m.inGroup && m.sameMap;
+        return f.master.assigned && !MasterUnavailable(f) && !MasterTooFar(f, p);
     }
 
     // The player wait's own clock: one wait per absence of the player - across MasterUnavailable <->
@@ -1508,14 +1511,18 @@ namespace DungeonLeadKernel
                 t.reasonSince = t.episodeSince = stamp;
             t.playerWaitEpisode = false;
             if (!playerPresent)
-                t.playerBackSince = 0;
-            else if (!t.playerBackSince)
-                t.playerBackSince = stamp;
-            else if (stamp - t.playerBackSince >= kPlayerBackMs)
-                t.playerWaitSince = 0;
+                t.playerBackSince = t.playerBackSeen = 0;
+            else
+            {
+                if (!t.playerBackSince || stamp - t.playerBackSeen > kPlayerBackGapMs)
+                    t.playerBackSince = stamp;
+                t.playerBackSeen = stamp;
+                if (stamp - t.playerBackSince >= kPlayerBackMs)
+                    t.playerWaitSince = 0;
+            }
             return 0;
         }
-        t.playerBackSince = 0;
+        t.playerBackSince = t.playerBackSeen = 0;
         if (!t.playerWaitSince)
             t.playerWaitSince = stamp;
         t.playerWaitEpisode = true;

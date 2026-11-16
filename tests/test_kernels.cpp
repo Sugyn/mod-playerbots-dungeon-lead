@@ -939,29 +939,63 @@ namespace
                                  152000 + p.actMs + p.escalateMs - w.episodeSince, p) == RecoveryStep::Abort,
                   "a player who stays out of the group: the windows still end the session");
         }
-        // the player present for a minute while a bot recovery keeps the episode open: the next absence is a new wait
+        // the player back with the party for a minute while a bot recovery keeps the episode open: the next absence is a new wait
         {
+            ReadinessPolicy rp;
+            PartyFacts here;
+            here.hasGroup = true;
+            here.master.assigned = here.master.online = here.master.alive = here.master.inGroup = here.master.sameMap = true;
+            here.master.distance = rp.leash - 1.0f;
+            Check(PlayerPresent(here, rp), "online, alive, in the group, within the leash: present");
+            PartyFacts dead = here;
+            dead.master.alive = false;
+            Check(!PlayerPresent(dead, rp), "a dead player is not present");
+            PartyFacts far = here;
+            far.master.distance = rp.leash + 1.0f;
+            Check(!PlayerPresent(far, rp), "a player on the map beyond the leash is not present");
+            PartyFacts noMaster;
+            Check(!PlayerPresent(noMaster, rp), "no player: nobody present");
+
             RecoveryTimers w;
-            MasterFacts here;
-            here.assigned = here.online = here.alive = here.inGroup = here.sameMap = true;
-            Check(PlayerPresent(here), "online, alive, in the group, on the map: present");
-            MasterFacts dead = here;
-            dead.alive = false;
-            Check(!PlayerPresent(dead), "a dead player is not present");
             ObserveRecovery(w, RecoveryReason::MasterTooFar, 1000);
             PlayerWaitClock(w, true, false, 1000);
             ObserveRecovery(w, RecoveryReason::PartyFragmented, 61000);
-            PlayerWaitClock(w, false, true, 61000);
-            PlayerWaitClock(w, false, true, 100000);
+            uint32_t t = 61000;
+            for (; t < 100000; t += 1000)
+                PlayerWaitClock(w, false, true, t);
             Check(w.playerWaitSince == 1000, "present for less than a minute: still the same absence");
-            PlayerWaitClock(w, false, false, 110000);
-            PlayerWaitClock(w, false, true, 120000);
-            PlayerWaitClock(w, false, true, 179000);
+            PlayerWaitClock(w, false, false, t);
+            for (t += 1000; t < 160000; t += 1000)
+                PlayerWaitClock(w, false, true, t);
             Check(w.playerWaitSince == 1000, "presence broken: the minute starts again");
-            PlayerWaitClock(w, false, true, 180000);
+            for (; t <= 162000; t += 1000)
+                PlayerWaitClock(w, false, true, t);
             Check(w.playerWaitSince == 0, "present for a minute: the wait ends");
             ObserveRecovery(w, RecoveryReason::MasterUnavailable, 1000000);
             Check(PlayerWaitClock(w, true, false, 1000000) == 0, "the next absence 16 min later: a new wait, not an abort");
+
+            // far beyond the leash while a bot drinks: not present, the wait goes on
+            RecoveryTimers f2;
+            ObserveRecovery(f2, RecoveryReason::MasterTooFar, 1000);
+            PlayerWaitClock(f2, true, false, 1000);
+            ObserveRecovery(f2, RecoveryReason::PersistentWait, 840000);
+            for (uint32_t u = 840000; u < 910000; u += 1000)
+                PlayerWaitClock(f2, false, PlayerPresent(far, rp), u);
+            ObserveRecovery(f2, RecoveryReason::MasterTooFar, 910000);
+            Check(DecidePlayerWait(PlayerWaitClock(f2, true, false, 910000)) == RecoveryStep::Abort,
+                  "a player far away the whole time: a bot reason in between does not restart the 15 min");
+
+            // samples with a gap (a fight): the minute counts only passes that saw the player
+            RecoveryTimers g;
+            ObserveRecovery(g, RecoveryReason::MasterUnavailable, 1000);
+            PlayerWaitClock(g, true, false, 1000);
+            ObserveRecovery(g, RecoveryReason::MemberDead, 2000);
+            PlayerWaitClock(g, false, true, 2000);
+            PlayerWaitClock(g, false, true, 182000);
+            Check(g.playerWaitSince == 1000, "one sample before and one after a 3 min fight: not a minute present");
+            PlayerWaitClock(g, true, false, 183000);
+            Check(g.playerBackSince == 0, "waiting for the player again: the presence minute ends");
+
             RecoveryTimers v;
             ObserveRecovery(v, RecoveryReason::MasterUnavailable, 1000);
             PlayerWaitClock(v, true, false, 1000);

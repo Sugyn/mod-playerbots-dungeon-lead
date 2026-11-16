@@ -212,7 +212,7 @@ bool DungeonRecoveryController::Update(PlayerbotAI* botAI, DungeonPartySnapshot 
         observed, DungeonLeadKernel::SessionRequestedByPlayer(true, st.origin == DungeonLeadSessionOrigin::AutoCanary),
         party.facts.master);
     uint32 const playerWaitMs = DungeonLeadKernel::PlayerWaitClock(st.recovery, waitsForPlayer,
-                                                                    DungeonLeadKernel::PlayerPresent(party.facts.master), now);
+                                                                    DungeonLeadKernel::PlayerPresent(party.facts, DungeonPartyState::Policy()), now);
 
     DungeonLeadKernel::RecoveryPolicy policy;
     policy.actMs = sDungeonLeadConfig.dungeonLeadRecoveryTimeoutSeconds * IN_MILLISECONDS;

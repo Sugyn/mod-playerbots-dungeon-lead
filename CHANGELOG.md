@@ -8,7 +8,7 @@ while the module is in alpha.
 
 ### Fixed
 
-- A session a player started waits up to 15 minutes for its player who is dead, offline or too far (not for one who left the group), instead of ending after the two recovery windows (two minutes by default, which ran on through the party's own wipe recovery while the player walked back from the graveyard). A player present again for a minute is back, and the next absence is a new wait; a player online again but outside the group gets the full recovery windows from that moment.
+- A session a player started waits up to 15 minutes for its player who is dead, offline or too far (not for one who left the group), instead of ending after the two recovery windows (two minutes by default, which ran on through the party's own wipe recovery while the player walked back from the graveyard). A player back with the party for a minute (alive, in the group, within the leash) is back, and the next absence is a new wait; a player online again but outside the group gets the full recovery windows from that moment.
 
 ## [0.16.1-alpha] - 2026-11-16
 
