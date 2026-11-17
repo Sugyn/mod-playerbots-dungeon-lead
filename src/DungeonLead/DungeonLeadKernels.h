@@ -2275,6 +2275,17 @@ namespace DungeonLeadKernel
         return f.partyInCombat || f.msOutOfCombat < kRezCastWindowMs;
     }
 
+    // Out of combat the leader orders the party's resurrecter to bring a held dead bot back now
+    // (instead of waiting for the healer's own idle logic, which often drinks first): at most every
+    // kRezOrderGapMs, never into a fight or over a cast already running.
+    constexpr uint32_t kRezOrderGapMs = 6000;
+    inline bool RezOrderDue(bool partyInCombat, bool resurrecterCasting, bool orderedBefore, uint32_t msSinceLastOrder)
+    {
+        if (partyInCombat || resurrecterCasting)
+            return false;
+        return !orderedBefore || msSinceLastOrder >= kRezOrderGapMs;
+    }
+
     // Progress: the walk counts as moving on when it gets this much closer to its target within
     // kWalkProgressMs; the time limit is the distance at the walker's speed with a detour factor,
     // plus slack, within [min, max].

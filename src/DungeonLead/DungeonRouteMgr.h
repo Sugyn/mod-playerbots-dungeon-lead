@@ -220,6 +220,8 @@ struct DungeonRunBackEntry
     float bestDist = -1.f;
     bool pathFound = true;
     uint32 retryTs = 0;       // last release or teleport attempt (retried at most every few seconds)
+    uint32 rezOrderTs = 0;    // last order to the party's resurrecter (0 = none)
+    bool rezOrdered = false;  // the first order was recorded
     uint32 lastPathType = 0;  // PathGenerator type of the last leg searched (diagnostics)
     uint32 legs = 0;          // legs walked
 };
