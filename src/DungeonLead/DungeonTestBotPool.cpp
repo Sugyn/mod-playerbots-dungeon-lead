@@ -7,6 +7,8 @@
  */
 
 #include "DungeonTestBotPool.h"
+#include "DungeonSimPlayer.h"
+#include "LFGMgr.h"
 #include "DungeonLeadActions.h"
 #include "DungeonLeadCanary.h"
 #include "DungeonLeadConfig.h"
@@ -210,11 +212,22 @@ namespace
     {
         ObjectGuid tank;
         std::vector<ObjectGuid> members;  // tank included
+        ObjectGuid sim;                   // the simulated player of this party (ValidationSimPlayer), if any
         uint32 mapId = 0;
         uint32 lfgId = 0;
         uint32 since = 0;
     };
     std::vector<PendingStart> g_pendingStarts;
+
+    // ValidationQueue: parties sent through the dungeon finder; the session starts from the queue
+    // start (QueueAutoStart) once the finder has formed the group and brought it in.
+    struct QueuedParty
+    {
+        ObjectGuid tank;
+        uint32 since = 0;
+    };
+    std::vector<QueuedParty> g_queuedParties;
+    constexpr uint32 kQueuedPartyTimeoutMs = 5 * MINUTE * IN_MILLISECONDS;
 
     // Shared reservation logic for both public Acquire* entrypoints: find an offline, unleased
     // AddClass character of `classId`, trigger its masterless login, start tracking the lease.
@@ -498,9 +511,19 @@ void DungeonLead::TestBotPoolTick()
         {
             PlayerbotAI* tankAI = GET_PLAYERBOT_AI(tank);
             Group* group = tank->GetGroup();
+            // With a simulated player the session is the one a player starts: origin manual, the
+            // player is the master the party waits for.
+            Player* sim = it->sim.IsEmpty() ? nullptr : ObjectAccessor::FindPlayer(it->sim);
+            if (sim && tankAI)
+            {
+                tankAI->SetMaster(sim);
+                if (PlayerbotAI* simAI = GET_PLAYERBOT_AI(sim))
+                    simAI->SetMaster(tank);
+            }
             bool const ok = tankAI && group &&
-                            DungeonLead::StartSession(tankAI, group, DungeonLeadSessionOrigin::AutoCanary,
-                                                      /*master*/ nullptr, /*testMode*/ true);
+                            DungeonLead::StartSession(tankAI, group,
+                                                      sim ? DungeonLeadSessionOrigin::Manual : DungeonLeadSessionOrigin::AutoCanary,
+                                                      sim, /*testMode*/ true);
             LOG_INFO("playerbots.dungeonlead",
                      "[DungeonLead][TestBotPool] party of {} assembled in map {} instance {} after {} ms - StartSession={}",
                      tank->GetName(), it->mapId, tank->GetInstanceId(), GetMSTimeDiffToNow(it->since), ok);
@@ -516,7 +539,16 @@ void DungeonLead::TestBotPoolTick()
 
 uint32 DungeonLead::PendingTestPartyCount()
 {
-    return uint32(g_pendingStarts.size());
+    // a party still in the dungeon finder holds its slot too, until its session runs
+    uint32 queued = 0;
+    for (QueuedParty const& q : g_queuedParties)
+    {
+        Player* tank = ObjectAccessor::FindPlayer(q.tank);
+        PlayerbotAI* ai = tank ? GET_PLAYERBOT_AI(tank) : nullptr;
+        if (!ai || !DungeonLead::HasSession(ai))
+            ++queued;
+    }
+    return uint32(g_pendingStarts.size()) + queued;
 }
 
 bool DungeonLead::AcquireTestBot(TestBotRole role, uint32 targetLevel, std::string& outMessage, std::string* outName)
@@ -553,7 +585,19 @@ bool DungeonLead::TestPartyActive(std::string const& tankName, bool& assembling)
         }
     Player* tank = ObjectAccessor::FindPlayer(it->guid);
     PlayerbotAI* botAI = tank ? GET_PLAYERBOT_AI(tank) : nullptr;
-    return botAI && DungeonLead::HasSession(botAI);
+    bool const session = botAI && DungeonLead::HasSession(botAI);
+    for (auto q = g_queuedParties.begin(); q != g_queuedParties.end(); ++q)
+        if (q->tank == it->guid)
+        {
+            if (session || GetMSTimeDiffToNow(q->since) >= kQueuedPartyTimeoutMs)
+            {
+                g_queuedParties.erase(q);
+                break;
+            }
+            assembling = true;
+            return true;
+        }
+    return session;
 }
 
 // Forms the parties directly instead of going through LFG: matchmaking can stall indefinitely and
@@ -661,6 +705,67 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
         for (uint32 d = 0; d < 3 && dpsCursor < dps.size(); ++d, ++dpsCursor)
             members.push_back(&dps[dpsCursor]);
 
+        if (sDungeonLeadConfig.dungeonLeadValidationQueue && sDungeonLeadConfig.dungeonLeadQueueAutoStart &&
+            sDungeonLeadConfig.dungeonLeadValidationSimPlayer)
+        {
+            // Through the dungeon finder, as a player's run starts: the party queues for this one
+            // dungeon, the finder brings it in, and the queue start hands the run to the bot tank.
+            Candidate* sim = sDungeonLeadConfig.dungeonLeadValidationSimPlayer == 2 ? &heal
+                             : members.size() > 2 ? members[2] : nullptr;
+            if (sim)
+            {
+                uint32 const base = sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                        ? sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                        : uint32(time(nullptr));
+                DungeonLead::MarkSimulatedPlayer(sim->bot, base ^ (uint32(sim->bot->GetGUID().GetCounter()) * 2654435761u));
+            }
+            // The party queues as one group, its simulated player the leader (a player who queues
+            // with friends): the finder cannot mix two validation parties or take a bot-only part of
+            // one. The members' role check is answered here, with the roles of the party.
+            auto roleOf = [&](Candidate const* c) -> uint8
+            {
+                return c == &tank ? lfg::PLAYER_ROLE_TANK : c == &heal ? lfg::PLAYER_ROLE_HEALER : lfg::PLAYER_ROLE_DAMAGE;
+            };
+            Player* const leader = sim ? sim->bot : tank.bot;
+            Group* group = new Group();
+            group->Create(leader);
+            sGroupMgr->AddGroup(group);
+            for (Candidate* c : members)
+                if (c->bot != leader)
+                    group->AddMember(c->bot);
+            for (Candidate* c : members)
+                for (uint8 diff = 0; diff < MAX_DIFFICULTY; ++diff)
+                    sInstanceSaveMgr->PlayerUnbindInstance(c->bot->GetGUID(), route->mapId, Difficulty(diff),
+                                                           /*deleteFromDB*/ true, c->bot);
+            lfg::LfgDungeonSet dungeons;
+            dungeons.insert(lfgId);
+            Candidate const* leaderCandidate = sim ? sim : &tank;
+            sLFGMgr->JoinLfg(leader, uint8(roleOf(leaderCandidate) | lfg::PLAYER_ROLE_LEADER), dungeons, "");
+            for (Candidate* c : members)
+                if (c->bot != leader)
+                    sLFGMgr->UpdateRoleCheck(group->GetGUID(), c->bot->GetGUID(), roleOf(c));
+            if (sLFGMgr->GetState(group->GetGUID()) != lfg::LFG_STATE_QUEUED)
+                LOG_ERROR("playerbots.dungeonlead",
+                          "[DungeonLead][TestBotPool] party of {} not in the dungeon finder queue for lfg {} (state {}) - "
+                          "the join or its role check was refused",
+                          leader->GetName(), lfgId, uint32(sLFGMgr->GetState(group->GetGUID())));
+            for (Candidate* c : members)
+            {
+                TestBotLease& lease = g_leases[c->leaseIdx];
+                lease.state = TestBotLeaseState::Leased;
+                lease.stateTs = getMSTime();
+                lease.entryMapId = 0;  // the dungeon finder brings it in
+            }
+            QueuedParty q;
+            q.tank = tank.bot->GetGUID();
+            q.since = getMSTime();
+            g_queuedParties.push_back(q);
+            ++started;
+            out << "Party " << (p + 1) << " (tank " << tank.bot->GetName() << "): queued for lfg " << lfgId
+                << (sim ? " with simulated player " + sim->bot->GetName() : std::string());
+            continue;
+        }
+
         Group* group = new Group();
         group->Create(tank.bot);
         sGroupMgr->AddGroup(group);
@@ -712,6 +817,19 @@ std::string DungeonLead::RunTestParty(uint32 lfgId, std::vector<std::string> con
         // a requested teleport is not an arrival (see PendingStart).
         PendingStart pending;
         pending.tank = tank.bot->GetGUID();
+        // ValidationSimPlayer (test tool): the healer (2) or the first dps (1) plays a player.
+        uint32 const simRole = sDungeonLeadConfig.dungeonLeadValidationSimPlayer;
+        if (simRole && members.size() > 2)
+        {
+            Candidate* sim = simRole == 2 ? &heal : members[2];
+            uint32 const base = sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                    ? sDungeonLeadConfig.dungeonLeadValidationSimPlayerSeed
+                                    : uint32(time(nullptr));
+            uint32 const seed = base ^ (uint32(sim->bot->GetGUID().GetCounter()) * 2654435761u);
+            DungeonLead::MarkSimulatedPlayer(sim->bot, seed);
+            pending.sim = sim->bot->GetGUID();
+            out << " [simulated player " << sim->bot->GetName() << " seed " << seed << "]";
+        }
         for (Candidate* c : members)
             pending.members.push_back(c->bot->GetGUID());
         pending.mapId = route->mapId;
@@ -769,6 +887,17 @@ std::string DungeonLead::ReleaseTestBot(std::string const& botName)
         }
         sRandomPlayerbotMgr.LogoutPlayerBot(it->guid);
     }
+
+    // A simulated player goes back to being a test bot.
+    if (Player* bot = ObjectAccessor::FindPlayer(it->guid))
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
+            if (DungeonLead::IsSimulatedPlayer(bot))
+            {
+                botAI->ChangeStrategy("-dungeon lead run back", BOT_STATE_DEAD);
+                botAI->ChangeStrategy("-stay", BOT_STATE_NON_COMBAT);
+                bot->RemovePlayerFlag(PLAYER_FLAGS_AFK);
+            }
+    DungeonLead::UnmarkSimulatedPlayer(it->guid.GetRawValue());
 
     // A party this bot was assembling for can no longer start.
     ObjectGuid const released = it->guid;
